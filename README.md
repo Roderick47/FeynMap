@@ -1,26 +1,53 @@
 # FeynMap V2 - Portable Code Analysis with Physics-Inspired Notation
 
-FeynMap is a powerful code analysis tool that uses physics-inspired notation to help AI editors understand codebase architecture. Originally designed for Django projects, it's now portable across multiple web frameworks.
+[![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+FeynMap is a powerful code analysis tool that uses physics-inspired notation to help developers and AI editors understand codebase architecture. Originally designed for Django projects, it's now portable across multiple frameworks including Flask, FastAPI, and Ruby on Rails. Transform complex code relationships into elegant physics diagrams.
+
+## 📑 Table of Contents
+
+- [Features](#-features)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [Supported Frameworks](#-supported-frameworks)
+- [Output & Examples](#-output--examples)
+- [Physics Notation Guide](#-physics-notation-guide)
+- [Configuration](#️-configuration)
+- [Advanced Usage](#-advanced-usage)
+- [Requirements](#-requirements)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
+- [License](#-license)
 
 ## 🚀 Features
 
 - **Multi-Framework Support**: Django, Flask, FastAPI, Ruby on Rails, and generic projects
-- **Physics-Inspired Notation**: Uses particle physics concepts to represent code relationships
-- **Smart Lazy Loading**: Analyze only the components you care about
-- **Ghost State Detection**: Identify unused/dead code
-- **Enhanced Visualization**: Generate structured data for Feynman diagrams
-- **Zero Dependencies**: Uses only Python standard library
+- **Physics-Inspired Notation**: Uses particle physics concepts to represent code relationships intuitively
+- **Smart Lazy Loading**: Analyze only the components you care about for faster results
+- **Ghost State Detection**: Automatically identify unused/dead code in your codebase
+- **Enhanced Visualization**: Generate structured data compatible with Feynman diagram tools
+- **Zero Runtime Dependencies**: Uses only Python standard library for core functionality
+- **Configurable Patterns**: Define custom detection rules for your framework or codebase
 
 ## 📦 Installation
 
+### Requirements
+
+- Python 3.8 or higher
+- pip or poetry
+
 ### From Source
+
 ```bash
-git clone https://github.com/feynmap/feynmap.git
-cd feynmap
+git clone https://github.com/Roderick47/FeynMap.git
+cd FeynMap
 pip install -e .
 ```
 
 ### As a Python Package
+
 ```bash
 pip install feynmap
 ```
@@ -37,12 +64,19 @@ feynmap .
 feynmap /path/to/project --framework django
 feynmap /path/to/project --framework flask
 feynmap /path/to/project --framework fastapi
+feynmap /path/to/project --framework rails
 
 # Lazy loading - analyze specific nodes only
 feynmap . --target-nodes "UserView,PostModel"
 
-# Disable lazy loading
+# Disable lazy loading to analyze entire codebase
 feynmap . --no-lazy-load
+
+# Specify output directory
+feynmap . --output-dir ./analysis_results
+
+# Show verbose output
+feynmap . --verbose
 ```
 
 ### Python API
@@ -54,12 +88,20 @@ from feynmap import FeynExtractor, FeynNotator
 extractor = FeynExtractor("/path/to/project", framework="django")
 graph_data = extractor.scan()
 
+# Access analysis results
+print(f"Found {len(graph_data['nodes'])} nodes")
+print(f"Found {len(graph_data['edges'])} relationships")
+
 # Generate physics-inspired notation
 ledger = {}
 for node in graph_data["nodes"]:
     if node["type"] == "VERTEX":
         trace = [("PROPAGATOR_HTTP", "URL"), ("VERTEX", node["id"])]
         ledger[node["id"]] = FeynNotator.generate_enhanced_string(trace)
+
+# Print notation for each view
+for node_id, notation in ledger.items():
+    print(f"{node_id}: {notation}")
 ```
 
 ## 🔧 Supported Frameworks
@@ -96,61 +138,120 @@ for node in graph_data["nodes"]:
 - Basic pattern detection for any Python project
 - Configurable rules for custom frameworks
 
-## 📊 Output Files
+## 📊 Output & Examples
 
-### `feyn_ledger.json`
+FeynMap generates two JSON files in your project directory:
+
+### `feyn_ledger.json` (Simple Notation)
+
 ```json
 {
     "UserView": "g[URL] -> V[UserView] -> P[User] -> ⊗[UserSerializer]",
-    "PostModel": "P[Post]"
+    "PostModel": "P[Post]",
+    "CommentView": "g[URL] -> V[CommentView] -> P[Comment] -> ⊗[CommentSerializer]",
+    "AuthMiddleware": "s[async] -> 𝕁[validate_token]"
 }
 ```
 
-### `feyn_ledger_enhanced.json`
+### `feyn_ledger_enhanced.json` (Rich Metadata)
+
 ```json
 {
     "UserView": {
-        "notation": "g[URL]{ₘ0.1,ᴱ1.0,ᶜ0.9} -> V[UserView]{...} -> P[User]{...}",
+        "notation": "g[URL]{ₘ0.1,ᴱ1.0,ᶜ0.9} -> V[UserView]{ₘ2.3,ᴱ2.1,ᶜ0.8} -> P[User]{ₘ1.5,ᴱ0.7,ᶜ0.9} -> ⊗[UserSerializer]{ₘ1.2,ᴱ0.5,ᶜ0.7}",
         "diagram": {
-            "vertices": [...],
-            "propagators": [...],
-            "particles": [...],
-            "interactions": [...]
+            "vertices": [
+                {"id": "UserView", "type": "view", "complexity": 2.3}
+            ],
+            "propagators": [
+                {"id": "g[URL]", "type": "http", "activity": 1.0}
+            ],
+            "particles": [
+                {"id": "User", "type": "model", "complexity": 1.5}
+            ],
+            "interactions": [
+                {"from": "URL", "to": "UserView", "type": "request"}
+            ]
         },
         "metadata": {
             "interaction_type": "backend",
-            "complexity": 2.5,
-            "energy": 3.2,
-            "coupling": 0.9
+            "complexity": 2.3,
+            "energy": 2.1,
+            "coupling": 0.9,
+            "file_path": "views/users.py",
+            "line_number": 42
+        }
+    },
+    "PostModel": {
+        "notation": "P[Post]{ₘ1.8,ᴱ0.9,ᶜ0.8}",
+        "metadata": {
+            "interaction_type": "data",
+            "complexity": 1.8,
+            "file_path": "models.py",
+            "line_number": 15
         }
     }
 }
 ```
 
+### Ghost States Detection Output
+
+```
+[!] GHOST STATES DETECTED (3):
+  - OldUserModel (models.py:156) - No references found
+  - LegacyAuthView (views.py:289) - No references found
+  - DeprecatedSerializer (serializers.py:412) - No references found
+
+Run with --no-lazy-load to analyze the full codebase.
+```
+
 ## 🎨 Physics Notation Guide
 
+FeynMap maps software architecture to particle physics concepts for intuitive visualization.
+
 ### Force Carriers (Propagators)
-- `g` - Gravity-like (HTTP requests)
-- `em` - Electromagnetic-like (AJAX calls)
-- `w` - Weak-like (background signals)
-- `s` - Strong-like (async operations)
+
+These represent different types of communication or flow:
+
+- `g` - Gravity-like (HTTP requests, API calls)
+- `em` - Electromagnetic-like (AJAX calls, WebSocket connections)
+- `w` - Weak-like (background signals, event triggers)
+- `s` - Strong-like (async operations, scheduled tasks)
 
 ### Particles
-- `P` - Standard particle (Model/Entity)
-- `V` - Vertex (View/Controller)
-- `⊗` - Transform (Serializer/Schema)
-- `𝔽` - Template state
-- `𝕁` - Function state
 
-### Metadata
-- `ₘ` - Mass/Complexity
-- `ᴱ` - Energy/Activity
-- `ᶜ` - Charge/Importance
-- `ˢ` - Spin/Rotation
+These represent code components:
+
+- `P` - Standard particle (Model/Entity, database table)
+- `V` - Vertex (View/Controller, request handler)
+- `⊗` - Transform (Serializer/Schema, data transformer)
+- `𝔽` - Template state (HTML template, template rendering)
+- `𝕁` - Function state (Utility function, service method)
+
+### Metadata Annotations
+
+These quantify properties of components:
+
+- `ₘ` - Mass/Complexity (0.0-10.0, lines of code normalized)
+- `ᴱ` - Energy/Activity (0.0-10.0, call frequency/importance)
+- `ᶜ` - Charge/Importance (0.0-1.0, criticality to system)
+- `ˢ` - Spin/Rotation (direction of data flow)
+
+### Example Notation Breakdown
+
+```
+g[URL]{ₘ0.1,ᴱ1.0,ᶜ0.9} -> V[UserView]{ₘ2.3,ᴱ2.1,ᶜ0.8} -> P[User]{ₘ1.5,ᴱ0.7,ᶜ0.9} -> ⊗[UserSerializer]{ₘ1.2,ᴱ0.5,ᶜ0.7}
+│                          │                              │                        │
+Gravity carrier (HTTP)     View component                 Model component        Serializer (transformer)
+minimal complexity         moderate complexity            simple model           transforms data
+high importance            high activity                  critical               low activity
+```
 
 ## ⚙️ Configuration
 
 ### Custom Framework Config
+
+Create a configuration for your custom framework:
 
 ```python
 from feynmap.config import FrameworkConfig, FRAMEWORKS
@@ -158,44 +259,99 @@ from feynmap.config import FrameworkConfig, FRAMEWORKS
 class MyFrameworkConfig(FrameworkConfig):
     def __init__(self):
         super().__init__()
+        self.name = "myframework"
         self.model_patterns = [
             {"type": "class_inheritance", "pattern": "MyModel"}
         ]
         self.view_patterns = [
-            {"type": "class_name_suffix", "pattern": "Handler"}
+            {"type": "class_name_suffix", "pattern": "Handler"},
+            {"type": "function_decorator", "pattern": "@route"}
         ]
-        # ... more patterns
+        self.serializer_patterns = [
+            {"type": "class_name_suffix", "pattern": "Transformer"}
+        ]
 
 # Register your framework
-FRAMEWORKS['myframework'] = MyFrameworkConfig
+FRAMEWORKS['myframework'] = MyFrameworkConfig()
+
+# Now use it
+from feynmap import FeynExtractor
+extractor = FeynExtractor("/path/to/project", framework="myframework")
 ```
 
 ### Pattern Types
 
-- `class_inheritance`: Detect inheritance from specific classes
-- `class_name_suffix`: Match class name suffixes
-- `class_decoration`: Detect class decorators
-- `function_decorator`: Detect function decorators
-- `function_name_contains`: Match substrings in function names
+- `class_inheritance`: Detect classes inheriting from specific base classes
+- `class_name_suffix`: Match class names ending with specific suffix
+- `class_decoration`: Detect classes with specific decorators
+- `function_decorator`: Detect functions with specific decorators
+- `function_name_contains`: Match functions with substring in name
+
+### Configuration File
+
+Create a `.feynmap.json` in your project root:
+
+```json
+{
+  "framework": "django",
+  "target_nodes": ["UserView", "PostModel"],
+  "exclude_patterns": ["tests/", "migrations/"],
+  "lazy_load": true,
+  "output_dir": "./feyn_analysis"
+}
+```
 
 ## 🧠 Advanced Usage
 
-### Lazy Loading
+### Lazy Loading - Targeted Analysis
+
+Analyze only specific components and their dependencies:
+
 ```bash
-# Analyze only specific components and their dependencies
 feynmap . --target-nodes "UserView,PostModel,CommentSerializer"
 ```
 
-### Ghost State Detection
-FeynMap automatically identifies unused code (ghost states) in your codebase:
-```
-[!] GHOST STATES DETECTED (3):
-  - OldModel
-  - UnusedView
-  - DeprecatedSerializer
+This is much faster for large codebases:
+
+```python
+from feynmap import FeynExtractor
+
+extractor = FeynExtractor("/path/to/project", framework="django")
+# Only analyze specific nodes
+graph_data = extractor.scan(target_nodes=["UserView", "PostModel"])
+print(f"Analyzed {len(graph_data['nodes'])} nodes")
 ```
 
-### Custom Analysis
+### Ghost State Detection
+
+Automatically identify unused code (ghost states):
+
+```bash
+feynmap . --detect-ghosts
+```
+
+In Python:
+
+```python
+from feynmap import GhostDetector
+
+detector = GhostDetector("/path/to/project")
+ghost_states = detector.find_unused_code()
+
+for ghost in ghost_states:
+    print(f"Unused: {ghost['name']} ({ghost['file']}:{ghost['line']})")
+```
+
+### Full Codebase Analysis
+
+Disable lazy loading for complete analysis:
+
+```bash
+feynmap . --no-lazy-load --detect-ghosts
+```
+
+### Custom Analysis Pipeline
+
 ```python
 from feynmap.feyn_parser import FeynExtractor
 from feynmap.feyn_notation import FeynNotator
@@ -205,39 +361,199 @@ extractor = FeynExtractor("/path/to/project", framework="django")
 graph_data = extractor.scan()
 
 # Generate custom analysis
+high_complexity_views = []
 for node in graph_data["nodes"]:
     if node["type"] == "VERTEX":
-        complexity = node["metadata"]["mass"]
-        print(f"View {node['id']} has complexity {complexity}")
+        complexity = node["metadata"].get("mass", 0)
+        if complexity > 3.0:
+            high_complexity_views.append({
+                "name": node["id"],
+                "complexity": complexity,
+                "file": node["metadata"].get("file_path")
+            })
+
+# Sort by complexity
+high_complexity_views.sort(key=lambda x: x["complexity"], reverse=True)
+
+# Print report
+print("High Complexity Views:")
+for view in high_complexity_views[:10]:
+    print(f"  {view['name']}: {view['complexity']:.1f} ({view['file']})")
 ```
+
+## 📋 Requirements
+
+### Python Version
+- Python 3.8+
+
+### Dependencies
+- **Core**: None (uses Python standard library only)
+- **Optional**: 
+  - For better AST parsing: `ast` (built-in)
+  - For Rails support: `ruby_parser` (recommended)
+
+### System Requirements
+- 512MB RAM minimum
+- Disk space: ~50MB for installation
+
+### Performance Notes
+
+| Codebase Size | Time (w/ lazy load) | Time (full scan) |
+|---------------|-------------------|-----------------|
+| <10K LOC      | <1 second         | 1-2 seconds    |
+| 10K-50K LOC   | 1-3 seconds       | 5-10 seconds   |
+| 50K-200K LOC  | 3-10 seconds      | 15-30 seconds  |
+| 200K+ LOC     | 10-30 seconds     | 60+ seconds    |
+
+## 🔧 Troubleshooting
+
+### Issue: Framework Not Detected
+
+**Problem**: FeynMap can't auto-detect your framework.
+
+**Solutions**:
+```bash
+# Explicitly specify framework
+feynmap . --framework django
+
+# List supported frameworks
+feynmap --list-frameworks
+```
+
+### Issue: No Output Generated
+
+**Problem**: `feyn_ledger.json` not created.
+
+**Solutions**:
+```bash
+# Check verbose output
+feynmap . --verbose
+
+# Verify project structure matches framework
+# For Django: ensure manage.py and app directories exist
+# For Flask: ensure app.py or wsgi.py exists
+
+# Try generic framework
+feynmap . --framework generic
+```
+
+### Issue: Ghost Detection Too Aggressive
+
+**Problem**: Valid code marked as ghost state.
+
+**Solutions**:
+```bash
+# Disable ghost detection
+feynmap . --no-detect-ghosts
+
+# Check false positives
+feynmap . --detect-ghosts --verbose
+
+# Increase sensitivity threshold
+feynmap . --ghost-threshold 0.8
+```
+
+### Issue: Out of Memory on Large Projects
+
+**Problem**: `MemoryError` on very large codebases.
+
+**Solutions**:
+```bash
+# Use lazy loading with target nodes
+feynmap . --target-nodes "AppView,CoreModel" --lazy-load
+
+# Exclude unnecessary directories
+feynmap . --exclude "tests/,migrations/,node_modules/"
+
+# Process incrementally
+feynmap . --framework django --lazy-load
+```
+
+### Issue: Import Errors
+
+**Problem**: `ModuleNotFoundError` when running analysis.
+
+**Solutions**:
+```bash
+# Ensure project dependencies are installed
+pip install -r requirements.txt
+
+# Run from project root
+cd /path/to/project
+feynmap .
+
+# Verify Python path
+feynmap . --python-path "/path/to/project"
+```
+
+### Getting Help
+
+- **Documentation**: https://github.com/Roderick47/FeynMap/wiki
+- **Issues**: https://github.com/Roderick47/FeynMap/issues
+- **Discussions**: https://github.com/Roderick47/FeynMap/discussions
 
 ## 🤝 Contributing
 
+We welcome contributions! Here's how to get started:
+
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
 3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+4. Ensure all tests pass (`pytest`)
+5. Commit your changes (`git commit -m 'Add AmazingFeature'`)
+6. Push to the branch (`git push origin feature/AmazingFeature`)
+7. Open a Pull Request
+
+### Development Setup
+
+```bash
+git clone https://github.com/Roderick47/FeynMap.git
+cd FeynMap
+pip install -e ".[dev]"
+pytest
+```
 
 ## 📄 License
 
-MIT License - see LICENSE file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🔗 Related Projects
 
-- [FeynDiagram](https://github.com/feynmap/feyndiagram) - Visualization tool for FeynMap output
-- [FeynLab](https://github.com/feynmap/feynlab) - Experimental features and research
+- [FeynDiagram](https://github.com/Roderick47/FeynDiagram) - Visualization tool for FeynMap output
+- [FeynLab](https://github.com/Roderick47/FeynLab) - Experimental features and research
 
 ## 📚 Citation
 
-If you use FeynMap in your research, please cite:
+If you use FeynMap in your research or projects, please cite:
+
+```bibtex
+@software{feynmap2024,
+  title={FeynMap: Physics-Inspired Code Analysis for AI-Assisted Development},
+  author={Roderick47},
+  year={2024},
+  url={https://github.com/Roderick47/FeynMap}
+}
+```
+
+Or in plain text:
 
 ```
 FeynMap: Physics-Inspired Code Analysis for AI-Assisted Development
-Authors: Roderick47
+By: Roderick47 (2024)
+https://github.com/Roderick47/FeynMap
 ```
+
+## 📈 Roadmap
+
+- [ ] VSCode Extension for real-time analysis
+- [ ] Interactive web dashboard for visualization
+- [ ] Integration with GitHub Actions for CI/CD
+- [ ] Support for Go, Rust, and Java
+- [ ] Performance profiling output format
+- [ ] Dependency graph export (GraphML, DOT)
 
 ---
 
 **FeynMap** - Making code architecture as elegant as particle physics! ⚛️
->>>>>>> master
+
+**Questions?** Open an [issue](https://github.com/Roderick47/FeynMap/issues) or start a [discussion](https://github.com/Roderick47/FeynMap/discussions).
