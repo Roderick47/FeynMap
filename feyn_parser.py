@@ -1,352 +1,646 @@
 import os
 import ast
 import re
+import logging
 from pathlib import Path
+from typing import Dict, List, Set, Any, Optional
+
 try:
     from .config import get_framework_config, DEFAULT_CONFIG
 except ImportError:
     from config import get_framework_config, DEFAULT_CONFIG
 
-class FeynExtractor:
-    def __init__(self, project_path, framework='auto'):
-        self.project_path = Path(project_path)
-        self.config = get_framework_config(framework)
-        self.graph = {"nodes": [], "edges": []}
-        self.node_ids = set()  # Track existing node IDs to avoid duplicates
+logger = logging.getLogger(__name__)
 
-    def scan(self):
-        for root, _, files in os.walk(self.project_path):
-            if any(x in root for x in self.config.exclude_dirs):
-                continue
-            for file in files:
-                file_path = Path(root) / file
-                if any(file.endswith(ext) for ext in self.config.code_extensions):
-                    self._parse_code(file_path)
-                elif any(file.endswith(ext) for ext in self.config.template_extensions):
-                    self._parse_template(file_path)
+# Constants for complexity calculations
+class ComplexityDefaults:
+    """Default values for complexity calculations"""
+    DEFAULT_MASS = 1.0
+    DEFAULT_CHARGE = 1.0
+    DEFAULT_SPIN = 0.5
+    DEFAULT_ENERGY = 0.5
+    DEFAULT_COUPLING = 0.5
+    DEFAULT_LIFETIME = 1.0
+    
+    # Complexity bounds
+    COMPLEXITY_MAX = 2.0
+    COMPLEXITY_MIN = 0.0
+    
+    # View complexity modifiers
+    VIEW_CREATEVIEW_BONUS = 0.3
+    VIEW_UPDATEVIEW_BONUS = 0.2
+    VIEW_LISTVIEW_BONUS = 0.1
+    VIEW_DETAILVIEW_BONUS = 0.1
+    VIEW_BASE_COMPLEXITY_DIVISOR = 100.0
+    VIEW_ENERGY = 0.8
+    
+    # Model complexity
+    MODEL_BASE = 0.5
+    MODEL_FIELD_WEIGHT = 0.1
+    MODEL_RELATION_WEIGHT = 0.2
+    MODEL_CHARGE = 1.2
+    
+    # Serializer/Transform
+    TRANSFORM_MASS = 0.6
+    TRANSFORM_COUPLING = 0.8
+    
+    # JavaScript
+    JAVASCRIPT_MASS = 0.3
+    JAVASCRIPT_ENERGY = 0.9
+    
+    # AJAX
+    AJAX_ENERGY = 1.0
+    AJAX_COUPLING = 0.7
+    
+    # Template
+    TEMPLATE_BASE = 0.3
+    TEMPLATE_VAR_WEIGHT = 0.05
+    TEMPLATE_TAG_WEIGHT = 0.1
+    TEMPLATE_JS_WEIGHT = 0.15
+    TEMPLATE_DEFAULT = 0.5
+
+# Regular expressions - compiled for better performance
+class RegexPatterns:
+    """Precompiled regex patterns for template parsing"""
+    TEMPLATE_VARIABLES = re.compile(r'{{\s*[\w\.]+\s*}}')
+    TEMPLATE_TAGS = re.compile(r'{%\s*[^%]+\s*%}')
+    JS_FUNCTIONS = re.compile(r'function\s+\w+')
+    LEAFLET_MAP = re.compile(r'L\.(map|marker)\(')
+    JQUERY = re.compile(r'\$\(|jQuery')
+    BOOTSTRAP = re.compile(r'bootstrap', re.IGNORECASE)
+    AXIOS = re.compile(r'axios')
+
+
+class FeynExtractor:
+    """Extract framework components and build a dependency graph"""
+    
+    # Global objects to skip in JavaScript analysis
+    GLOBAL_JS_OBJECTS = {'console', 'document', 'window', 'navigator'}
+    
+    def __init__(self, project_path: str, framework: str = 'auto') -> None:
+        """
+        Initialize the Feyn extractor.
+        
+        Args:
+            project_path: Root path of the project to analyze
+            framework: Framework type ('auto', 'django', etc.)
+            
+        Raises:
+            ValueError: If project_path does not exist
+        """
+        self.project_path = Path(project_path)
+        
+        if not self.project_path.exists():
+            raise ValueError(f"Project path does not exist: {self.project_path}")
+        
+        self.config = get_framework_config(framework)
+        self.graph: Dict[str, List[Any]] = {"nodes": [], "edges": []}
+        self.node_ids: Set[str] = set()
+        self._file_content_cache: Dict[str, str] = {}
+
+    def scan(self) -> Dict[str, List[Any]]:
+        """
+        Scan project for components and build dependency graph.
+        
+        Returns:
+            Graph with nodes and edges representing project structure
+        """
+        excluded_dirs_set = set(self.config.exclude_dirs)
+        code_extensions = tuple(self.config.code_extensions)
+        template_extensions = tuple(self.config.template_extensions)
+        
+        try:
+            for root, _, files in os.walk(self.project_path):
+                if any(excluded_dir in root for excluded_dir in excluded_dirs_set):
+                    continue
+                
+                for file in files:
+                    file_path = Path(root) / file
+                    
+                    if file.endswith(code_extensions):
+                        self._parse_code(file_path)
+                    elif file.endswith(template_extensions):
+                        self._parse_template(file_path)
+        except Exception as e:
+            logger.error(f"Error scanning project: {e}")
+        
         return self.graph
 
-    def _add_node(self, node_id, node_type, file_name, **kwargs):
-        """Add a node if it doesn't already exist with enhanced metadata"""
+    def _add_node(self, node_id: str, node_type: str, file_name: str, **kwargs) -> None:
+        """
+        Add a node to the graph if it doesn't already exist.
+        
+        Args:
+            node_id: Unique identifier for the node
+            node_type: Type of node (e.g., 'PARTICLE', 'VERTEX')
+            file_name: Source file name
+            **kwargs: Additional node properties
+        """
         if node_id not in self.node_ids:
             self.node_ids.add(node_id)
             node_data = {
-                "id": node_id, 
-                "type": node_type, 
+                "id": node_id,
+                "type": node_type,
                 "file": file_name,
                 "metadata": self._calculate_metadata(node_id, node_type, file_name, **kwargs)
             }
             node_data.update(kwargs)
             self.graph["nodes"].append(node_data)
-    
-    def _calculate_metadata(self, node_id, node_type, file_name, **kwargs):
-        """Calculate physics-inspired metadata for nodes"""
+
+    def _calculate_metadata(self, node_id: str, node_type: str, file_name: str, 
+                           **kwargs) -> Dict[str, Any]:
+        """
+        Calculate physics-inspired metadata for nodes.
+        
+        Args:
+            node_id: Node identifier
+            node_type: Type of node
+            file_name: Source file name
+            **kwargs: Additional properties
+            
+        Returns:
+            Dictionary containing metadata for the node
+        """
         metadata = {
-            "mass": 1.0,  # Base complexity
-            "charge": 1.0,  # Base importance
-            "spin": 0.5,   # Base rotation/changes
-            "energy": 0.5, # Base activity level
-            "coupling": 0.5, # Base coupling strength
-            "lifetime": 1.0, # Base stability
+            "mass": ComplexityDefaults.DEFAULT_MASS,
+            "charge": ComplexityDefaults.DEFAULT_CHARGE,
+            "spin": ComplexityDefaults.DEFAULT_SPIN,
+            "energy": ComplexityDefaults.DEFAULT_ENERGY,
+            "coupling": ComplexityDefaults.DEFAULT_COUPLING,
+            "lifetime": ComplexityDefaults.DEFAULT_LIFETIME,
             "file": file_name,
             "lines": kwargs.get("lines", 0)
         }
         
-        # Calculate complexity based on node type and properties
+        # Calculate type-specific metadata
         if node_type == "VERTEX":
-            # Views have higher mass based on their complexity
             metadata["mass"] = self._calculate_view_complexity(node_id, file_name)
-            metadata["energy"] = 0.8  # Views are active components
+            metadata["energy"] = ComplexityDefaults.VIEW_ENERGY
         elif node_type == "PARTICLE":
-            # Models have mass based on field count and relations
             metadata["mass"] = self._calculate_model_complexity(node_id, file_name)
-            metadata["charge"] = 1.2  # Models are important (high charge)
+            metadata["charge"] = ComplexityDefaults.MODEL_CHARGE
         elif node_type == "TRANSFORM":
-            # Serializers have medium mass but high coupling
-            metadata["mass"] = 0.6
-            metadata["coupling"] = 0.8
+            metadata["mass"] = ComplexityDefaults.TRANSFORM_MASS
+            metadata["coupling"] = ComplexityDefaults.TRANSFORM_COUPLING
         elif node_type == "FRONTEND":
-            # Templates have variable mass based on content
             metadata["mass"] = self._calculate_template_complexity(node_id, file_name)
         elif node_type == "JAVASCRIPT":
-            # JS functions have lower mass but higher energy
-            metadata["mass"] = 0.3
-            metadata["energy"] = 0.9
+            metadata["mass"] = ComplexityDefaults.JAVASCRIPT_MASS
+            metadata["energy"] = ComplexityDefaults.JAVASCRIPT_ENERGY
         elif node_type == "AJAX":
-            # AJAX calls have high energy (fast interactions)
-            metadata["energy"] = 1.0
-            metadata["coupling"] = 0.7
+            metadata["energy"] = ComplexityDefaults.AJAX_ENERGY
+            metadata["coupling"] = ComplexityDefaults.AJAX_COUPLING
         
         return metadata
-    
-    def _calculate_view_complexity(self, view_name, file_name):
-        """Calculate complexity mass for view classes"""
+
+    def _read_file_content(self, file_path: str) -> Optional[str]:
+        """
+        Read file content with caching and error handling.
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            File content or None if reading fails
+        """
+        if file_path in self._file_content_cache:
+            return self._file_content_cache[file_path]
+        
         try:
-            with open(file_name, "r", encoding="utf-8") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
-                
-            # Count lines in the view class
-            lines = len([line for line in content.split('\n') if line.strip()])
+                self._file_content_cache[file_path] = content
+                return content
+        except Exception as e:
+            logger.warning(f"Failed to read file {file_path}: {e}")
+            return None
+
+    def _count_non_empty_lines(self, content: str) -> int:
+        """Count non-empty lines in content."""
+        return len([line for line in content.split('\n') if line.strip()])
+
+    def _calculate_view_complexity(self, view_name: str, file_name: str) -> float:
+        """
+        Calculate complexity mass for view classes.
+        
+        Args:
+            view_name: Name of the view
+            file_name: Source file name
             
-            # Base complexity on lines and methods
-            complexity = min(lines / 100.0, 2.0)  # Normalize to 0-2 range
-            
-            # Add complexity for common patterns
-            if "CreateView" in view_name:
-                complexity += 0.3
-            if "UpdateView" in view_name:
-                complexity += 0.2
-            if "ListView" in view_name:
-                complexity += 0.1
-            if "DetailView" in view_name:
-                complexity += 0.1
-            
-            return round(complexity, 2)
-        except:
-            return 1.0
-    
-    def _calculate_model_complexity(self, model_name, file_name):
-        """Calculate complexity mass for model classes"""
+        Returns:
+            Complexity score between 0 and COMPLEXITY_MAX
+        """
+        content = self._read_file_content(file_name)
+        if not content:
+            return ComplexityDefaults.DEFAULT_MASS
+        
         try:
-            with open(file_name, "r", encoding="utf-8") as f:
-                content = f.read()
+            lines = self._count_non_empty_lines(content)
+            complexity = min(lines / ComplexityDefaults.VIEW_BASE_COMPLEXITY_DIVISOR, 
+                           ComplexityDefaults.COMPLEXITY_MAX)
             
-            # Count fields and relationships
+            # Add complexity bonuses for view type
+            view_patterns = {
+                "CreateView": ComplexityDefaults.VIEW_CREATEVIEW_BONUS,
+                "UpdateView": ComplexityDefaults.VIEW_UPDATEVIEW_BONUS,
+                "ListView": ComplexityDefaults.VIEW_LISTVIEW_BONUS,
+                "DetailView": ComplexityDefaults.VIEW_DETAILVIEW_BONUS,
+            }
+            
+            for pattern, bonus in view_patterns.items():
+                if pattern in view_name:
+                    complexity += bonus
+            
+            return round(min(complexity, ComplexityDefaults.COMPLEXITY_MAX), 2)
+        except Exception as e:
+            logger.warning(f"Error calculating view complexity for {view_name}: {e}")
+            return ComplexityDefaults.DEFAULT_MASS
+
+    def _calculate_model_complexity(self, model_name: str, file_name: str) -> float:
+        """
+        Calculate complexity mass for model classes.
+        
+        Args:
+            model_name: Name of the model
+            file_name: Source file name
+            
+        Returns:
+            Complexity score between 0 and COMPLEXITY_MAX
+        """
+        content = self._read_file_content(file_name)
+        if not content:
+            return ComplexityDefaults.DEFAULT_MASS
+        
+        try:
             field_count = content.count('models.')
             relationship_count = content.count('ForeignKey') + content.count('ManyToManyField')
             
-            complexity = 0.5 + (field_count * 0.1) + (relationship_count * 0.2)
-            return round(min(complexity, 2.0), 2)
-        except:
-            return 1.0
-    
-    def _calculate_template_complexity(self, template_name, file_name):
-        """Calculate complexity mass for templates"""
+            complexity = (ComplexityDefaults.MODEL_BASE + 
+                         (field_count * ComplexityDefaults.MODEL_FIELD_WEIGHT) + 
+                         (relationship_count * ComplexityDefaults.MODEL_RELATION_WEIGHT))
+            
+            return round(min(complexity, ComplexityDefaults.COMPLEXITY_MAX), 2)
+        except Exception as e:
+            logger.warning(f"Error calculating model complexity for {model_name}: {e}")
+            return ComplexityDefaults.DEFAULT_MASS
+
+    def _calculate_template_complexity(self, template_name: str, file_name: str) -> float:
+        """
+        Calculate complexity mass for templates.
+        
+        Args:
+            template_name: Name of the template
+            file_name: Source file name
+            
+        Returns:
+            Complexity score between 0 and COMPLEXITY_MAX
+        """
+        content = self._read_file_content(file_name)
+        if not content:
+            return ComplexityDefaults.TEMPLATE_DEFAULT
+        
         try:
-            with open(file_name, "r", encoding="utf-8") as f:
-                content = f.read()
+            var_count = len(RegexPatterns.TEMPLATE_VARIABLES.findall(content))
+            tag_count = len(RegexPatterns.TEMPLATE_TAGS.findall(content))
+            js_count = len(RegexPatterns.JS_FUNCTIONS.findall(content))
             
-            # Count template variables, tags, and JavaScript
-            var_count = len(re.findall(r'{{\s*[\w\.]+\s*}}', content))
-            tag_count = len(re.findall(r'{%\s*[^%]+\s*%}', content))
-            js_count = len(re.findall(r'function\s+\w+', content))
+            complexity = (ComplexityDefaults.TEMPLATE_BASE +
+                         (var_count * ComplexityDefaults.TEMPLATE_VAR_WEIGHT) +
+                         (tag_count * ComplexityDefaults.TEMPLATE_TAG_WEIGHT) +
+                         (js_count * ComplexityDefaults.TEMPLATE_JS_WEIGHT))
             
-            complexity = 0.3 + (var_count * 0.05) + (tag_count * 0.1) + (js_count * 0.15)
-            return round(min(complexity, 2.0), 2)
-        except:
-            return 0.5
+            return round(min(complexity, ComplexityDefaults.COMPLEXITY_MAX), 2)
+        except Exception as e:
+            logger.warning(f"Error calculating template complexity for {template_name}: {e}")
+            return ComplexityDefaults.TEMPLATE_DEFAULT
 
-    def _parse_code(self, path):
-        with open(path, "r", encoding="utf-8") as f:
-            try:
-                tree = ast.parse(f.read())
+    def _parse_code(self, path: Path) -> None:
+        """
+        Parse Python code file and extract components.
+        
+        Args:
+            path: Path to the Python file
+        """
+        content = self._read_file_content(str(path))
+        if not content:
+            return
+        
+        try:
+            tree = ast.parse(content)
+            self._process_ast_nodes(tree, path)
+        except SyntaxError as e:
+            logger.warning(f"Syntax error parsing {path}: {e}")
+        except Exception as e:
+            logger.error(f"Error parsing code file {path}: {e}")
+
+    def _process_ast_nodes(self, tree: ast.AST, path: Path) -> None:
+        """
+        Process AST nodes to extract components.
+        
+        Args:
+            tree: AST tree to process
+            path: Source file path
+        """
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                self._process_class_node(node, path)
+            elif isinstance(node, ast.FunctionDef):
+                self._process_function_node(node, path)
+
+    def _process_class_node(self, node: ast.ClassDef, path: Path) -> None:
+        """Process a class definition node."""
+        current_class = node.name
+        
+        # Detect Models (Particles)
+        if self._matches_pattern(node, self.config.get_model_detection_rules()):
+            self._add_node(node.name, "PARTICLE", path.name)
+        
+        # Detect Views (Vertices)
+        if self._matches_pattern(node, self.config.get_view_detection_rules()):
+            self._add_node(node.name, "VERTEX", path.name)
+        
+        # Detect Serializers (Transforms)
+        if self._matches_pattern(node, self.config.get_serializer_detection_rules()):
+            self._add_node(node.name, "TRANSFORM", path.name)
+        
+        # Process class body for relationships
+        self._process_class_assignments(node, current_class, path)
+
+    def _process_class_assignments(self, class_node: ast.ClassDef, 
+                                   current_class: str, path: Path) -> None:
+        """Extract model and serializer assignments from class body."""
+        for child in ast.walk(class_node):
+            if not isinstance(child, ast.Assign):
+                continue
+            
+            for target in child.targets:
+                if not isinstance(target, ast.Name):
+                    continue
                 
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.ClassDef):
-                        current_class = node.name
-                        
-                        # Detect Models (Particles) using framework config
-                        if self._matches_pattern(node, self.config.get_model_detection_rules()):
-                            self._add_node(node.name, "PARTICLE", path.name)
-                        
-                        # Detect Views (Vertices) using framework config
-                        if self._matches_pattern(node, self.config.get_view_detection_rules()):
-                            self._add_node(node.name, "VERTEX", path.name)
-                        
-                        # Detect Serializers (Transitions) using framework config
-                        if self._matches_pattern(node, self.config.get_serializer_detection_rules()):
-                            self._add_node(node.name, "TRANSFORM", path.name)
-                        
-                        # Particle Entanglement: Check for model assignments inside this class
-                        for child in ast.walk(node):
-                            if isinstance(child, ast.Assign):
-                                for target in child.targets:
-                                    if isinstance(target, ast.Name) and target.id == "model":
-                                        # Found model = ModelName assignment
-                                        if isinstance(child.value, ast.Name):
-                                            model_name = child.value.id
-                                            # Create Particle node for the referenced model
-                                            self._add_node(model_name, "PARTICLE", path.name, imported=True)
-                                            # Create edge from View (Vertex) to Model (Particle)
-                                            self.graph["edges"].append({
-                                                "source": current_class, 
-                                                "target": model_name, 
-                                                "type": "PARTICLE_ENTANGLEMENT"
-                                            })
-                                    elif isinstance(target, ast.Name) and target.id == "serializer_class":
-                                        # Found serializer_class = SerializerName assignment
-                                        if isinstance(child.value, ast.Name):
-                                            serializer_name = child.value.id
-                                            # Create Transform node for the referenced serializer
-                                            self._add_node(serializer_name, "TRANSFORM", path.name, imported=True)
-                                            # Create edge from View (Vertex) to Serializer (Transform)
-                                            self.graph["edges"].append({
-                                                "source": current_class, 
-                                                "target": serializer_name, 
-                                                "type": "SERIALIZER_ENTANGLEMENT"
-                                            })
-                    
-                    elif isinstance(node, ast.FunctionDef):
-                        # Detect function-based views (vertices) using framework config
-                        if self._matches_function_pattern(node, self.config.get_view_detection_rules()):
-                            self._add_node(node.name, "VERTEX", path.name)
-                            
-                            # Look for model usage in function-based views
-                            for child in ast.walk(node):
-                                if isinstance(child, ast.Call):
-                                    if isinstance(child.func, ast.Attribute):
-                                        # Look for ORM patterns using framework config
-                                        if hasattr(child.func, 'value') and isinstance(child.func.value, ast.Name):
-                                            model_name = child.func.value.id
-                                            # Check if this matches any ORM pattern
-                                            if self._matches_orm_pattern(ast.unparse(child)):
-                                                # Create edge from function view to model
-                                                self.graph["edges"].append({
-                                                    "source": node.name,
-                                                    "target": model_name,
-                                                    "type": "PARTICLE_ENTANGLEMENT"
-                                                })
-            except: pass
+                if target.id == "model" and isinstance(child.value, ast.Name):
+                    self._add_model_relationship(current_class, child.value.id, path)
+                elif target.id == "serializer_class" and isinstance(child.value, ast.Name):
+                    self._add_serializer_relationship(current_class, child.value.id, path)
 
-    def _parse_template(self, path):
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
+    def _add_model_relationship(self, source: str, model_name: str, path: Path) -> None:
+        """Add model relationship edge."""
+        self._add_node(model_name, "PARTICLE", path.name, imported=True)
+        self.graph["edges"].append({
+            "source": source,
+            "target": model_name,
+            "type": "PARTICLE_ENTANGLEMENT"
+        })
+
+    def _add_serializer_relationship(self, source: str, serializer_name: str, path: Path) -> None:
+        """Add serializer relationship edge."""
+        self._add_node(serializer_name, "TRANSFORM", path.name, imported=True)
+        self.graph["edges"].append({
+            "source": source,
+            "target": serializer_name,
+            "type": "SERIALIZER_ENTANGLEMENT"
+        })
+
+    def _process_function_node(self, node: ast.FunctionDef, path: Path) -> None:
+        """Process a function definition node."""
+        if not self._matches_function_pattern(node, self.config.get_view_detection_rules()):
+            return
+        
+        self._add_node(node.name, "VERTEX", path.name)
+        self._process_function_calls(node, path)
+
+    def _process_function_calls(self, func_node: ast.FunctionDef, path: Path) -> None:
+        """Extract ORM calls from function body."""
+        for child in ast.walk(func_node):
+            if not isinstance(child, ast.Call):
+                continue
+            if not isinstance(child.func, ast.Attribute):
+                continue
+            if not (hasattr(child.func, 'value') and isinstance(child.func.value, ast.Name)):
+                continue
             
-            # Add template as frontend node
+            model_name = child.func.value.id
+            if self._matches_orm_pattern(ast.unparse(child)):
+                self.graph["edges"].append({
+                    "source": func_node.name,
+                    "target": model_name,
+                    "type": "PARTICLE_ENTANGLEMENT"
+                })
+
+    def _parse_template(self, path: Path) -> None:
+        """
+        Parse template file and extract components.
+        
+        Args:
+            path: Path to the template file
+        """
+        content = self._read_file_content(str(path))
+        if not content:
+            return
+        
+        try:
             template_name = path.stem
             self._add_node(template_name, "FRONTEND", path.name)
             
-            # Parse template patterns using framework config
             template_patterns = self.config.get_template_patterns()
-            
             if template_patterns:
-                # Parse template variables
-                if "variables" in template_patterns:
-                    vars = re.findall(template_patterns["variables"], content)
-                    for v in vars:
-                        self.graph["edges"].append({"source": template_name, "target": v.split('.')[0], "type": "OBSERVATION"})
-                
-                # Parse JavaScript functions
-                if "js_functions" in template_patterns:
-                    js_functions = re.findall(template_patterns["js_functions"], content)
-                    for func in js_functions:
-                        self._add_node(func, "JAVASCRIPT", path.name)
-                        self.graph["edges"].append({"source": template_name, "target": func, "type": "EVENT"})
-                
-                # Parse arrow functions and event handlers
-                if "arrow_functions" in template_patterns:
-                    arrow_functions = re.findall(template_patterns["arrow_functions"], content)
-                    for func in arrow_functions:
-                        if func not in ['console', 'document', 'window', 'navigator']:  # Skip global objects
-                            self._add_node(func, "JAVASCRIPT", path.name)
-                            self.graph["edges"].append({"source": template_name, "target": func, "type": "EVENT"})
-                
-                # Parse AJAX/fetch calls
-                if "fetch_calls" in template_patterns:
-                    fetch_calls = re.findall(template_patterns["fetch_calls"], content)
-                    for endpoint in fetch_calls:
-                        # Extract view name from URL
-                        view_name = endpoint.strip('/').replace('-', '_').replace('/', '_')
-                        self._add_node(endpoint, "AJAX", path.name)
-                        self.graph["edges"].append({"source": template_name, "target": endpoint, "type": "AJAX"})
-                
-                # Parse async/await patterns
-                if "async_functions" in template_patterns:
-                    async_functions = re.findall(template_patterns["async_functions"], content)
-                    for func in async_functions:
-                        self._add_node(func, "JAVASCRIPT", path.name)
-                        self.graph["edges"].append({"source": template_name, "target": func, "type": "VIRTUAL"})
+                self._process_template_patterns(content, template_name, path, template_patterns)
             
-            # Parse external dependencies
-            dependencies = []
-            
-            # Leaflet.js detection
-            if 'L.map(' in content or 'L.marker(' in content:
-                dependencies.append('Leaflet')
-            
-            # Other common libraries
-            if 'jQuery' in content or '$(' in content:
-                dependencies.append('jQuery')
-            if 'bootstrap' in content.lower():
-                dependencies.append('Bootstrap')
-            if 'axios' in content:
-                dependencies.append('Axios')
-            
-            for dep in dependencies:
-                self._add_node(dep, "DEPENDENCY", path.name)
-                self.graph["edges"].append({"source": template_name, "target": dep, "type": "DEPENDENCY"})
-            
-            # Parse event listeners using framework config
-            if template_patterns and "event_listeners" in template_patterns:
-                event_listeners = re.findall(template_patterns["event_listeners"], content)
-                for event in event_listeners:
-                    self._add_node(f"{event}_handler", "EVENT", path.name)
-                    self.graph["edges"].append({"source": template_name, "target": f"{event}_handler", "type": "EVENT"})
+            self._process_template_dependencies(content, template_name, path)
+        except Exception as e:
+            logger.error(f"Error parsing template {path}: {e}")
 
-    def _matches_pattern(self, node, patterns):
-        """Check if AST node matches any of the given patterns"""
+    def _process_template_patterns(self, content: str, template_name: str, 
+                                   path: Path, patterns: Dict[str, str]) -> None:
+        """Process template patterns."""
+        pattern_handlers = {
+            "variables": self._process_template_variables,
+            "js_functions": self._process_js_functions,
+            "arrow_functions": self._process_arrow_functions,
+            "fetch_calls": self._process_fetch_calls,
+            "async_functions": self._process_async_functions,
+            "event_listeners": self._process_event_listeners,
+        }
+        
+        for pattern_key, handler in pattern_handlers.items():
+            if pattern_key in patterns:
+                handler(content, template_name, path, patterns[pattern_key])
+
+    def _process_template_variables(self, content: str, template_name: str, 
+                                    path: Path, pattern: str) -> None:
+        """Process template variables."""
+        variables = re.findall(pattern, content)
+        for var in variables:
+            var_root = var.split('.')[0]
+            self.graph["edges"].append({
+                "source": template_name,
+                "target": var_root,
+                "type": "OBSERVATION"
+            })
+
+    def _process_js_functions(self, content: str, template_name: str, 
+                              path: Path, pattern: str) -> None:
+        """Process JavaScript functions."""
+        functions = re.findall(pattern, content)
+        for func in functions:
+            self._add_node(func, "JAVASCRIPT", path.name)
+            self.graph["edges"].append({
+                "source": template_name,
+                "target": func,
+                "type": "EVENT"
+            })
+
+    def _process_arrow_functions(self, content: str, template_name: str, 
+                                 path: Path, pattern: str) -> None:
+        """Process arrow functions and event handlers."""
+        functions = re.findall(pattern, content)
+        for func in functions:
+            if func not in self.GLOBAL_JS_OBJECTS:
+                self._add_node(func, "JAVASCRIPT", path.name)
+                self.graph["edges"].append({
+                    "source": template_name,
+                    "target": func,
+                    "type": "EVENT"
+                })
+
+    def _process_fetch_calls(self, content: str, template_name: str, 
+                             path: Path, pattern: str) -> None:
+        """Process AJAX/fetch calls."""
+        fetch_calls = re.findall(pattern, content)
+        for endpoint in fetch_calls:
+            self._add_node(endpoint, "AJAX", path.name)
+            self.graph["edges"].append({
+                "source": template_name,
+                "target": endpoint,
+                "type": "AJAX"
+            })
+
+    def _process_async_functions(self, content: str, template_name: str, 
+                                 path: Path, pattern: str) -> None:
+        """Process async/await patterns."""
+        functions = re.findall(pattern, content)
+        for func in functions:
+            self._add_node(func, "JAVASCRIPT", path.name)
+            self.graph["edges"].append({
+                "source": template_name,
+                "target": func,
+                "type": "VIRTUAL"
+            })
+
+    def _process_event_listeners(self, content: str, template_name: str, 
+                                 path: Path, pattern: str) -> None:
+        """Process event listeners."""
+        listeners = re.findall(pattern, content)
+        for event in listeners:
+            self._add_node(f"{event}_handler", "EVENT", path.name)
+            self.graph["edges"].append({
+                "source": template_name,
+                "target": f"{event}_handler",
+                "type": "EVENT"
+            })
+
+    def _process_template_dependencies(self, content: str, template_name: str, path: Path) -> None:
+        """Process external library dependencies in template."""
+        dependencies = []
+        
+        if RegexPatterns.LEAFLET_MAP.search(content):
+            dependencies.append('Leaflet')
+        if RegexPatterns.JQUERY.search(content):
+            dependencies.append('jQuery')
+        if RegexPatterns.BOOTSTRAP.search(content):
+            dependencies.append('Bootstrap')
+        if RegexPatterns.AXIOS.search(content):
+            dependencies.append('Axios')
+        
+        for dep in dependencies:
+            self._add_node(dep, "DEPENDENCY", path.name)
+            self.graph["edges"].append({
+                "source": template_name,
+                "target": dep,
+                "type": "DEPENDENCY"
+            })
+
+    def _matches_pattern(self, node: ast.ClassDef, patterns: List[Dict[str, str]]) -> bool:
+        """Check if AST node matches any of the given patterns."""
         for pattern in patterns:
             pattern_type = pattern.get("type")
             pattern_value = pattern.get("pattern")
             
             if pattern_type == "class_inheritance":
-                # Check for inheritance patterns like 'models.Model'
-                for base in node.bases:
-                    if hasattr(base, 'attr') and base.attr == pattern_value:
-                        return True
-                    elif hasattr(base, 'id') and base.id == pattern_value:
-                        return True
-                    elif hasattr(base, 'value') and hasattr(base.value, 'id') and base.value.id == pattern_value:
-                        return True
-                        
+                if self._matches_inheritance(node, pattern_value):
+                    return True
             elif pattern_type == "class_name_suffix":
-                # Check if class name ends with pattern
-                if isinstance(pattern_value, str):
-                    if node.name.endswith(pattern_value):
-                        return True
-                elif isinstance(pattern_value, list):
-                    if any(node.name.endswith(suffix) for suffix in pattern_value):
-                        return True
-                        
+                if self._matches_class_suffix(node, pattern_value):
+                    return True
             elif pattern_type == "class_decoration":
-                # Check for class decorators
-                for decorator in node.decorator_list:
-                    if hasattr(decorator, 'attr') and decorator.attr == pattern_value:
-                        return True
-                    elif hasattr(decorator, 'id') and decorator.id == pattern_value:
-                        return True
-                        
+                if self._matches_class_decorator(node, pattern_value):
+                    return True
+        
         return False
-    
-    def _matches_function_pattern(self, node, patterns):
-        """Check if function matches any of the given patterns"""
+
+    def _matches_inheritance(self, node: ast.ClassDef, pattern: str) -> bool:
+        """Check if class inherits from pattern."""
+        for base in node.bases:
+            if hasattr(base, 'attr') and base.attr == pattern:
+                return True
+            elif hasattr(base, 'id') and base.id == pattern:
+                return True
+            elif (hasattr(base, 'value') and hasattr(base.value, 'id') and 
+                  base.value.id == pattern):
+                return True
+        return False
+
+    def _matches_class_suffix(self, node: ast.ClassDef, pattern: Any) -> bool:
+        """Check if class name matches suffix pattern."""
+        if isinstance(pattern, str):
+            return node.name.endswith(pattern)
+        elif isinstance(pattern, list):
+            return any(node.name.endswith(suffix) for suffix in pattern)
+        return False
+
+    def _matches_class_decorator(self, node: ast.ClassDef, pattern: str) -> bool:
+        """Check if class has matching decorator."""
+        for decorator in node.decorator_list:
+            if hasattr(decorator, 'attr') and decorator.attr == pattern:
+                return True
+            elif hasattr(decorator, 'id') and decorator.id == pattern:
+                return True
+        return False
+
+    def _matches_function_pattern(self, node: ast.FunctionDef, patterns: List[Dict[str, str]]) -> bool:
+        """Check if function matches any of the given patterns."""
         for pattern in patterns:
             pattern_type = pattern.get("type")
             pattern_value = pattern.get("pattern")
             
             if pattern_type == "function_decorator":
-                # Check for function decorators
-                for decorator in node.decorator_list:
-                    if hasattr(decorator, 'attr') and decorator.attr.startswith(pattern_value):
-                        return True
-                    elif hasattr(decorator, 'id') and decorator.id.startswith(pattern_value):
-                        return True
-                        
+                if self._matches_function_decorator(node, pattern_value):
+                    return True
             elif pattern_type == "function_name_contains":
-                # Check if function name contains pattern
-                if isinstance(pattern_value, str):
-                    if pattern_value in node.name.lower():
-                        return True
-                elif isinstance(pattern_value, list):
-                    if any(pattern in node.name.lower() for pattern in pattern_value):
-                        return True
-                        
+                if self._matches_function_name(node, pattern_value):
+                    return True
+        
         return False
-    
-    def _matches_orm_pattern(self, code_str):
-        """Check if code string matches any ORM patterns"""
+
+    def _matches_function_decorator(self, node: ast.FunctionDef, pattern: str) -> bool:
+        """Check if function has matching decorator."""
+        for decorator in node.decorator_list:
+            if hasattr(decorator, 'attr') and decorator.attr.startswith(pattern):
+                return True
+            elif hasattr(decorator, 'id') and decorator.id.startswith(pattern):
+                return True
+        return False
+
+    def _matches_function_name(self, node: ast.FunctionDef, pattern: Any) -> bool:
+        """Check if function name matches pattern."""
+        if isinstance(pattern, str):
+            return pattern in node.name.lower()
+        elif isinstance(pattern, list):
+            return any(p in node.name.lower() for p in pattern)
+        return False
+
+    def _matches_orm_pattern(self, code_str: str) -> bool:
+        """Check if code string matches any ORM patterns."""
         for pattern in self.config.get_orm_patterns():
             if re.search(pattern, code_str):
                 return True
         return False
-
