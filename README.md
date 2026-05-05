@@ -234,8 +234,7 @@ If you use FeynMap in your research, please cite:
 
 ```
 FeynMap: Physics-Inspired Code Analysis for AI-Assisted Development
-Authors: FeynMap Team
-Conference: AI-Assisted Software Engineering 2024
+Authors: Roderick47
 ```
 
 ---
