@@ -3,7 +3,7 @@ import ast
 import re
 import logging
 from pathlib import Path
-from typing import Dict, List, Set, Any, Optional
+from typing import Dict, List, Set, Any, Optional, Tuple
 
 try:
     from .config import get_framework_config, DEFAULT_CONFIG
@@ -96,7 +96,9 @@ class FeynExtractor:
         self.config = get_framework_config(framework)
         self.graph: Dict[str, List[Any]] = {"nodes": [], "edges": []}
         self.node_ids: Set[str] = set()
+        self._edge_ids: Set[Tuple[str, str, str]] = set()
         self._file_content_cache: Dict[str, str] = {}
+        self.callable_defs: Dict[str, str] = {}
 
     def scan(self) -> Dict[str, List[Any]]:
         """
@@ -110,6 +112,9 @@ class FeynExtractor:
         template_extensions = tuple(self.config.template_extensions)
         
         try:
+            code_paths: List[Path] = []
+            template_paths: List[Path] = []
+
             for root, _, files in os.walk(self.project_path):
                 if any(excluded_dir in root for excluded_dir in excluded_dirs_set):
                     continue
@@ -118,9 +123,16 @@ class FeynExtractor:
                     file_path = Path(root) / file
                     
                     if file.endswith(code_extensions):
-                        self._parse_code(file_path)
+                        code_paths.append(file_path)
                     elif file.endswith(template_extensions):
-                        self._parse_template(file_path)
+                        template_paths.append(file_path)
+
+            self._collect_callable_definitions(code_paths)
+
+            for file_path in code_paths:
+                self._parse_code(file_path)
+            for file_path in template_paths:
+                self._parse_template(file_path)
         except Exception as e:
             logger.error(f"Error scanning project: {e}")
         
@@ -146,6 +158,45 @@ class FeynExtractor:
             }
             node_data.update(kwargs)
             self.graph["nodes"].append(node_data)
+
+    def _add_edge(self, source: str, target: str, edge_type: str, **kwargs) -> None:
+        """Add a directed edge to the graph, avoiding duplicate relationships."""
+        edge_key = (source, target, edge_type)
+        if edge_key in self._edge_ids:
+            return
+
+        self._edge_ids.add(edge_key)
+        edge_data = {
+            "source": source,
+            "target": target,
+            "type": edge_type
+        }
+        edge_data.update(kwargs)
+        self.graph["edges"].append(edge_data)
+
+    def _collect_callable_definitions(self, paths: List[Path]) -> None:
+        """Collect project-local callables before extracting call-chain edges."""
+        for path in paths:
+            content = self._read_file_content(str(path))
+            if not content:
+                continue
+
+            try:
+                tree = ast.parse(content)
+            except SyntaxError as e:
+                logger.warning(f"Syntax error parsing {path}: {e}")
+                continue
+            except Exception as e:
+                logger.error(f"Error collecting callables from {path}: {e}")
+                continue
+
+            for node in ast.iter_child_nodes(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    self.callable_defs.setdefault(node.name, str(path))
+                if isinstance(node, ast.ClassDef):
+                    for child in node.body:
+                        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                            self.callable_defs.setdefault(child.name, str(path))
 
     def _calculate_metadata(self, node_id: str, node_type: str, file_name: str, 
                            **kwargs) -> Dict[str, Any]:
@@ -190,6 +241,9 @@ class FeynExtractor:
         elif node_type == "AJAX":
             metadata["energy"] = ComplexityDefaults.AJAX_ENERGY
             metadata["coupling"] = ComplexityDefaults.AJAX_COUPLING
+        elif node_type == "MEDIATOR":
+            metadata["mass"] = ComplexityDefaults.JAVASCRIPT_MASS
+            metadata["energy"] = ComplexityDefaults.DEFAULT_ENERGY
         
         return metadata
 
@@ -341,10 +395,10 @@ class FeynExtractor:
             tree: AST tree to process
             path: Source file path
         """
-        for node in ast.walk(tree):
+        for node in ast.iter_child_nodes(tree):
             if isinstance(node, ast.ClassDef):
                 self._process_class_node(node, path)
-            elif isinstance(node, ast.FunctionDef):
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 self._process_function_node(node, path)
 
     def _process_class_node(self, node: ast.ClassDef, path: Path) -> None:
@@ -353,18 +407,22 @@ class FeynExtractor:
         
         # Detect Models (Particles)
         if self._matches_pattern(node, self.config.get_model_detection_rules()):
-            self._add_node(node.name, "PARTICLE", path.name)
+            self._add_node(node.name, "PARTICLE", str(path))
         
         # Detect Views (Vertices)
         if self._matches_pattern(node, self.config.get_view_detection_rules()):
-            self._add_node(node.name, "VERTEX", path.name)
+            self._add_node(node.name, "VERTEX", str(path))
         
         # Detect Serializers (Transforms)
         if self._matches_pattern(node, self.config.get_serializer_detection_rules()):
-            self._add_node(node.name, "TRANSFORM", path.name)
+            self._add_node(node.name, "TRANSFORM", str(path))
         
-        # Process class body for relationships
+        if current_class not in self.node_ids:
+            self._add_node(current_class, "MEDIATOR", str(path))
+
+        # Process class body for relationships and nested interaction chains.
         self._process_class_assignments(node, current_class, path)
+        self._process_callable_body(node, current_class, path)
 
     def _process_class_assignments(self, class_node: ast.ClassDef, 
                                    current_class: str, path: Path) -> None:
@@ -384,47 +442,58 @@ class FeynExtractor:
 
     def _add_model_relationship(self, source: str, model_name: str, path: Path) -> None:
         """Add model relationship edge."""
-        self._add_node(model_name, "PARTICLE", path.name, imported=True)
-        self.graph["edges"].append({
-            "source": source,
-            "target": model_name,
-            "type": "PARTICLE_ENTANGLEMENT"
-        })
+        self._add_node(model_name, "PARTICLE", str(path), imported=True)
+        self._add_edge(source, model_name, "PARTICLE_ENTANGLEMENT")
 
     def _add_serializer_relationship(self, source: str, serializer_name: str, path: Path) -> None:
         """Add serializer relationship edge."""
-        self._add_node(serializer_name, "TRANSFORM", path.name, imported=True)
-        self.graph["edges"].append({
-            "source": source,
-            "target": serializer_name,
-            "type": "SERIALIZER_ENTANGLEMENT"
-        })
+        self._add_node(serializer_name, "TRANSFORM", str(path), imported=True)
+        self._add_edge(source, serializer_name, "SERIALIZER_ENTANGLEMENT")
 
     def _process_function_node(self, node: ast.FunctionDef, path: Path) -> None:
         """Process a function definition node."""
-        if not self._matches_function_pattern(node, self.config.get_view_detection_rules()):
-            return
-        
-        self._add_node(node.name, "VERTEX", path.name)
-        self._process_function_calls(node, path)
+        node_type = "VERTEX" if self._matches_function_pattern(node, self.config.get_view_detection_rules()) else "MEDIATOR"
+        self._add_node(node.name, node_type, str(path))
+        self._process_callable_body(node, node.name, path)
 
-    def _process_function_calls(self, func_node: ast.FunctionDef, path: Path) -> None:
-        """Extract ORM calls from function body."""
-        for child in ast.walk(func_node):
-            if not isinstance(child, ast.Call):
+    def _process_callable_body(self, owner_node: ast.AST, source: str, path: Path) -> None:
+        """Extract project-local calls and ORM touches from a callable/class body."""
+        for child in ast.walk(owner_node):
+            if child is owner_node or not isinstance(child, ast.Call):
                 continue
-            if not isinstance(child.func, ast.Attribute):
-                continue
-            if not (hasattr(child.func, 'value') and isinstance(child.func.value, ast.Name)):
-                continue
-            
-            model_name = child.func.value.id
-            if self._matches_orm_pattern(ast.unparse(child)):
-                self.graph["edges"].append({
-                    "source": func_node.name,
-                    "target": model_name,
-                    "type": "PARTICLE_ENTANGLEMENT"
-                })
+
+            call_name = self._extract_call_name(child)
+            if call_name and call_name in self.callable_defs and call_name != source:
+                self._add_node(call_name, "MEDIATOR", self.callable_defs.get(call_name, str(path)), imported=True)
+                self._add_edge(source, call_name, "CALL")
+
+            if isinstance(child.func, ast.Attribute):
+                model_name = self._extract_orm_model_name(child)
+                if model_name and self._matches_orm_pattern(ast.unparse(child)):
+                    self._add_node(model_name, "PARTICLE", str(path), imported=True)
+                    self._add_edge(source, model_name, "PARTICLE_ENTANGLEMENT")
+
+    def _extract_call_name(self, call_node: ast.Call) -> Optional[str]:
+        """Return the canonical project-local name from a call expression."""
+        func = call_node.func
+        if isinstance(func, ast.Name):
+            return func.id
+        if isinstance(func, ast.Attribute):
+            return func.attr
+        return None
+
+    def _extract_orm_model_name(self, call_node: ast.Call) -> Optional[str]:
+        """Extract the model name from supported ORM call shapes."""
+        func = call_node.func
+        if not isinstance(func, ast.Attribute):
+            return None
+
+        value = func.value
+        if isinstance(value, ast.Name):
+            return value.id
+        if isinstance(value, ast.Attribute) and value.attr in {"objects", "query"} and isinstance(value.value, ast.Name):
+            return value.value.id
+        return None
 
     def _parse_template(self, path: Path) -> None:
         """
@@ -439,7 +508,7 @@ class FeynExtractor:
         
         try:
             template_name = path.stem
-            self._add_node(template_name, "FRONTEND", path.name)
+            self._add_node(template_name, "FRONTEND", str(path))
             
             template_patterns = self.config.get_template_patterns()
             if template_patterns:
@@ -471,23 +540,15 @@ class FeynExtractor:
         variables = re.findall(pattern, content)
         for var in variables:
             var_root = var.split('.')[0]
-            self.graph["edges"].append({
-                "source": template_name,
-                "target": var_root,
-                "type": "OBSERVATION"
-            })
+            self._add_edge(template_name, var_root, "OBSERVATION")
 
     def _process_js_functions(self, content: str, template_name: str, 
                               path: Path, pattern: str) -> None:
         """Process JavaScript functions."""
         functions = re.findall(pattern, content)
         for func in functions:
-            self._add_node(func, "JAVASCRIPT", path.name)
-            self.graph["edges"].append({
-                "source": template_name,
-                "target": func,
-                "type": "EVENT"
-            })
+            self._add_node(func, "JAVASCRIPT", str(path))
+            self._add_edge(template_name, func, "EVENT")
 
     def _process_arrow_functions(self, content: str, template_name: str, 
                                  path: Path, pattern: str) -> None:
@@ -495,48 +556,32 @@ class FeynExtractor:
         functions = re.findall(pattern, content)
         for func in functions:
             if func not in self.GLOBAL_JS_OBJECTS:
-                self._add_node(func, "JAVASCRIPT", path.name)
-                self.graph["edges"].append({
-                    "source": template_name,
-                    "target": func,
-                    "type": "EVENT"
-                })
+                self._add_node(func, "JAVASCRIPT", str(path))
+                self._add_edge(template_name, func, "EVENT")
 
     def _process_fetch_calls(self, content: str, template_name: str, 
                              path: Path, pattern: str) -> None:
         """Process AJAX/fetch calls."""
         fetch_calls = re.findall(pattern, content)
         for endpoint in fetch_calls:
-            self._add_node(endpoint, "AJAX", path.name)
-            self.graph["edges"].append({
-                "source": template_name,
-                "target": endpoint,
-                "type": "AJAX"
-            })
+            self._add_node(endpoint, "AJAX", str(path))
+            self._add_edge(template_name, endpoint, "AJAX")
 
     def _process_async_functions(self, content: str, template_name: str, 
                                  path: Path, pattern: str) -> None:
         """Process async/await patterns."""
         functions = re.findall(pattern, content)
         for func in functions:
-            self._add_node(func, "JAVASCRIPT", path.name)
-            self.graph["edges"].append({
-                "source": template_name,
-                "target": func,
-                "type": "VIRTUAL"
-            })
+            self._add_node(func, "JAVASCRIPT", str(path))
+            self._add_edge(template_name, func, "VIRTUAL")
 
     def _process_event_listeners(self, content: str, template_name: str, 
                                  path: Path, pattern: str) -> None:
         """Process event listeners."""
         listeners = re.findall(pattern, content)
         for event in listeners:
-            self._add_node(f"{event}_handler", "EVENT", path.name)
-            self.graph["edges"].append({
-                "source": template_name,
-                "target": f"{event}_handler",
-                "type": "EVENT"
-            })
+            self._add_node(f"{event}_handler", "EVENT", str(path))
+            self._add_edge(template_name, f"{event}_handler", "EVENT")
 
     def _process_template_dependencies(self, content: str, template_name: str, path: Path) -> None:
         """Process external library dependencies in template."""
@@ -552,12 +597,8 @@ class FeynExtractor:
             dependencies.append('Axios')
         
         for dep in dependencies:
-            self._add_node(dep, "DEPENDENCY", path.name)
-            self.graph["edges"].append({
-                "source": template_name,
-                "target": dep,
-                "type": "DEPENDENCY"
-            })
+            self._add_node(dep, "DEPENDENCY", str(path))
+            self._add_edge(template_name, dep, "DEPENDENCY")
 
     def _matches_pattern(self, node: ast.ClassDef, patterns: List[Dict[str, str]]) -> bool:
         """Check if AST node matches any of the given patterns."""
@@ -580,6 +621,11 @@ class FeynExtractor:
     def _matches_inheritance(self, node: ast.ClassDef, pattern: str) -> bool:
         """Check if class inherits from pattern."""
         for base in node.bases:
+            try:
+                if ast.unparse(base) == pattern:
+                    return True
+            except Exception:
+                pass
             if hasattr(base, 'attr') and base.attr == pattern:
                 return True
             elif hasattr(base, 'id') and base.id == pattern:

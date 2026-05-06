@@ -26,6 +26,7 @@ FeynMap is a powerful code analysis tool that uses physics-inspired notation to 
 - **Multi-Framework Support**: Django, Flask, FastAPI, Ruby on Rails, and generic projects
 - **Physics-Inspired Notation**: Uses particle physics concepts to represent code relationships intuitively
 - **Smart Lazy Loading**: Analyze only the components you care about for faster results
+- **Interaction Chain Depth Tracing**: Recursively follow view → service → utility → model call paths instead of stopping at one-hop relationships
 - **Ghost State Detection**: Automatically identify unused/dead code in your codebase
 - **Enhanced Visualization**: Generate structured data compatible with Feynman diagram tools
 - **Zero Runtime Dependencies**: Uses only Python standard library for core functionality
@@ -75,8 +76,8 @@ feynmap . --no-lazy-load
 # Specify output directory
 feynmap . --output-dir ./analysis_results
 
-# Show verbose output
-feynmap . --verbose
+# Trace deeper interaction chains (default depth: 4 hops)
+feynmap . --trace-depth 6
 ```
 
 ### Python API
@@ -146,9 +147,9 @@ FeynMap generates two JSON files in your project directory:
 
 ```json
 {
-    "UserView": "g[URL] -> V[UserView] -> P[User] -> ⊗[UserSerializer]",
+    "UserView": "g[URL] -> V[UserView] -> ψ[build_user_profile] -> ψ[normalize_email] -> P[User] -> ⊗[UserSerializer]",
     "PostModel": "P[Post]",
-    "CommentView": "g[URL] -> V[CommentView] -> P[Comment] -> ⊗[CommentSerializer]",
+    "CommentView": "g[URL] -> V[CommentView] -> ψ[load_comment_thread] -> P[Comment] -> P[User] -> ⊗[CommentSerializer]",
     "AuthMiddleware": "s[async] -> 𝕁[validate_token]"
 }
 ```
@@ -380,6 +381,16 @@ print("High Complexity Views:")
 for view in high_complexity_views[:10]:
     print(f"  {view['name']}: {view['complexity']:.1f} ({view['file']})")
 ```
+
+### Recursive Interaction Tracing
+
+FeynMap now traces interaction chains recursively from backend vertices and frontend states. In addition to direct view relationships such as `View → Serializer → Model`, it records project-local function and class calls as mediator nodes (`ψ`) and follows them until the configured depth is reached. This exposes paths such as:
+
+```text
+g[URL] -> V[UserView] -> ψ[build_user_profile] -> ψ[normalize_email] -> P[User]
+```
+
+Use `--trace-depth` to increase or reduce chain length. Cycles are ignored per trace path so recursive helpers and repeated service calls do not loop forever.
 
 ## 📋 Requirements
 

@@ -183,6 +183,8 @@ class FeynNotator:
                 diagram["vertices"].append(node_data)
             elif role.startswith("PROPAGATOR"):
                 diagram["propagators"].append(node_data)
+            elif role == "MEDIATOR":
+                diagram["vertices"].append(node_data)
             elif role.startswith("PARTICLE") or role in ["FRONTEND", "JAVASCRIPT"]:
                 diagram["particles"].append(node_data)
             
