@@ -1,12 +1,11 @@
 import json
 import sys
-import io
 from pathlib import Path
 from typing import Dict, List, Set, Tuple, Any, Optional
-try:
+if __package__:
     from .feyn_parser import FeynExtractor
     from .feyn_notation import FeynNotator
-except ImportError:
+else:
     from feyn_parser import FeynExtractor
     from feyn_notation import FeynNotator
 
@@ -69,6 +68,7 @@ def extract_concerned_nodes(graph_data: Dict[str, Any], target_nodes: List[str])
     
     concerned_nodes: Set[str] = set(target_nodes)
     concerned_edges: List[Dict] = []
+    seen_edges: Set[Tuple[str, str, str]] = set()
     node_queue: List[str] = list(target_nodes)
     
     # Dependency discovery loop
@@ -78,7 +78,10 @@ def extract_concerned_nodes(graph_data: Dict[str, Any], target_nodes: List[str])
         # Find all edges connected to this node
         for edge in graph_data["edges"]:
             if edge["source"] == current_node or edge["target"] == current_node:
-                concerned_edges.append(edge)
+                edge_key = (edge["source"], edge["target"], edge["type"])
+                if edge_key not in seen_edges:
+                    concerned_edges.append(edge)
+                    seen_edges.add(edge_key)
                 
                 # Add connected nodes to the queue if not already processed
                 connected_node = edge["target"] if edge["source"] == current_node else edge["source"]
@@ -240,11 +243,11 @@ def detect_unused_nodes(enhanced_ledger: Dict[str, Any], graph_data: Dict[str, A
     # Collect all nodes referenced in traces
     for node_id, entry in enhanced_ledger.items():
         used_node_ids.add(node_id)
-        # Extract nodes from diagram data if available
-        diagram = entry.get("diagram", [])
-        for item in diagram:
-            if isinstance(item, dict) and "id" in item:
-                used_node_ids.add(item["id"])
+        # Extract graph node names from structured diagram data if available.
+        for category in entry.get("diagram", {}).values():
+            for item in category:
+                if isinstance(item, dict) and "name" in item:
+                    used_node_ids.add(item["name"])
     
     return all_node_ids - used_node_ids
 
@@ -288,7 +291,6 @@ def run_feynmap(
         raise FileNotFoundError(f"Project directory not found: {project_dir}")
     
     # Setup & Extraction
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
     extractor = FeynExtractor(project_dir, framework=framework)
     graph_data = extractor.scan()
     
@@ -342,6 +344,8 @@ def run_feynmap(
 
 if __name__ == "__main__":
     import argparse
+
+    sys.stdout.reconfigure(encoding="utf-8")
     
     parser = argparse.ArgumentParser(description='FeynMap - Code Analysis with Physics-Inspired Notation')
     parser.add_argument('path', nargs='?', default='.', help='Project directory to analyze')

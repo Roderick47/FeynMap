@@ -54,6 +54,15 @@ class FeynNotator:
     _SUPERSCRIPT_KEYS: set = {"energy", "coupling"}
     
     @classmethod
+    def generate_string(
+        cls,
+        trace: List[Tuple[str, str]],
+        metadata: Optional[Dict[int, Dict[str, Any]]] = None
+    ) -> str:
+        """Legacy alias for generate_enhanced_string."""
+        return cls.generate_enhanced_string(trace, metadata)
+
+    @classmethod
     def generate_enhanced_string(
         cls, 
         trace: List[Tuple[str, str]], 
