@@ -1,18 +1,38 @@
 import json
 import sys
-import io
-import re  # Added for the regex lookup
-from feynmap.feyn_parser import FeynExtractor
-from feynmap.feyn_notation import FeynNotator
+from typing import Any, Dict, Set
+
+if __package__:
+    from .feyn_parser import FeynExtractor
+    from .feyn_notation import FeynNotator
+else:
+    from feyn_parser import FeynExtractor
+    from feyn_notation import FeynNotator
+
+
+def detect_unused_nodes(enhanced_ledger: Dict[str, Any], graph_data: Dict[str, Any]) -> Set[str]:
+    """Detect graph nodes that were not referenced by structured diagram data."""
+    all_node_ids = {node["id"] for node in graph_data["nodes"]}
+    used_node_ids: Set[str] = set()
+
+    for node_id, entry in enhanced_ledger.items():
+        used_node_ids.add(node_id)
+        for category in entry.get("diagram", {}).values():
+            for item in category:
+                if isinstance(item, dict) and "name" in item:
+                    used_node_ids.add(item["name"])
+
+    return all_node_ids - used_node_ids
+
 
 def run_feynmap(project_dir):
     # 1. Setup & Extraction
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
     extractor = FeynExtractor(project_dir)
     graph_data = extractor.scan()
 
     # 2. Generate the Ledger (Interaction Paths) using FeynNotator
     ledger = {}
+    enhanced_ledger = {}
     
     for node in graph_data["nodes"]:
         if node["type"] == "VERTEX":
@@ -34,6 +54,10 @@ def run_feynmap(project_dir):
                     break  # For now, assume one model per view
             
             ledger[node["id"]] = FeynNotator.generate_string(trace)
+            enhanced_ledger[node["id"]] = {
+                "notation": FeynNotator.generate_enhanced_string(trace),
+                "diagram": FeynNotator.generate_diagram_data(trace),
+            }
         
         elif node["type"] == "FRONTEND":
             # Build the interaction trace for frontend templates
@@ -73,19 +97,14 @@ def run_feynmap(project_dir):
                 trace.append(("VIRTUAL", virt))
             
             ledger[node["id"]] = FeynNotator.generate_string(trace)
-    # 3. THE VACUUM: Ghost State (Dead Code) Detection
-    # Extract all node IDs discovered in the files
-    all_node_ids = {node['id'] for node in graph_data['nodes']}
-    
-    # Extract all node IDs actually used in interaction paths
-    used_node_ids = set()
-    for path_string in ledger.values():
-        # Finds names inside brackets like [PriceReport]
-        nodes_in_path = re.findall(r'\[(.*?)\]', path_string)
-        used_node_ids.update(nodes_in_path)
+            enhanced_ledger[node["id"]] = {
+                "notation": FeynNotator.generate_enhanced_string(trace),
+                "diagram": FeynNotator.generate_diagram_data(trace),
+            }
 
+    # 3. THE VACUUM: Ghost State (Dead Code) Detection
     # Ghost States = Objects defined but never utilized in a flow
-    ghost_states = all_node_ids - used_node_ids
+    ghost_states = detect_unused_nodes(enhanced_ledger, graph_data)
 
     # 4. Save Outputs
     with open("feyn_ledger.json", "w", encoding="utf-8") as f:
@@ -107,5 +126,6 @@ def run_feynmap(project_dir):
     print(f"\n[SUCCESS] Ledger and Graph updated.")
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")
     path = sys.argv[1] if len(sys.argv) > 1 else "."
     run_feynmap(path)
