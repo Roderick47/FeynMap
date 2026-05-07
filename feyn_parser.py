@@ -148,16 +148,28 @@ class FeynExtractor:
             file_name: Source file name
             **kwargs: Additional node properties
         """
+        node_data = {
+            "id": node_id,
+            "type": node_type,
+            "file": file_name,
+            "metadata": self._calculate_metadata(node_id, node_type, file_name, **kwargs)
+        }
+        node_data.update(kwargs)
+
         if node_id not in self.node_ids:
             self.node_ids.add(node_id)
-            node_data = {
-                "id": node_id,
-                "type": node_type,
-                "file": file_name,
-                "metadata": self._calculate_metadata(node_id, node_type, file_name, **kwargs)
-            }
-            node_data.update(kwargs)
             self.graph["nodes"].append(node_data)
+            return
+
+        # Imported placeholder nodes are often discovered from relationships
+        # before their definitions are parsed. Upgrade placeholders with exact
+        # source spans when the real definition is later encountered.
+        if not kwargs.get("imported"):
+            for existing_node in self.graph["nodes"]:
+                if existing_node["id"] == node_id and existing_node.get("imported"):
+                    existing_node.update(node_data)
+                    existing_node.pop("imported", None)
+                    break
 
     def _add_edge(self, source: str, target: str, edge_type: str, **kwargs) -> None:
         """Add a directed edge to the graph, avoiding duplicate relationships."""
@@ -220,7 +232,9 @@ class FeynExtractor:
             "coupling": ComplexityDefaults.DEFAULT_COUPLING,
             "lifetime": ComplexityDefaults.DEFAULT_LIFETIME,
             "file": file_name,
-            "lines": kwargs.get("lines", 0)
+            "lines": kwargs.get("lines", 0),
+            "line_start": kwargs.get("line_start"),
+            "line_end": kwargs.get("line_end")
         }
         
         # Calculate type-specific metadata
@@ -407,18 +421,18 @@ class FeynExtractor:
         
         # Detect Models (Particles)
         if self._matches_pattern(node, self.config.get_model_detection_rules()):
-            self._add_node(node.name, "PARTICLE", str(path))
+            self._add_node(node.name, "PARTICLE", str(path), line_start=node.lineno, line_end=getattr(node, "end_lineno", node.lineno))
         
         # Detect Views (Vertices)
         if self._matches_pattern(node, self.config.get_view_detection_rules()):
-            self._add_node(node.name, "VERTEX", str(path))
+            self._add_node(node.name, "VERTEX", str(path), line_start=node.lineno, line_end=getattr(node, "end_lineno", node.lineno))
         
         # Detect Serializers (Transforms)
         if self._matches_pattern(node, self.config.get_serializer_detection_rules()):
-            self._add_node(node.name, "TRANSFORM", str(path))
+            self._add_node(node.name, "TRANSFORM", str(path), line_start=node.lineno, line_end=getattr(node, "end_lineno", node.lineno))
         
         if current_class not in self.node_ids:
-            self._add_node(current_class, "MEDIATOR", str(path))
+            self._add_node(current_class, "MEDIATOR", str(path), line_start=node.lineno, line_end=getattr(node, "end_lineno", node.lineno))
 
         # Process class body for relationships and nested interaction chains.
         self._process_class_assignments(node, current_class, path)
@@ -453,7 +467,7 @@ class FeynExtractor:
     def _process_function_node(self, node: ast.FunctionDef, path: Path) -> None:
         """Process a function definition node."""
         node_type = "VERTEX" if self._matches_function_pattern(node, self.config.get_view_detection_rules()) else "MEDIATOR"
-        self._add_node(node.name, node_type, str(path))
+        self._add_node(node.name, node_type, str(path), line_start=node.lineno, line_end=getattr(node, "end_lineno", node.lineno))
         self._process_callable_body(node, node.name, path)
 
     def _process_callable_body(self, owner_node: ast.AST, source: str, path: Path) -> None:
@@ -508,7 +522,8 @@ class FeynExtractor:
         
         try:
             template_name = path.stem
-            self._add_node(template_name, "FRONTEND", str(path))
+            line_count = len(content.splitlines()) or 1
+            self._add_node(template_name, "FRONTEND", str(path), line_start=1, line_end=line_count)
             
             template_patterns = self.config.get_template_patterns()
             if template_patterns:

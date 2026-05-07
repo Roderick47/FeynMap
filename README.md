@@ -28,6 +28,7 @@ FeynMap is a powerful code analysis tool that uses physics-inspired notation to 
 - **Smart Lazy Loading**: Analyze only the components you care about for faster results
 - **Interaction Chain Depth Tracing**: Recursively follow view → service → utility → model call paths instead of stopping at one-hop relationships
 - **Semantic Similarity Clustering**: Group functionally similar nodes even when they are not directly connected, such as CRUD views for the same model or serializers touching the same data
+- **Change Impact Prediction**: Feed FeynMap a git diff to identify changed graph nodes and recursively trace reverse dependencies to views, serializers, templates, and other likely breakage surfaces
 - **Ghost State Detection**: Automatically identify unused/dead code in your codebase
 - **Enhanced Visualization**: Generate structured data compatible with Feynman diagram tools
 - **Zero Runtime Dependencies**: Uses only Python standard library for core functionality
@@ -79,6 +80,12 @@ feynmap . --output-dir ./analysis_results
 
 # Trace deeper interaction chains (default depth: 4 hops)
 feynmap . --trace-depth 6
+
+# Predict blast radius from the current git diff
+git diff | feynmap . --impact-diff -
+
+# Predict blast radius from a saved patch file
+feynmap . --impact-diff ./my-change.patch --impact-depth 8
 ```
 
 ### Python API
@@ -104,6 +111,29 @@ for node in graph_data["nodes"]:
 # Print notation for each view
 for node_id, notation in ledger.items():
     print(f"{node_id}: {notation}")
+```
+
+
+### Change Impact Predictor
+
+The Change Impact Predictor answers: **“If I change this model, what views, serializers, and templates break?”** It parses a unified git diff, maps changed files and line ranges back to graph nodes, then walks reverse dependency edges. Because FeynMap edges typically point from consumers to dependencies (`View -> Model`, `Template -> variable`, `Serializer -> Model`), reverse traversal reveals the consumer surfaces that may need review after the change.
+
+Running with `--impact-diff` produces `feyn_change_impact.json` alongside the normal ledgers:
+
+```json
+{
+  "changed_nodes": [{"id": "User", "type": "PARTICLE"}],
+  "impacted_nodes": [
+    {"id": "UserSerializer", "type": "TRANSFORM"},
+    {"id": "UserDetailView", "type": "VERTEX"},
+    {"id": "user_detail", "type": "FRONTEND"}
+  ],
+  "risk_summary": {
+    "changed_node_count": 1,
+    "impacted_node_count": 3,
+    "potential_breaking_surfaces": ["UserSerializer", "UserDetailView", "user_detail"]
+  }
+}
 ```
 
 ## 🔧 Supported Frameworks

@@ -6,9 +6,23 @@ from typing import Dict, List, Set, Tuple, Any, Optional
 if __package__:
     from .feyn_parser import FeynExtractor
     from .feyn_notation import FeynNotator
+    from .change_impact import (
+        DEFAULT_IMPACT_DEPTH,
+        OUTPUT_CHANGE_IMPACT_FILE,
+        load_diff,
+        predict_change_impact,
+        save_change_impact,
+    )
 else:
     from feyn_parser import FeynExtractor
     from feyn_notation import FeynNotator
+    from change_impact import (
+        DEFAULT_IMPACT_DEPTH,
+        OUTPUT_CHANGE_IMPACT_FILE,
+        load_diff,
+        predict_change_impact,
+        save_change_impact,
+    )
 
 # Configuration Constants
 MAX_JS_FUNCTIONS = 3
@@ -602,7 +616,9 @@ def run_feynmap(
     target_nodes: Optional[List[str]] = None,
     lazy_load: bool = True,
     framework: str = 'auto',
-    trace_depth: int = DEFAULT_TRACE_DEPTH
+    trace_depth: int = DEFAULT_TRACE_DEPTH,
+    impact_diff: Optional[str] = None,
+    impact_depth: int = DEFAULT_IMPACT_DEPTH
 ) -> None:
     """
     Run FeynMap analysis on a project directory.
@@ -613,6 +629,8 @@ def run_feynmap(
         lazy_load: Whether to use lazy loading for efficiency
         framework: Framework to use for pattern detection
         trace_depth: Maximum number of recursive interaction hops to trace
+        impact_diff: Optional path, stdin marker (-), or direct unified diff text for impact prediction
+        impact_depth: Maximum reverse dependency hops for impact prediction
         
     Raises:
         FileNotFoundError: If project_dir does not exist
@@ -658,8 +676,15 @@ def run_feynmap(
     # Detect unused nodes (dead code)
     ghost_states = detect_unused_nodes(enhanced_ledger, graph_data)
     
+    change_impact = None
+    if impact_diff is not None:
+        diff_text = load_diff(impact_diff)
+        change_impact = predict_change_impact(graph_data, diff_text, str(project_path), impact_depth)
+
     # Save Outputs
     save_outputs(ledger, enhanced_ledger, semantic_clusters)
+    if change_impact is not None:
+        save_change_impact(change_impact)
     
     # Report Results
     print("=" * 50)
@@ -676,6 +701,13 @@ def run_feynmap(
     print(f"\n[SUCCESS] Enhanced Ledger and Graph updated.")
     print(f"[INFO] Enhanced notation saved to '{OUTPUT_ENHANCED_LEDGER_FILE}'")
     print(f"[INFO] Semantic clusters saved to '{OUTPUT_SEMANTIC_CLUSTERS_FILE}'")
+    if change_impact is not None:
+        summary = change_impact["risk_summary"]
+        print(f"[INFO] Change impact saved to '{OUTPUT_CHANGE_IMPACT_FILE}'")
+        print(
+            f"[INFO] Change impact: {summary['changed_node_count']} changed nodes -> "
+            f"{summary['impacted_node_count']} impacted nodes"
+        )
     print(f"[INFO] Semantic clusters: {semantic_clusters['metadata']['cluster_count']}")
     print(f"[INFO] Framework: {framework}")
     print(f"[INFO] Trace depth: {trace_depth}")
@@ -696,6 +728,10 @@ if __name__ == "__main__":
                        help='Framework to use for pattern detection (default: auto)')
     parser.add_argument('--trace-depth', type=int, default=DEFAULT_TRACE_DEPTH,
                        help=f'Maximum recursive interaction hops to trace (default: {DEFAULT_TRACE_DEPTH})')
+    parser.add_argument('--impact-diff',
+                       help='Predict changed graph nodes and reverse dependency impact from a unified git diff file, - for stdin, or direct diff text')
+    parser.add_argument('--impact-depth', type=int, default=DEFAULT_IMPACT_DEPTH,
+                       help=f'Maximum reverse dependency hops for change impact prediction (default: {DEFAULT_IMPACT_DEPTH})')
     
     args = parser.parse_args()
     
@@ -706,4 +742,12 @@ if __name__ == "__main__":
     
     lazy_load = not args.no_lazy_load
     
-    run_feynmap(args.path, target_nodes, lazy_load, args.framework, args.trace_depth)
+    run_feynmap(
+        args.path,
+        target_nodes,
+        lazy_load,
+        args.framework,
+        args.trace_depth,
+        args.impact_diff,
+        args.impact_depth,
+    )
