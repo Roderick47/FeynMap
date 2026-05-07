@@ -27,6 +27,7 @@ FeynMap is a powerful code analysis tool that uses physics-inspired notation to 
 - **Physics-Inspired Notation**: Uses particle physics concepts to represent code relationships intuitively
 - **Smart Lazy Loading**: Analyze only the components you care about for faster results
 - **Interaction Chain Depth Tracing**: Recursively follow view → service → utility → model call paths instead of stopping at one-hop relationships
+- **Semantic Similarity Clustering**: Group functionally similar nodes even when they are not directly connected, such as CRUD views for the same model or serializers touching the same data
 - **Ghost State Detection**: Automatically identify unused/dead code in your codebase
 - **Enhanced Visualization**: Generate structured data compatible with Feynman diagram tools
 - **Zero Runtime Dependencies**: Uses only Python standard library for core functionality
@@ -141,7 +142,7 @@ for node_id, notation in ledger.items():
 
 ## 📊 Output & Examples
 
-FeynMap generates two JSON files in your project directory:
+FeynMap generates three JSON files in your project directory:
 
 ### `feyn_ledger.json` (Simple Notation)
 
@@ -194,6 +195,38 @@ FeynMap generates two JSON files in your project directory:
     }
 }
 ```
+
+### `feyn_semantic_clusters.json` (Mental Model Categories)
+
+```json
+{
+    "clusters": [
+        {
+            "id": "semantic_cluster_001",
+            "summary": "Crud Interface around User (create, read, update)",
+            "role": "crud_interface",
+            "data_subjects": ["User"],
+            "intents": ["create", "read", "update"],
+            "members": ["UserCreateView", "UserListView", "UserUpdateView"],
+            "confidence": 0.95
+        },
+        {
+            "id": "semantic_cluster_002",
+            "summary": "Data Transform around User (transform)",
+            "role": "data_transform",
+            "data_subjects": ["User"],
+            "members": ["UserSerializer", "UserPublicSerializer"],
+            "confidence": 0.95
+        }
+    ],
+    "node_memberships": {
+        "UserCreateView": ["semantic_cluster_001"],
+        "UserSerializer": ["semantic_cluster_002"]
+    }
+}
+```
+
+Semantic clusters are also copied onto matching entries in `feyn_ledger_enhanced.json`, so an AI agent can read exact interaction traces and higher-level mental categories from the same enhanced ledger.
 
 ### Ghost States Detection Output
 
@@ -322,6 +355,16 @@ extractor = FeynExtractor("/path/to/project", framework="django")
 graph_data = extractor.scan(target_nodes=["UserView", "PostModel"])
 print(f"Analyzed {len(graph_data['nodes'])} nodes")
 ```
+
+### Semantic Similarity Clustering
+
+Semantic clustering runs as part of the normal FeynMap pipeline and writes `feyn_semantic_clusters.json` next to the standard ledgers:
+
+```bash
+feynmap . --framework django --trace-depth 6
+```
+
+Use this output when you want to understand a codebase by purpose instead of one node at a time. FeynMap infers cluster membership from explicit graph relationships, data subjects touched by `PARTICLE_ENTANGLEMENT` edges, common CRUD intent in class/function names, serializers/schemas, frontend surfaces, and shared semantic tokens. This means disconnected nodes can still be grouped when they operate on the same concept.
 
 ### Ghost State Detection
 
