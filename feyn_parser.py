@@ -119,6 +119,19 @@ class FeynExtractor:
         self._file_content_cache: Dict[str, str] = {}
         self.callable_defs: Dict[str, str] = {}
 
+        # IMP-01: cross-app import resolution
+        # symbol name → canonical source file, populated before edge extraction.
+        self._symbol_to_file: Dict[str, str] = {}
+
+        # IMP-02: URL pattern registry
+        # view name → URL pattern string, populated by _parse_all_urls().
+        # Views absent here after URL parsing are marked 'unrouted'.
+        self._url_map: Dict[str, str] = {}
+
+        # IMP-03: permission class registry
+        # view node id → list of permission class names.
+        self._permissions: Dict[str, List[str]] = {}
+
     def scan(self) -> Dict[str, List[Any]]:
         """
         Scan project for components and build dependency graph.
@@ -148,10 +161,26 @@ class FeynExtractor:
 
             self._collect_callable_definitions(code_paths)
 
+            # IMP-01: resolve cross-app imports before edge extraction so CALL
+            # edges target the correct source module regardless of scan order.
+            self._build_import_map(code_paths)
+
+            # IMP-02: parse all urls.py files to build the view→URL map before
+            # node annotation, so the url_pattern field is set on first write.
+            self._parse_all_urls(code_paths)
+
             for file_path in code_paths:
                 self._parse_code(file_path)
             for file_path in template_paths:
                 self._parse_template(file_path)
+
+            # IMP-02 post-pass: annotate VERTEX nodes with their URL pattern and
+            # flag any that were never registered in any urlpatterns.
+            self._annotate_url_metadata()
+
+            # IMP-03 post-pass: write permission metadata onto VERTEX nodes.
+            self._annotate_permission_metadata()
+
         except Exception as e:
             logger.error(f"Error scanning project: {e}")
         
@@ -228,6 +257,188 @@ class FeynExtractor:
                     for child in node.body:
                         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                             self.callable_defs.setdefault(child.name, str(path))
+
+    # ------------------------------------------------------------------ #
+    # IMP-01: Cross-app import resolution                                  #
+    # ------------------------------------------------------------------ #
+
+    def _build_import_map(self, paths: List[Path]) -> None:
+        """
+        Build a symbol→file map from all import statements across the project.
+
+        This lets _process_callable_body resolve CALL edge targets to their
+        true source file even when the caller and callee live in different apps,
+        making cross-app dependency edges reliable regardless of scan order.
+        """
+        for path in paths:
+            content = self._read_file_content(str(path))
+            if not content:
+                continue
+            try:
+                tree = ast.parse(content)
+            except (SyntaxError, Exception):
+                continue
+
+            for node in ast.walk(tree):
+                # from <module> import <name1>, <name2>, ...
+                if isinstance(node, ast.ImportFrom) and node.names:
+                    for alias in node.names:
+                        name = alias.asname or alias.name
+                        # Resolve module path relative to project root if possible.
+                        resolved = self._resolve_module_path(node.module, path)
+                        self._symbol_to_file[name] = resolved or str(path)
+                # import <module>
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        name = alias.asname or alias.name.split(".")[0]
+                        self._symbol_to_file.setdefault(name, str(path))
+
+    def _resolve_module_path(self, module: Optional[str], importer: Path) -> Optional[str]:
+        """
+        Convert a dotted module string to an absolute file path.
+
+        Tries relative-to-project-root resolution first, then falls back to
+        sibling-directory resolution so that both 'from payments.services import x'
+        and 'from .services import x' are handled.
+        """
+        if not module:
+            return None
+        parts = module.replace(".", "/")
+        # Try project-root-relative resolution
+        candidate = self.project_path / (parts + ".py")
+        if candidate.exists():
+            return str(candidate)
+        candidate_pkg = self.project_path / parts / "__init__.py"
+        if candidate_pkg.exists():
+            return str(candidate_pkg)
+        # Try sibling of the importing file
+        sibling = importer.parent / (parts.split("/")[-1] + ".py")
+        if sibling.exists():
+            return str(sibling)
+        return None
+
+    # ------------------------------------------------------------------ #
+    # IMP-02: URL pattern parsing                                          #
+    # ------------------------------------------------------------------ #
+
+    def _parse_all_urls(self, paths: List[Path]) -> None:
+        """
+        Parse every urls.py / url_conf.py found in the project and populate
+        self._url_map with view_name → url_pattern entries.
+
+        Handles both class-based views (MyView.as_view()) and function views
+        (my_view) registered via path(), re_path(), or url().
+        """
+        url_files = [p for p in paths if p.name in ("urls.py", "url_conf.py", "urls_api.py")]
+        for path in url_files:
+            content = self._read_file_content(str(path))
+            if not content:
+                continue
+            try:
+                tree = ast.parse(content)
+            except (SyntaxError, Exception):
+                continue
+            self._extract_url_patterns(tree)
+
+    def _extract_url_patterns(self, tree: ast.AST) -> None:
+        """Walk an AST and extract path()/re_path()/url() registrations."""
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func_name = self._extract_call_name(node)
+            if func_name not in ("path", "re_path", "url"):
+                continue
+            if len(node.args) < 2:
+                continue
+            # First arg is the URL pattern string
+            url_arg = node.args[0]
+            url_str = ast.literal_eval(url_arg) if isinstance(url_arg, ast.Constant) else None
+            if not isinstance(url_str, str):
+                continue
+            # Second arg is the view — could be MyView.as_view() or a bare name
+            view_arg = node.args[1]
+            view_name = self._extract_view_name_from_arg(view_arg)
+            if view_name:
+                self._url_map.setdefault(view_name, url_str)
+
+    def _extract_view_name_from_arg(self, node: ast.expr) -> Optional[str]:
+        """
+        Extract the view class or function name from a urlpattern view argument.
+
+        Handles:
+          - MyView.as_view()          → 'MyView'
+          - my_function_view          → 'my_function_view'
+          - views.MyView.as_view()    → 'MyView'
+        """
+        # Class-based: MyView.as_view(...)
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Attribute) and func.attr == "as_view":
+                inner = func.value
+                if isinstance(inner, ast.Name):
+                    return inner.id
+                if isinstance(inner, ast.Attribute):
+                    return inner.attr
+        # Function-based: bare name or module.name
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            return node.attr
+        return None
+
+    def _annotate_url_metadata(self) -> None:
+        """
+        After all code files are parsed, write url_pattern and unrouted flag
+        onto every VERTEX node in the graph.
+        """
+        for node in self.graph["nodes"]:
+            if node["type"] != "VERTEX":
+                continue
+            nid = node["id"]
+            url = self._url_map.get(nid)
+            node["metadata"]["url_pattern"] = url
+            # True when the view exists in code but is absent from all urls.py
+            node["metadata"]["unrouted"] = (url is None) and bool(self._url_map)
+
+    # ------------------------------------------------------------------ #
+    # IMP-03: Permission class extraction                                  #
+    # ------------------------------------------------------------------ #
+
+    def _annotate_permission_metadata(self) -> None:
+        """Write permission_classes metadata onto every VERTEX node."""
+        for node in self.graph["nodes"]:
+            if node["type"] != "VERTEX":
+                continue
+            nid = node["id"]
+            perms = self._permissions.get(nid, [])
+            node["metadata"]["permission_classes"] = perms
+            # Convenience boolean flags readable by AI agents at a glance
+            node["metadata"]["requires_auth"] = any(
+                p in perms for p in ("IsAuthenticated", "IsAuthenticatedOrReadOnly")
+            )
+            node["metadata"]["admin_only"] = "IsAdminUser" in perms
+
+    def _extract_permission_classes(self, class_node: ast.ClassDef) -> List[str]:
+        """
+        Pull permission_classes = [...] assignments from a view class body.
+
+        Handles both simple lists of Names and attribute lookups like
+        permissions.IsAuthenticated.
+        """
+        for node in ast.walk(class_node):
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "permission_classes":
+                    if isinstance(node.value, (ast.List, ast.Tuple)):
+                        names = []
+                        for elt in node.value.elts:
+                            if isinstance(elt, ast.Name):
+                                names.append(elt.id)
+                            elif isinstance(elt, ast.Attribute):
+                                names.append(elt.attr)
+                        return names
+        return []
 
     def _calculate_metadata(self, node_id: str, node_type: str, file_name: str, 
                            **kwargs) -> Dict[str, Any]:
@@ -445,6 +656,8 @@ class FeynExtractor:
         # Detect Views (Vertices)
         if self._matches_pattern(node, self.config.get_view_detection_rules()):
             self._add_node(node.name, "VERTEX", str(path), line_start=node.lineno, line_end=getattr(node, "end_lineno", node.lineno))
+            # IMP-03: capture permission_classes at parse time for later annotation
+            self._permissions[node.name] = self._extract_permission_classes(node)
         
         # Detect Serializers (Transforms)
         if self._matches_pattern(node, self.config.get_serializer_detection_rules()):
@@ -498,9 +711,17 @@ class FeynExtractor:
             call_name = self._extract_call_name(child)
             # BUG-02 fix: skip Django/ORM builtins that would collapse into a
             # shared global mediator node and produce spurious cross-view edges.
-            if call_name and call_name not in self.ORM_BUILTIN_SKIP and call_name in self.callable_defs and call_name != source:
-                self._add_node(call_name, "MEDIATOR", self.callable_defs.get(call_name, str(path)), imported=True)
-                self._add_edge(source, call_name, "CALL")
+            if call_name and call_name not in self.ORM_BUILTIN_SKIP and call_name != source:
+                # IMP-01: prefer _symbol_to_file (cross-app import map) over
+                # callable_defs (same-file scan) so that calls to functions
+                # defined in other apps resolve to the correct source file.
+                resolved_file = (
+                    self._symbol_to_file.get(call_name)
+                    or self.callable_defs.get(call_name)
+                )
+                if resolved_file:
+                    self._add_node(call_name, "MEDIATOR", resolved_file, imported=True)
+                    self._add_edge(source, call_name, "CALL")
 
             if isinstance(child.func, ast.Attribute):
                 model_name = self._extract_orm_model_name(child)

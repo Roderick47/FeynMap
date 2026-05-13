@@ -606,15 +606,43 @@ def _normalize_subject(value: str) -> str:
 
 
 def _calculate_cluster_confidence(cluster: Dict[str, Any]) -> float:
-    """Score confidence based on shared subjects, roles, and semantic evidence."""
-    confidence = 0.5
+    """
+    Score confidence based on the strength of evidence tying members together.
+
+    IMP-04 fix: previously hardcoded at 0.95 for all clusters. Now weighted
+    by evidence quality so AI agents can distinguish strong structural groupings
+    from weak name-token similarity groupings.
+
+    Tiers:
+      - Shared PARTICLE_ENTANGLEMENT edges to same model  → strongest (+0.25 data, +0.10 edge)
+      - Shared CRUD intent from naming                    → moderate (+0.05 intent)
+      - Name-token similarity only                        → weak (−0.10 penalty)
+
+    Bounds: [0.45, 0.95]
+    """
+    confidence = 0.45  # floor
+
     if cluster.get("data_subjects"):
         confidence += 0.25
-    if len(cluster.get("node_types", [])) == 1 or len(cluster.get("intents", [])) <= 2:
-        confidence += 0.15
-    if any(profile.get("evidence") for profile in cluster.get("member_profiles", {}).values()):
-        confidence += 0.1
-    return round(min(confidence, 0.95), 2)
+
+    if len(cluster.get("node_types", [])) == 1:
+        confidence += 0.10
+    if len(cluster.get("intents", [])) <= 1:
+        confidence += 0.05
+
+    profiles = cluster.get("member_profiles", {})
+    edge_evidence = any(
+        any("edges=" in e for e in profile.get("evidence", []))
+        for profile in profiles.values()
+    )
+    if edge_evidence:
+        confidence += 0.10
+
+    # Penalise token-only clusters (no data subjects, no edge evidence)
+    if not cluster.get("data_subjects") and not edge_evidence:
+        confidence -= 0.10
+
+    return round(min(max(confidence, 0.45), 0.95), 2)
 
 
 def _summarize_semantic_cluster(cluster: Dict[str, Any]) -> str:
