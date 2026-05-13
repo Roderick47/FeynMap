@@ -136,15 +136,26 @@ def extract_concerned_nodes(graph_data: Dict[str, Any], target_nodes: List[str])
 def build_metadata(metadata_map: Dict[int, Dict]) -> Dict[str, Any]:
     """
     Build physics-inspired metadata from metadata map.
-    
+
     Args:
         metadata_map: Dictionary mapping trace indices to metadata
-        
+
     Returns:
         Dictionary with computed metrics
+
+    Note:
+        BUG-04 fix: 'node_complexity' reflects only the root node's mass so
+        views with deep dependency chains are not inflated vs simple ones.
+        'chain_complexity' retains the full sum for cost-of-change analysis.
+        'complexity' mirrors node_complexity for backward compatibility.
     """
+    chain = sum(meta.get("mass", 1.0) for meta in metadata_map.values())
+    # Index 1 is the root node in a backend trace (index 0 = HTTP propagator).
+    root_mass = metadata_map.get(1, metadata_map.get(0, {})).get("mass", 1.0)
     return {
-        "complexity": sum(meta.get("mass", 1.0) for meta in metadata_map.values()),
+        "node_complexity": round(root_mass, 4),
+        "chain_complexity": round(chain, 4),
+        "complexity": round(root_mass, 4),
         "energy": sum(meta.get("energy", 0.5) for meta in metadata_map.values()),
         "coupling": max(meta.get("coupling", 0.5) for meta in metadata_map.values()) if metadata_map else 0.5
     }
@@ -185,6 +196,10 @@ def generate_node_ledger(
             "interaction_type": interaction_type,
             "max_trace_depth": max_depth,
             "trace_length": len(trace),
+            # BUG-01 fix: propagate source location from the raw graph node
+            "file_path": node.get("file") or node.get("metadata", {}).get("file"),
+            "line_start": node.get("line_start") or node.get("metadata", {}).get("line_start"),
+            "line_end": node.get("line_end") or node.get("metadata", {}).get("line_end"),
             **build_metadata(metadata_map)
         }
     }
@@ -299,7 +314,25 @@ def detect_unused_nodes(enhanced_ledger: Dict[str, Any], graph_data: Dict[str, A
                 if isinstance(item, dict) and "name" in item:
                     used_node_ids.add(item["name"])
     
-    return all_node_ids - used_node_ids
+    structurally_unused = all_node_ids - used_node_ids
+
+    # BUG-03 fix: semantic ghost detection — VERTEX nodes that are reachable
+    # via a URL edge but have no meaningful outbound relationships are dead code.
+    MEANINGFUL_EDGE_TYPES = {"CALL", "PARTICLE_ENTANGLEMENT", "SERIALIZER_ENTANGLEMENT"}
+    edges_by_source: Dict[str, List[str]] = {}
+    for edge in graph_data["edges"]:
+        src = edge["source"]
+        edges_by_source.setdefault(src, []).append(edge["type"])
+
+    semantic_ghosts: Set[str] = set()
+    for node in graph_data["nodes"]:
+        if node["type"] != "VERTEX":
+            continue
+        outbound_types = set(edges_by_source.get(node["id"], []))
+        if not (outbound_types & MEANINGFUL_EDGE_TYPES):
+            semantic_ghosts.add(node["id"])
+
+    return structurally_unused | semantic_ghosts
 
 
 SEMANTIC_NODE_TYPES = {"VERTEX", "TRANSFORM", "PARTICLE", "MEDIATOR", "FRONTEND"}
@@ -349,9 +382,16 @@ def generate_semantic_clusters(graph_data: Dict[str, Any]) -> Dict[str, Any]:
     clusters = []
     node_memberships: Dict[str, List[str]] = {node_id: [] for node_id in profiles}
     cluster_index = 1
+    seen_member_sets: Set[frozenset] = set()  # BUG-05 fix: track unique member sets
     for cluster in clusters_by_key.values():
         if len(cluster["members"]) < 2:
             continue
+
+        # BUG-05 fix: skip clusters whose member set was already emitted
+        member_key = frozenset(cluster["members"])
+        if member_key in seen_member_sets:
+            continue
+        seen_member_sets.add(member_key)
 
         cluster_id = f"semantic_cluster_{cluster_index:03d}"
         cluster_index += 1

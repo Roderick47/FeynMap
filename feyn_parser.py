@@ -76,6 +76,25 @@ class FeynExtractor:
     
     # Global objects to skip in JavaScript analysis
     GLOBAL_JS_OBJECTS = {'console', 'document', 'window', 'navigator'}
+
+    # BUG-02 fix: ORM/stdlib method names that must not become shared mediator
+    # nodes. These are attribute calls on querysets, model instances, or Python
+    # builtins — not project-defined callables — and would otherwise create
+    # spurious cross-view CALL edges all converging on a single 'get' node.
+    ORM_BUILTIN_SKIP = {
+        'get', 'filter', 'all', 'create', 'save', 'delete', 'update',
+        'first', 'last', 'count', 'exists', 'exclude', 'values',
+        'values_list', 'select_related', 'prefetch_related', 'order_by',
+        'annotate', 'aggregate', 'bulk_create', 'bulk_update', 'get_or_create',
+        'update_or_create', 'defer', 'only', 'using', 'none', 'union',
+        'intersection', 'difference', 'raw', 'append', 'pop', 'add', 'remove',
+        'clear', 'set', 'items', 'keys', 'values', 'encode', 'decode',
+        'format', 'strip', 'split', 'join', 'lower', 'upper', 'replace',
+        'print', 'len', 'range', 'str', 'int', 'float', 'list', 'dict',
+        'tuple', 'set', 'bool', 'type', 'isinstance', 'hasattr', 'getattr',
+        'setattr', 'super', 'zip', 'map', 'filter', 'sorted', 'enumerate',
+        'open', 'read', 'write', 'close',
+    }
     
     def __init__(self, project_path: str, framework: str = 'auto') -> None:
         """
@@ -477,7 +496,9 @@ class FeynExtractor:
                 continue
 
             call_name = self._extract_call_name(child)
-            if call_name and call_name in self.callable_defs and call_name != source:
+            # BUG-02 fix: skip Django/ORM builtins that would collapse into a
+            # shared global mediator node and produce spurious cross-view edges.
+            if call_name and call_name not in self.ORM_BUILTIN_SKIP and call_name in self.callable_defs and call_name != source:
                 self._add_node(call_name, "MEDIATOR", self.callable_defs.get(call_name, str(path)), imported=True)
                 self._add_edge(source, call_name, "CALL")
 
