@@ -3,7 +3,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 try:
     from .config import get_framework_config
@@ -56,6 +56,44 @@ class RegexPatterns:
     AXIOS = re.compile(r"axios")
 
 
+class ScopedCallCollector(ast.NodeVisitor):
+    """Collect calls and assignments without entering nested callable scopes."""
+
+    def __init__(self, root: ast.AST) -> None:
+        self.root = root
+        self.calls: List[ast.Call] = []
+        self.assignments: List[ast.AST] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        self.calls.append(node)
+        self.generic_visit(node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self.assignments.append(node)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        self.assignments.append(node)
+        self.generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        if node is self.root:
+            for statement in node.body:
+                self.visit(statement)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        if node is self.root:
+            for statement in node.body:
+                self.visit(statement)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        if node is self.root:
+            self.visit(node.body)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        return
+
+
 class FeynExtractor:
     """Extract framework components and build a dependency graph."""
 
@@ -73,8 +111,11 @@ class FeynExtractor:
         self._nodes_by_id: Dict[str, Dict[str, Any]] = {}
         self._edge_ids: Set[Tuple[str, str, str]] = set()
         self._file_content_cache: Dict[str, str] = {}
-        self.callable_defs: Dict[str, List[Dict[str, str]]] = {}
-        self.class_defs: Dict[str, List[Dict[str, str]]] = {}
+
+        self.definitions_by_name: Dict[str, List[Dict[str, str]]] = {}
+        self.definitions_by_qualified_name: Dict[str, Dict[str, str]] = {}
+        self.imports_by_file: Dict[str, Dict[str, Dict[str, str]]] = {}
+        self.modules_by_file: Dict[str, str] = {}
 
     def scan(self) -> Dict[str, List[Any]]:
         excluded = set(self.config.exclude_dirs)
@@ -92,7 +133,7 @@ class FeynExtractor:
                 elif filename.endswith(template_extensions):
                     template_paths.append(path)
 
-        self._collect_definitions(code_paths)
+        self._collect_project_symbols(code_paths)
         for path in code_paths:
             self._parse_code(path)
         for path in template_paths:
@@ -143,9 +184,12 @@ class FeynExtractor:
         edge.update(kwargs)
         self.graph["edges"].append(edge)
 
-    def _collect_definitions(self, paths: List[Path]) -> None:
+    def _collect_project_symbols(self, paths: List[Path]) -> None:
         for path in paths:
-            content = self._read_file_content(str(path))
+            resolved_path = str(path.resolve())
+            module = self.identities.module_name(path)
+            self.modules_by_file[resolved_path] = module
+            content = self._read_file_content(resolved_path)
             if not content:
                 continue
             try:
@@ -154,51 +198,126 @@ class FeynExtractor:
                 logger.warning("Syntax error parsing %s: %s", path, exc)
                 continue
 
+            self.imports_by_file[resolved_path] = self._collect_imports(tree, module)
             for node in ast.iter_child_nodes(tree):
                 if isinstance(node, ast.ClassDef):
-                    class_id = self.identities.python(node.name, path)
-                    self._register_definition(self.class_defs, node.name, class_id, path)
-                    self._register_definition(self.callable_defs, node.name, class_id, path)
+                    self._register_definition(node.name, path, "class")
                     for child in node.body:
                         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                            method_id = self.identities.python(child.name, path, node.name)
-                            self._register_definition(
-                                self.callable_defs, child.name, method_id, path, parent=node.name
-                            )
+                            self._register_definition(child.name, path, "method", parent=node.name)
                 elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    function_id = self.identities.python(node.name, path)
-                    self._register_definition(self.callable_defs, node.name, function_id, path)
+                    self._register_definition(node.name, path, "function")
 
     def _register_definition(
-        self,
-        index: Dict[str, List[Dict[str, str]]],
-        name: str,
-        node_id: str,
-        path: Path,
-        parent: Optional[str] = None,
+        self, name: str, path: Path, kind: str, parent: Optional[str] = None
     ) -> None:
-        index.setdefault(name, []).append(
-            {"id": node_id, "path": str(path.resolve()), "parent": parent or ""}
-        )
+        module = self.identities.module_name(path)
+        qualified_name = ".".join(part for part in (module, parent, name) if part)
+        node_id = self.identities.python(name, path, parent)
+        definition = {
+            "id": node_id,
+            "name": name,
+            "module": module,
+            "parent": parent or "",
+            "path": str(path.resolve()),
+            "kind": kind,
+            "qualified_name": qualified_name,
+        }
+        self.definitions_by_name.setdefault(name, []).append(definition)
+        self.definitions_by_qualified_name[qualified_name] = definition
 
-    def _resolve_definition(
-        self,
-        index: Dict[str, List[Dict[str, str]]],
-        name: str,
-        path: Path,
-        parent: Optional[str] = None,
-    ) -> Optional[str]:
-        candidates = index.get(name, [])
-        if parent:
-            parent_matches = [item for item in candidates if item["parent"] == parent]
-            if len(parent_matches) == 1:
-                return parent_matches[0]["id"]
-        same_file = [item for item in candidates if item["path"] == str(path.resolve())]
-        if len(same_file) == 1:
-            return same_file[0]["id"]
-        if len(candidates) == 1:
-            return candidates[0]["id"]
+    def _collect_imports(self, tree: ast.AST, current_module: str) -> Dict[str, Dict[str, str]]:
+        imports: Dict[str, Dict[str, str]] = {}
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    local_name = alias.asname or alias.name.split(".")[0]
+                    imports[local_name] = {"kind": "module", "module": alias.name}
+            elif isinstance(node, ast.ImportFrom):
+                module = self._resolve_import_module(current_module, node.module or "", node.level)
+                for alias in node.names:
+                    if alias.name == "*":
+                        continue
+                    local_name = alias.asname or alias.name
+                    imports[local_name] = {
+                        "kind": "symbol",
+                        "module": module,
+                        "symbol": alias.name,
+                    }
+        return imports
+
+    @staticmethod
+    def _resolve_import_module(current_module: str, imported_module: str, level: int) -> str:
+        if level <= 0:
+            return imported_module
+        package_parts = current_module.split(".")[:-1]
+        keep = max(0, len(package_parts) - (level - 1))
+        base = package_parts[:keep]
+        if imported_module:
+            base.extend(imported_module.split("."))
+        return ".".join(base)
+
+    def _definition_by_qualified_name(self, qualified_name: str) -> Optional[Dict[str, str]]:
+        return self.definitions_by_qualified_name.get(qualified_name)
+
+    def _same_file_definition(
+        self, name: str, path: Path, kind: Optional[str] = None
+    ) -> Optional[Dict[str, str]]:
+        matches = [
+            item
+            for item in self.definitions_by_name.get(name, [])
+            if item["path"] == str(path.resolve())
+            and not item["parent"]
+            and (kind is None or item["kind"] == kind)
+        ]
+        return matches[0] if len(matches) == 1 else None
+
+    def _resolve_name_reference(self, name: str, path: Path) -> Optional[Dict[str, str]]:
+        same_file = self._same_file_definition(name, path)
+        if same_file:
+            return same_file
+
+        import_info = self.imports_by_file.get(str(path.resolve()), {}).get(name)
+        if import_info and import_info["kind"] == "symbol":
+            return self._definition_by_qualified_name(
+                f"{import_info['module']}.{import_info['symbol']}"
+            )
+
+        candidates = self.definitions_by_name.get(name, [])
+        return candidates[0] if len(candidates) == 1 else None
+
+    def _resolve_class_reference(self, expression: ast.AST, path: Path) -> Optional[Dict[str, str]]:
+        if isinstance(expression, ast.Name):
+            definition = self._resolve_name_reference(expression.id, path)
+            return definition if definition and definition["kind"] == "class" else None
+        if isinstance(expression, ast.Attribute):
+            qualified = self._qualified_expression(expression, path)
+            definition = self._definition_by_qualified_name(qualified) if qualified else None
+            return definition if definition and definition["kind"] == "class" else None
         return None
+
+    def _qualified_expression(self, expression: ast.AST, path: Path) -> Optional[str]:
+        parts = self._attribute_parts(expression)
+        if not parts:
+            return None
+        imports = self.imports_by_file.get(str(path.resolve()), {})
+        root = parts[0]
+        import_info = imports.get(root)
+        if import_info:
+            if import_info["kind"] == "module":
+                return ".".join([import_info["module"]] + parts[1:])
+            return ".".join(
+                [import_info["module"], import_info["symbol"]] + parts[1:]
+            )
+        return ".".join(parts)
+
+    @staticmethod
+    def _attribute_parts(expression: ast.AST) -> List[str]:
+        if isinstance(expression, ast.Name):
+            return [expression.id]
+        if isinstance(expression, ast.Attribute):
+            return FeynExtractor._attribute_parts(expression.value) + [expression.attr]
+        return []
 
     def _calculate_metadata(
         self, node_name: str, node_type: str, file_name: str, **kwargs: Any
@@ -329,7 +448,6 @@ class FeynExtractor:
             line_end=getattr(node, "end_lineno", node.lineno),
         )
         self._process_class_assignments(node, class_id, path)
-        self._process_callable_body(node, class_id, path, parent=node.name)
 
         for child in node.body:
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -339,9 +457,7 @@ class FeynExtractor:
                     "MEDIATOR",
                     str(path),
                     name=child.name,
-                    qualified_name=(
-                        f"{self.identities.module_name(path)}.{node.name}.{child.name}"
-                    ),
+                    qualified_name=f"{self.identities.module_name(path)}.{node.name}.{child.name}",
                     language="python",
                     line_start=child.lineno,
                     line_end=getattr(child, "end_lineno", child.lineno),
@@ -373,15 +489,14 @@ class FeynExtractor:
         node_type: str,
         edge_type: str,
     ) -> None:
-        target_id = self._resolve_definition(self.class_defs, target_name, path)
-        if target_id is None:
-            target_id = NodeIdentity.unresolved(node_type.lower(), target_name)
+        definition = self._resolve_name_reference(target_name, path)
+        target_id = definition["id"] if definition else NodeIdentity.unresolved(node_type.lower(), target_name)
         self._add_node(
             target_id,
             node_type,
-            str(path),
+            definition["path"] if definition else str(path),
             name=target_name,
-            qualified_name=target_name,
+            qualified_name=definition["qualified_name"] if definition else target_name,
             language="python",
             imported=True,
         )
@@ -410,40 +525,118 @@ class FeynExtractor:
     def _process_callable_body(
         self, owner_node: ast.AST, source_id: str, path: Path, parent: Optional[str] = None
     ) -> None:
-        for child in ast.walk(owner_node):
-            if child is owner_node or not isinstance(child, ast.Call):
-                continue
-            call_name = self._extract_call_name(child)
-            if call_name:
-                method_parent = parent if self._is_self_call(child) else None
-                target_id = self._resolve_definition(
-                    self.callable_defs, call_name, path, parent=method_parent
-                )
-                if target_id and target_id != source_id:
-                    self._add_edge(source_id, target_id, "CALL")
+        collector = ScopedCallCollector(owner_node)
+        collector.visit(owner_node)
+        local_types = self._infer_local_types(owner_node, collector.assignments, path)
 
-            if isinstance(child.func, ast.Attribute):
-                model_name = self._extract_orm_model_name(child)
-                if model_name and self._matches_orm_pattern(ast.unparse(child)):
+        for call in collector.calls:
+            resolved = self._resolve_call(call, path, parent, local_types)
+            if resolved and resolved["id"] != source_id:
+                self._add_edge(
+                    source_id,
+                    resolved["id"],
+                    "CALL",
+                    resolution=resolved["resolution"],
+                    confidence=resolved["confidence"],
+                    line=getattr(call, "lineno", None),
+                )
+
+            if isinstance(call.func, ast.Attribute):
+                model_name = self._extract_orm_model_name(call)
+                if model_name and self._matches_orm_pattern(ast.unparse(call)):
                     self._add_named_relationship(
                         source_id, model_name, path, "PARTICLE", "PARTICLE_ENTANGLEMENT"
                     )
 
-    @staticmethod
-    def _extract_call_name(call_node: ast.Call) -> Optional[str]:
-        if isinstance(call_node.func, ast.Name):
-            return call_node.func.id
-        if isinstance(call_node.func, ast.Attribute):
-            return call_node.func.attr
+    def _resolve_call(
+        self,
+        call: ast.Call,
+        path: Path,
+        parent: Optional[str],
+        local_types: Dict[str, Dict[str, str]],
+    ) -> Optional[Dict[str, Any]]:
+        func = call.func
+        if isinstance(func, ast.Name):
+            definition = self._resolve_name_reference(func.id, path)
+            if definition:
+                return {**definition, "resolution": "name", "confidence": 0.95}
+            return None
+
+        if not isinstance(func, ast.Attribute):
+            return None
+
+        receiver = func.value
+        method_name = func.attr
+
+        if isinstance(receiver, ast.Name) and receiver.id in {"self", "cls"} and parent:
+            definition = self._definition_by_qualified_name(
+                f"{self.identities.module_name(path)}.{parent}.{method_name}"
+            )
+            if definition:
+                return {**definition, "resolution": "self_method", "confidence": 1.0}
+
+        if isinstance(receiver, ast.Name) and receiver.id in local_types:
+            class_definition = local_types[receiver.id]
+            definition = self._definition_by_qualified_name(
+                f"{class_definition['qualified_name']}.{method_name}"
+            )
+            if definition:
+                return {**definition, "resolution": "local_instance", "confidence": 0.9}
+
+        if isinstance(receiver, ast.Call):
+            class_definition = self._resolve_class_reference(receiver.func, path)
+            if class_definition:
+                definition = self._definition_by_qualified_name(
+                    f"{class_definition['qualified_name']}.{method_name}"
+                )
+                if definition:
+                    return {**definition, "resolution": "constructed_instance", "confidence": 0.95}
+
+        class_definition = self._resolve_class_reference(receiver, path)
+        if class_definition:
+            definition = self._definition_by_qualified_name(
+                f"{class_definition['qualified_name']}.{method_name}"
+            )
+            if definition:
+                return {**definition, "resolution": "class_method", "confidence": 0.95}
+
+        qualified = self._qualified_expression(func, path)
+        definition = self._definition_by_qualified_name(qualified) if qualified else None
+        if definition:
+            return {**definition, "resolution": "qualified_import", "confidence": 0.98}
         return None
 
-    @staticmethod
-    def _is_self_call(call_node: ast.Call) -> bool:
-        return (
-            isinstance(call_node.func, ast.Attribute)
-            and isinstance(call_node.func.value, ast.Name)
-            and call_node.func.value.id in {"self", "cls"}
-        )
+    def _infer_local_types(
+        self, owner_node: ast.AST, assignments: Iterable[ast.AST], path: Path
+    ) -> Dict[str, Dict[str, str]]:
+        local_types: Dict[str, Dict[str, str]] = {}
+        if isinstance(owner_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            all_args = list(owner_node.args.posonlyargs) + list(owner_node.args.args) + list(owner_node.args.kwonlyargs)
+            for argument in all_args:
+                if argument.annotation:
+                    definition = self._resolve_class_reference(argument.annotation, path)
+                    if definition:
+                        local_types[argument.arg] = definition
+
+        for assignment in assignments:
+            target_name: Optional[str] = None
+            value: Optional[ast.AST] = None
+            annotation: Optional[ast.AST] = None
+            if isinstance(assignment, ast.Assign) and len(assignment.targets) == 1:
+                if isinstance(assignment.targets[0], ast.Name):
+                    target_name = assignment.targets[0].id
+                    value = assignment.value
+            elif isinstance(assignment, ast.AnnAssign) and isinstance(assignment.target, ast.Name):
+                target_name = assignment.target.id
+                value = assignment.value
+                annotation = assignment.annotation
+
+            definition = self._resolve_class_reference(annotation, path) if annotation else None
+            if not definition and isinstance(value, ast.Call):
+                definition = self._resolve_class_reference(value.func, path)
+            if target_name and definition:
+                local_types[target_name] = definition
+        return local_types
 
     @staticmethod
     def _extract_orm_model_name(call_node: ast.Call) -> Optional[str]:

@@ -3,10 +3,20 @@
 from .change_impact import parse_unified_diff, predict_change_impact
 from .feyn_notation import FeynNotator
 from .feyn_parser import FeynExtractor
+from .reachability import (
+    OUTPUT_REACHABILITY_FILE,
+    analyze_reachability,
+    possibly_unreachable_nodes,
+    save_reachability,
+)
 
 __all__ = [
     "FeynExtractor",
     "FeynNotator",
     "parse_unified_diff",
     "predict_change_impact",
+    "analyze_reachability",
+    "possibly_unreachable_nodes",
+    "save_reachability",
+    "OUTPUT_REACHABILITY_FILE",
 ]
