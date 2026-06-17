@@ -2,6 +2,7 @@
 Configuration system for FeynMap - makes it portable across different frameworks.
 """
 
+import inspect
 from pathlib import Path
 from typing import Optional, Union
 
@@ -192,15 +193,27 @@ def detect_framework(project_path: PathLike) -> FrameworkDetectionResult:
     return FrameworkDetector().detect(str(project_path))
 
 
+def _caller_project_path() -> Optional[PathLike]:
+    """Recover the extractor project root for older callers that omit it."""
+    frame = inspect.currentframe()
+    try:
+        caller = frame.f_back.f_back if frame and frame.f_back else None
+        owner = caller.f_locals.get("self") if caller else None
+        return getattr(owner, "project_path", None)
+    finally:
+        del frame
+
+
 def get_framework_config(framework_name="auto", project_path: Optional[PathLike] = None):
     """Return an explicit framework config or auto-detect one from a repository."""
     normalized = (framework_name or "auto").lower()
     detection_result: Optional[FrameworkDetectionResult] = None
 
     if normalized == "auto":
-        if project_path is None:
+        detection_root = project_path or _caller_project_path()
+        if detection_root is None:
             raise ValueError("project_path is required when framework='auto'")
-        detection_result = detect_framework(project_path)
+        detection_result = detect_framework(detection_root)
         normalized = detection_result.framework
 
     config_class = FRAMEWORKS.get(normalized, FrameworkConfig)
