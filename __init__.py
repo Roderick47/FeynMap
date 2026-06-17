@@ -9,6 +9,11 @@ from .reachability import (
     possibly_unreachable_nodes,
     save_reachability,
 )
+from .trace_paths import (
+    build_graph_slice,
+    enumerate_interaction_paths,
+    generate_branch_preserving_ledger,
+)
 
 __all__ = [
     "FeynExtractor",
@@ -19,4 +24,7 @@ __all__ = [
     "possibly_unreachable_nodes",
     "save_reachability",
     "OUTPUT_REACHABILITY_FILE",
+    "enumerate_interaction_paths",
+    "build_graph_slice",
+    "generate_branch_preserving_ledger",
 ]
