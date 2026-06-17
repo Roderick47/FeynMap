@@ -1,7 +1,9 @@
 """Canonical, globally unique identities for FeynMap graph nodes."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
+
+PathLike = Union[Path, str]
 
 
 class NodeIdentity:
@@ -10,14 +12,14 @@ class NodeIdentity:
     def __init__(self, project_root: Path) -> None:
         self.project_root = project_root.resolve()
 
-    def relative_path(self, path: Path | str) -> str:
+    def relative_path(self, path: PathLike) -> str:
         resolved = Path(path).resolve()
         try:
             return resolved.relative_to(self.project_root).as_posix()
         except ValueError:
             return resolved.as_posix()
 
-    def module_name(self, path: Path | str) -> str:
+    def module_name(self, path: PathLike) -> str:
         relative = Path(self.relative_path(path))
         without_suffix = relative.with_suffix("")
         parts = list(without_suffix.parts)
@@ -25,18 +27,18 @@ class NodeIdentity:
             parts.pop()
         return ".".join(parts) or "__root__"
 
-    def python(self, name: str, path: Path | str, parent: Optional[str] = None) -> str:
+    def python(self, name: str, path: PathLike, parent: Optional[str] = None) -> str:
         module = self.module_name(path)
         qualified = f"{parent}.{name}" if parent else name
         return f"python:{module}.{qualified}"
 
-    def template(self, path: Path | str) -> str:
+    def template(self, path: PathLike) -> str:
         return f"template:{self.relative_path(path)}"
 
-    def template_symbol(self, path: Path | str, name: str) -> str:
+    def template_symbol(self, path: PathLike, name: str) -> str:
         return f"template-symbol:{self.relative_path(path)}::{name}"
 
-    def javascript(self, path: Path | str, name: str) -> str:
+    def javascript(self, path: PathLike, name: str) -> str:
         return f"javascript:{self.relative_path(path)}::{name}"
 
     @staticmethod
