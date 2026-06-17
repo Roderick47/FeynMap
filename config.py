@@ -1,54 +1,62 @@
 """
-Configuration system for FeynMap - makes it portable across different frameworks
+Configuration system for FeynMap - makes it portable across different frameworks.
 """
 
+from pathlib import Path
+from typing import Optional, Union
+
+try:
+    from .framework_detection import FrameworkDetectionResult, FrameworkDetector
+except ImportError:
+    from framework_detection import FrameworkDetectionResult, FrameworkDetector
+
+
 class FrameworkConfig:
-    """Base configuration for web framework detection patterns"""
-    
+    """Base configuration for web framework detection patterns."""
+
+    framework_name = "generic"
+
     def __init__(self):
         self.model_patterns = []
         self.view_patterns = []
         self.serializer_patterns = []
         self.template_extensions = []
-        self.code_extensions = []
+        self.code_extensions = [".py"]
         self.template_patterns = {}
         self.orm_patterns = []
-        self.exclude_dirs = ["venv", "__pycache__", ".git", "node_modules"]
-        
+        self.exclude_dirs = ["venv", ".venv", "env", "__pycache__", ".git", "node_modules"]
+        self.detection_result: Optional[FrameworkDetectionResult] = None
+
     def get_model_detection_rules(self):
-        """Return AST detection rules for models"""
         return self.model_patterns
-    
+
     def get_view_detection_rules(self):
-        """Return AST detection rules for views"""
         return self.view_patterns
-    
+
     def get_serializer_detection_rules(self):
-        """Return AST detection rules for serializers"""
         return self.serializer_patterns
-    
+
     def get_template_patterns(self):
-        """Return regex patterns for template parsing"""
         return self.template_patterns
-    
+
     def get_orm_patterns(self):
-        """Return regex patterns for ORM usage"""
         return self.orm_patterns
 
 
 class DjangoConfig(FrameworkConfig):
-    """Django-specific configuration"""
-    
+    framework_name = "django"
+
     def __init__(self):
         super().__init__()
-        self.model_patterns = [
-            {"type": "class_inheritance", "pattern": "models.Model"}
-        ]
+        self.model_patterns = [{"type": "class_inheritance", "pattern": "models.Model"}]
         self.view_patterns = [
             {"type": "class_name_suffix", "pattern": "View"},
             {"type": "class_name_suffix", "pattern": "APIView"},
             {"type": "function_name_contains", "pattern": "view"},
-            {"type": "function_name_contains", "pattern": ["dashboard", "home", "detail", "create", "edit", "list"]}
+            {
+                "type": "function_name_contains",
+                "pattern": ["dashboard", "home", "detail", "create", "edit", "list"],
+            },
         ]
         self.serializer_patterns = [
             {"type": "class_name_suffix", "pattern": "Serializer"}
@@ -56,91 +64,86 @@ class DjangoConfig(FrameworkConfig):
         self.template_extensions = [".html"]
         self.code_extensions = [".py"]
         self.template_patterns = {
-            "variables": r'{{\s*([\w\.]+)\s*}}',
-            "tags": r'{%\s*[^%]+\s*%}',
-            "js_functions": r'function\s+(\w+)\s*\(',
-            "arrow_functions": r'(\w+)\s*=\s*(?:async\s+)?(?:function\s*\([^)]*\)|\([^)]*\))\s*=>',
-            "fetch_calls": r'fetch\s*\(\s*[\'"]([^\'"]+)[\'"]',
-            "async_functions": r'async\s+function\s+(\w+)',
-            "event_listeners": r'addEventListener\s*\(\s*[\'"]([^\'"]+)[\'"]'
+            "variables": r"{{\s*([\w\.]+)\s*}}",
+            "tags": r"{%\s*[^%]+\s*%}",
+            "js_functions": r"function\s+(\w+)\s*\(",
+            "arrow_functions": r"(\w+)\s*=\s*(?:async\s+)?(?:function\s*\([^)]*\)|\([^)]*\))\s*=>",
+            "fetch_calls": r"fetch\s*\(\s*['\"]([^'\"]+)['\"]",
+            "async_functions": r"async\s+function\s+(\w+)",
+            "event_listeners": r"addEventListener\s*\(\s*['\"]([^'\"]+)['\"]",
         }
         self.orm_patterns = [
-            r'(\w+)\.objects\.(all|get|filter|create|update|delete)',
-            r'(\w+)\.objects\.first\(\)',
-            r'(\w+)\.objects\.last\(\)',
-            r'(\w+)\.objects\.count\(\)'
+            r"(\w+)\.objects\.(all|get|filter|create|update|delete)",
+            r"(\w+)\.objects\.first\(\)",
+            r"(\w+)\.objects\.last\(\)",
+            r"(\w+)\.objects\.count\(\)",
         ]
 
 
 class FlaskConfig(FrameworkConfig):
-    """Flask-specific configuration"""
-    
+    framework_name = "flask"
+
     def __init__(self):
         super().__init__()
         self.model_patterns = [
             {"type": "class_inheritance", "pattern": "db.Model"},
-            {"type": "class_inheritance", "pattern": "SQLAlchemy"}
+            {"type": "class_inheritance", "pattern": "SQLAlchemy"},
         ]
         self.view_patterns = [
             {"type": "function_decorator", "pattern": "@app.route"},
             {"type": "function_decorator", "pattern": "@bp.route"},
-            {"type": "function_name_contains", "pattern": ["dashboard", "home", "detail", "create", "edit", "list"]}
+            {
+                "type": "function_name_contains",
+                "pattern": ["dashboard", "home", "detail", "create", "edit", "list"],
+            },
         ]
         self.serializer_patterns = [
             {"type": "class_name_suffix", "pattern": "Schema"},
-            {"type": "class_inheritance", "pattern": "ma.Schema"}
+            {"type": "class_inheritance", "pattern": "ma.Schema"},
         ]
         self.template_extensions = [".html", ".jinja", ".jinja2"]
         self.code_extensions = [".py"]
-        self.template_patterns = {
-            "variables": r'{{\s*([\w\.]+)\s*}}',
-            "tags": r'{%\s*[^%]+\s*%}',
-            "js_functions": r'function\s+(\w+)\s*\(',
-            "arrow_functions": r'(\w+)\s*=\s*(?:async\s+)?(?:function\s*\([^)]*\)|\([^)]*\))\s*=>',
-            "fetch_calls": r'fetch\s*\(\s*[\'"]([^\'"]+)[\'"]',
-            "async_functions": r'async\s+function\s+(\w+)',
-            "event_listeners": r'addEventListener\s*\(\s*[\'"]([^\'"]+)[\'"]'
-        }
+        self.template_patterns = DjangoConfig().template_patterns
         self.orm_patterns = [
-            r'(\w+)\.query\.(all|first|get|filter|count)',
-            r'(\w+)\.query\.filter_by\(',
-            r'db\.session\.(add|commit|delete|query)'
+            r"(\w+)\.query\.(all|first|get|filter|count)",
+            r"(\w+)\.query\.filter_by\(",
+            r"db\.session\.(add|commit|delete|query)",
         ]
 
 
 class FastAPIConfig(FrameworkConfig):
-    """FastAPI-specific configuration"""
-    
+    framework_name = "fastapi"
+
     def __init__(self):
         super().__init__()
         self.model_patterns = [
             {"type": "class_inheritance", "pattern": "BaseModel"},
             {"type": "class_inheritance", "pattern": "SQLModel"},
-            {"type": "class_decoration", "pattern": "table"}
+            {"type": "class_decoration", "pattern": "table"},
         ]
         self.view_patterns = [
             {"type": "function_decorator", "pattern": "@app."},
             {"type": "function_decorator", "pattern": "@router."},
-            {"type": "class_decoration", "pattern": "APIRouter"}
+            {"type": "class_decoration", "pattern": "APIRouter"},
         ]
         self.serializer_patterns = [
             {"type": "class_inheritance", "pattern": "BaseModel"},
-            {"type": "class_name_suffix", "pattern": "Schema"}
+            {"type": "class_name_suffix", "pattern": "Schema"},
         ]
-        self.template_extensions = []  # FastAPI typically uses separate frontend
+        self.template_extensions = []
         self.code_extensions = [".py"]
         self.template_patterns = {}
         self.orm_patterns = [
-            r'session\.get\((\w+)',
-            r'session\.query\((\w+)',
-            r'(\w+)\.select\(\)',
-            r'session\.execute\(.*select\((\w+)\)'
+            r"session\.get\((\w+)",
+            r"session\.query\((\w+)",
+            r"(\w+)\.select\(\)",
+            r"session\.execute\(.*select\((\w+)\)",
         ]
 
 
 class RailsConfig(FrameworkConfig):
-    """Ruby on Rails-specific configuration"""
-    
+    framework_name = "rails"
+
     def __init__(self):
         super().__init__()
         self.model_patterns = [
@@ -148,7 +151,7 @@ class RailsConfig(FrameworkConfig):
         ]
         self.view_patterns = [
             {"type": "file_path_pattern", "pattern": "app/controllers/"},
-            {"type": "class_name_suffix", "pattern": "Controller"}
+            {"type": "class_name_suffix", "pattern": "Controller"},
         ]
         self.serializer_patterns = [
             {"type": "class_name_suffix", "pattern": "Serializer"}
@@ -156,45 +159,54 @@ class RailsConfig(FrameworkConfig):
         self.template_extensions = [".html.erb", ".erb", ".haml"]
         self.code_extensions = [".rb"]
         self.template_patterns = {
-            "variables": r'<%=\s*([\w\.]+)\s*%>',
-            "tags": r'<%\s*[^%]+\s*%>',
-            "js_functions": r'function\s+(\w+)\s*\(',
-            "arrow_functions": r'(\w+)\s*=\s*(?:async\s+)?(?:function\s*\([^)]*\)|\([^)]*\))\s*=>',
-            "fetch_calls": r'fetch\s*\(\s*[\'"]([^\'"]+)[\'"]',
-            "async_functions": r'async\s+function\s+(\w+)',
-            "event_listeners": r'addEventListener\s*\(\s*[\'"]([^\'"]+)[\'"]'
+            "variables": r"<%=\s*([\w\.]+)\s*%>",
+            "tags": r"<%\s*[^%]+\s*%>",
+            "js_functions": r"function\s+(\w+)\s*\(",
+            "arrow_functions": r"(\w+)\s*=\s*(?:async\s+)?(?:function\s*\([^)]*\)|\([^)]*\))\s*=>",
+            "fetch_calls": r"fetch\s*\(\s*['\"]([^'\"]+)['\"]",
+            "async_functions": r"async\s+function\s+(\w+)",
+            "event_listeners": r"addEventListener\s*\(\s*['\"]([^'\"]+)['\"]",
         }
         self.orm_patterns = [
-            r'(\w+)\.where\(',
-            r'(\w+)\.find\(',
-            r'(\w+)\.all',
-            r'(\w+)\.first',
-            r'(\w+)\.create\('
+            r"(\w+)\.where\(",
+            r"(\w+)\.find\(",
+            r"(\w+)\.all",
+            r"(\w+)\.first",
+            r"(\w+)\.create\(",
         ]
 
 
-# Framework registry
 FRAMEWORKS = {
-    'django': DjangoConfig,
-    'flask': FlaskConfig,
-    'fastapi': FastAPIConfig,
-    'rails': RailsConfig,
-    'generic': FrameworkConfig  # Default fallback
+    "django": DjangoConfig,
+    "flask": FlaskConfig,
+    "fastapi": FastAPIConfig,
+    "rails": RailsConfig,
+    "generic": FrameworkConfig,
 }
 
-
-def get_framework_config(framework_name='auto'):
-    """
-    Get framework configuration by name or auto-detect
-    """
-    if framework_name == 'auto':
-        # Auto-detection logic could be implemented here
-        # For now, default to Django for backward compatibility
-        framework_name = 'django'
-    
-    config_class = FRAMEWORKS.get(framework_name.lower(), FrameworkConfig)
-    return config_class()
+PathLike = Union[str, Path]
 
 
-# Default configuration for backward compatibility
+def detect_framework(project_path: PathLike) -> FrameworkDetectionResult:
+    """Detect the dominant supported framework for a repository."""
+    return FrameworkDetector().detect(str(project_path))
+
+
+def get_framework_config(framework_name="auto", project_path: Optional[PathLike] = None):
+    """Return an explicit framework config or auto-detect one from a repository."""
+    normalized = (framework_name or "auto").lower()
+    detection_result: Optional[FrameworkDetectionResult] = None
+
+    if normalized == "auto":
+        if project_path is None:
+            raise ValueError("project_path is required when framework='auto'")
+        detection_result = detect_framework(project_path)
+        normalized = detection_result.framework
+
+    config_class = FRAMEWORKS.get(normalized, FrameworkConfig)
+    config = config_class()
+    config.detection_result = detection_result
+    return config
+
+
 DEFAULT_CONFIG = DjangoConfig()
