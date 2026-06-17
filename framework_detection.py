@@ -3,7 +3,7 @@
 import ast
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Set
 
 
 @dataclass
@@ -15,9 +15,9 @@ class FrameworkDetectionResult:
 
 
 class FrameworkDetector:
-    """Detect the dominant framework in a repository without importing project code."""
+    """Detect the dominant supported Python framework without importing project code."""
 
-    FRAMEWORKS = ("django", "flask", "fastapi", "rails")
+    FRAMEWORKS = ("django", "flask", "fastapi")
     EXCLUDED_DIRS = {".git", "venv", ".venv", "env", "node_modules", "__pycache__"}
 
     def detect(self, project_path: str) -> FrameworkDetectionResult:
@@ -85,13 +85,6 @@ class FrameworkDetector:
         if any(path.endswith("/urls.py") or path == "urls.py" for path in relative_paths):
             self._add_score("django", 2, "Django-style urls.py is present", scores, evidence)
 
-        if "config/routes.rb" in relative_paths:
-            self._add_score("rails", 8, "config/routes.rb is present", scores, evidence)
-        if "Gemfile" in relative_paths:
-            self._add_score("rails", 2, "Gemfile is present", scores, evidence)
-        if any(path.startswith("app/controllers/") for path in relative_paths):
-            self._add_score("rails", 4, "app/controllers directory is present", scores, evidence)
-
     def _score_python_files(
         self,
         files: Iterable[Path],
@@ -109,7 +102,7 @@ class FrameworkDetector:
 
             relative = path.relative_to(root).as_posix()
             imports = self._python_imports(tree)
-            names = self._called_or_assigned_names(tree)
+            names = self._called_names(tree)
             decorators = self._decorators(tree)
 
             if any(name == "django" or name.startswith("django.") for name in imports):
@@ -142,7 +135,7 @@ class FrameworkDetector:
         scores: Dict[str, float],
         evidence: Dict[str, List[str]],
     ) -> None:
-        dependency_names = {"requirements.txt", "pyproject.toml", "Pipfile", "poetry.lock", "Gemfile"}
+        dependency_names = {"requirements.txt", "pyproject.toml", "Pipfile", "poetry.lock"}
         for path in files:
             if path.name not in dependency_names:
                 continue
@@ -157,8 +150,6 @@ class FrameworkDetector:
                 self._add_score("fastapi", 4, f"FastAPI dependency found in {relative}", scores, evidence)
             if "flask" in text:
                 self._add_score("flask", 4, f"Flask dependency found in {relative}", scores, evidence)
-            if path.name == "Gemfile" and "rails" in text:
-                self._add_score("rails", 6, "Rails dependency found in Gemfile", scores, evidence)
 
     @staticmethod
     def _python_imports(tree: ast.AST) -> Set[str]:
@@ -171,7 +162,7 @@ class FrameworkDetector:
         return imports
 
     @staticmethod
-    def _called_or_assigned_names(tree: ast.AST) -> Set[str]:
+    def _called_names(tree: ast.AST) -> Set[str]:
         names: Set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):

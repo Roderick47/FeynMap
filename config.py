@@ -1,5 +1,5 @@
 """
-Configuration system for FeynMap - makes it portable across different frameworks.
+Configuration system for FeynMap - makes it portable across supported Python frameworks.
 """
 
 import inspect
@@ -142,47 +142,15 @@ class FastAPIConfig(FrameworkConfig):
         ]
 
 
-class RailsConfig(FrameworkConfig):
-    framework_name = "rails"
-
-    def __init__(self):
-        super().__init__()
-        self.model_patterns = [
-            {"type": "class_inheritance", "pattern": "ApplicationRecord"}
-        ]
-        self.view_patterns = [
-            {"type": "file_path_pattern", "pattern": "app/controllers/"},
-            {"type": "class_name_suffix", "pattern": "Controller"},
-        ]
-        self.serializer_patterns = [
-            {"type": "class_name_suffix", "pattern": "Serializer"}
-        ]
-        self.template_extensions = [".html.erb", ".erb", ".haml"]
-        self.code_extensions = [".rb"]
-        self.template_patterns = {
-            "variables": r"<%=\s*([\w\.]+)\s*%>",
-            "tags": r"<%\s*[^%]+\s*%>",
-            "js_functions": r"function\s+(\w+)\s*\(",
-            "arrow_functions": r"(\w+)\s*=\s*(?:async\s+)?(?:function\s*\([^)]*\)|\([^)]*\))\s*=>",
-            "fetch_calls": r"fetch\s*\(\s*['\"]([^'\"]+)['\"]",
-            "async_functions": r"async\s+function\s+(\w+)",
-            "event_listeners": r"addEventListener\s*\(\s*['\"]([^'\"]+)['\"]",
-        }
-        self.orm_patterns = [
-            r"(\w+)\.where\(",
-            r"(\w+)\.find\(",
-            r"(\w+)\.all",
-            r"(\w+)\.first",
-            r"(\w+)\.create\(",
-        ]
-
-
 FRAMEWORKS = {
     "django": DjangoConfig,
     "flask": FlaskConfig,
     "fastapi": FastAPIConfig,
-    "rails": RailsConfig,
     "generic": FrameworkConfig,
+}
+
+REMOVED_FRAMEWORKS = {
+    "rails": "Ruby on Rails support has been removed because FeynMap does not yet include a Ruby parser.",
 }
 
 PathLike = Union[str, Path]
@@ -209,6 +177,9 @@ def get_framework_config(framework_name="auto", project_path: Optional[PathLike]
     normalized = (framework_name or "auto").lower()
     detection_result: Optional[FrameworkDetectionResult] = None
 
+    if normalized in REMOVED_FRAMEWORKS:
+        raise ValueError(REMOVED_FRAMEWORKS[normalized])
+
     if normalized == "auto":
         detection_root = project_path or _caller_project_path()
         if detection_root is None:
@@ -216,8 +187,11 @@ def get_framework_config(framework_name="auto", project_path: Optional[PathLike]
         detection_result = detect_framework(detection_root)
         normalized = detection_result.framework
 
-    config_class = FRAMEWORKS.get(normalized, FrameworkConfig)
-    config = config_class()
+    if normalized not in FRAMEWORKS:
+        supported = ", ".join(sorted(FRAMEWORKS))
+        raise ValueError(f"Unsupported framework '{framework_name}'. Supported values: auto, {supported}")
+
+    config = FRAMEWORKS[normalized]()
     config.detection_result = detection_result
     return config
 

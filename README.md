@@ -4,7 +4,9 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-FeynMap is a powerful code analysis tool that uses physics-inspired notation to help developers and AI editors understand codebase architecture. Originally designed for Django projects, it's now portable across multiple frameworks including Flask, FastAPI, and Ruby on Rails. Transform complex code relationships into elegant physics diagrams.
+FeynMap is a powerful code analysis tool that uses physics-inspired notation to help developers and AI editors understand Python codebase architecture. It currently supports Django, Flask, FastAPI, and generic Python projects. Transform complex code relationships into elegant physics diagrams.
+
+> **Rails support has been removed for now.** FeynMap does not yet include a Ruby parser, so advertising Rails analysis would be misleading. Ruby support may return later through a proper language-adapter implementation.
 
 ## 📑 Table of Contents
 
@@ -23,7 +25,7 @@ FeynMap is a powerful code analysis tool that uses physics-inspired notation to 
 
 ## 🚀 Features
 
-- **Multi-Framework Support**: Django, Flask, FastAPI, Ruby on Rails, and generic projects
+- **Python Framework Support**: Django, Flask, FastAPI, and generic Python projects
 - **Physics-Inspired Notation**: Uses particle physics concepts to represent code relationships intuitively
 - **Smart Lazy Loading**: Analyze only the components you care about for faster results
 - **Interaction Chain Depth Tracing**: Recursively follow view → service → utility → model call paths instead of stopping at one-hop relationships
@@ -63,11 +65,11 @@ pip install feynmap
 # Analyze current directory (auto-detect framework)
 feynmap .
 
-# Analyze specific framework
+# Analyze a specific supported framework
 feynmap /path/to/project --framework django
 feynmap /path/to/project --framework flask
 feynmap /path/to/project --framework fastapi
-feynmap /path/to/project --framework rails
+feynmap /path/to/project --framework generic
 
 # Lazy loading - analyze specific nodes only
 feynmap . --target-nodes "UserView,PostModel"
@@ -93,26 +95,21 @@ feynmap . --impact-diff ./my-change.patch --impact-depth 8
 ```python
 from feynmap import FeynExtractor, FeynNotator
 
-# Initialize with framework
 extractor = FeynExtractor("/path/to/project", framework="django")
 graph_data = extractor.scan()
 
-# Access analysis results
 print(f"Found {len(graph_data['nodes'])} nodes")
 print(f"Found {len(graph_data['edges'])} relationships")
 
-# Generate physics-inspired notation
 ledger = {}
 for node in graph_data["nodes"]:
     if node["type"] == "VERTEX":
         trace = [("PROPAGATOR_HTTP", "URL"), ("VERTEX", node["id"])]
         ledger[node["id"]] = FeynNotator.generate_enhanced_string(trace)
 
-# Print notation for each view
 for node_id, notation in ledger.items():
     print(f"{node_id}: {notation}")
 ```
-
 
 ### Change Impact Predictor
 
@@ -138,7 +135,7 @@ Running with `--impact-diff` produces `feyn_change_impact.json` alongside the no
 
 ## 🔧 Supported Frameworks
 
-### Django (Default)
+### Django
 - **Models**: Classes inheriting from `models.Model`
 - **Views**: Classes ending with `View` or `APIView`
 - **Serializers**: Classes ending with `Serializer`
@@ -159,16 +156,15 @@ Running with `--impact-diff` produces `feyn_change_impact.json` alongside the no
 - **Templates**: Typically separate frontend (no template parsing)
 - **ORM**: `session.get()`, `Model.select()`, etc.
 
-### Ruby on Rails
-- **Models**: Classes inheriting from `ApplicationRecord`
-- **Views**: Controllers in `app/controllers/` directory
-- **Serializers**: Classes ending with `Serializer`
-- **Templates**: `.html.erb`, `.erb`, `.haml` files
-- **ORM**: `Model.where()`, `Model.find()`, etc.
+### Generic Python
+- Basic pattern detection for Python projects without a supported web framework
+- Configurable rules for custom Python codebases
 
-### Generic
-- Basic pattern detection for any Python project
-- Configurable rules for custom frameworks
+### Not currently supported
+- Ruby on Rails
+- Other non-Python frameworks
+
+Selecting `framework="rails"` now raises a clear error instead of silently falling back to generic analysis.
 
 ## 📊 Output & Examples
 
@@ -192,18 +188,10 @@ FeynMap generates three JSON files in your project directory:
     "UserView": {
         "notation": "g[URL]{ₘ0.1,ᴱ1.0,ᶜ0.9} -> V[UserView]{ₘ2.3,ᴱ2.1,ᶜ0.8} -> P[User]{ₘ1.5,ᴱ0.7,ᶜ0.9} -> ⊗[UserSerializer]{ₘ1.2,ᴱ0.5,ᶜ0.7}",
         "diagram": {
-            "vertices": [
-                {"id": "UserView", "type": "view", "complexity": 2.3}
-            ],
-            "propagators": [
-                {"id": "g[URL]", "type": "http", "activity": 1.0}
-            ],
-            "particles": [
-                {"id": "User", "type": "model", "complexity": 1.5}
-            ],
-            "interactions": [
-                {"from": "URL", "to": "UserView", "type": "request"}
-            ]
+            "vertices": [{"id": "UserView", "type": "view", "complexity": 2.3}],
+            "propagators": [{"id": "g[URL]", "type": "http", "activity": 1.0}],
+            "particles": [{"id": "User", "type": "model", "complexity": 1.5}],
+            "interactions": [{"from": "URL", "to": "UserView", "type": "request"}]
         },
         "metadata": {
             "interaction_type": "backend",
@@ -212,15 +200,6 @@ FeynMap generates three JSON files in your project directory:
             "coupling": 0.9,
             "file_path": "views/users.py",
             "line_number": 42
-        }
-    },
-    "PostModel": {
-        "notation": "P[Post]{ₘ1.8,ᴱ0.9,ᶜ0.8}",
-        "metadata": {
-            "interaction_type": "data",
-            "complexity": 1.8,
-            "file_path": "models.py",
-            "line_number": 15
         }
     }
 }
@@ -239,19 +218,10 @@ FeynMap generates three JSON files in your project directory:
             "intents": ["create", "read", "update"],
             "members": ["UserCreateView", "UserListView", "UserUpdateView"],
             "confidence": 0.95
-        },
-        {
-            "id": "semantic_cluster_002",
-            "summary": "Data Transform around User (transform)",
-            "role": "data_transform",
-            "data_subjects": ["User"],
-            "members": ["UserSerializer", "UserPublicSerializer"],
-            "confidence": 0.95
         }
     ],
     "node_memberships": {
-        "UserCreateView": ["semantic_cluster_001"],
-        "UserSerializer": ["semantic_cluster_002"]
+        "UserCreateView": ["semantic_cluster_001"]
     }
 }
 ```
@@ -315,15 +285,16 @@ high importance            high activity                  critical              
 
 ### Custom Framework Config
 
-Create a configuration for your custom framework:
+Create a configuration for your custom Python framework:
 
 ```python
 from feynmap.config import FrameworkConfig, FRAMEWORKS
 
 class MyFrameworkConfig(FrameworkConfig):
+    framework_name = "myframework"
+
     def __init__(self):
         super().__init__()
-        self.name = "myframework"
         self.model_patterns = [
             {"type": "class_inheritance", "pattern": "MyModel"}
         ]
@@ -335,10 +306,8 @@ class MyFrameworkConfig(FrameworkConfig):
             {"type": "class_name_suffix", "pattern": "Transformer"}
         ]
 
-# Register your framework
-FRAMEWORKS['myframework'] = MyFrameworkConfig()
+FRAMEWORKS["myframework"] = MyFrameworkConfig
 
-# Now use it
 from feynmap import FeynExtractor
 extractor = FeynExtractor("/path/to/project", framework="myframework")
 ```
@@ -375,17 +344,6 @@ Analyze only specific components and their dependencies:
 feynmap . --target-nodes "UserView,PostModel,CommentSerializer"
 ```
 
-This is much faster for large codebases:
-
-```python
-from feynmap import FeynExtractor
-
-extractor = FeynExtractor("/path/to/project", framework="django")
-# Only analyze specific nodes
-graph_data = extractor.scan(target_nodes=["UserView", "PostModel"])
-print(f"Analyzed {len(graph_data['nodes'])} nodes")
-```
-
 ### Semantic Similarity Clustering
 
 Semantic clustering runs as part of the normal FeynMap pipeline and writes `feyn_semantic_clusters.json` next to the standard ledgers:
@@ -394,7 +352,7 @@ Semantic clustering runs as part of the normal FeynMap pipeline and writes `feyn
 feynmap . --framework django --trace-depth 6
 ```
 
-Use this output when you want to understand a codebase by purpose instead of one node at a time. FeynMap infers cluster membership from explicit graph relationships, data subjects touched by `PARTICLE_ENTANGLEMENT` edges, common CRUD intent in class/function names, serializers/schemas, frontend surfaces, and shared semantic tokens. This means disconnected nodes can still be grouped when they operate on the same concept.
+Use this output when you want to understand a codebase by purpose instead of one node at a time. FeynMap infers cluster membership from explicit graph relationships, data subjects touched by `PARTICLE_ENTANGLEMENT` edges, common CRUD intent in class/function names, serializers/schemas, frontend surfaces, and shared semantic tokens.
 
 ### Ghost State Detection
 
@@ -402,18 +360,6 @@ Automatically identify unused code (ghost states):
 
 ```bash
 feynmap . --detect-ghosts
-```
-
-In Python:
-
-```python
-from feynmap import GhostDetector
-
-detector = GhostDetector("/path/to/project")
-ghost_states = detector.find_unused_code()
-
-for ghost in ghost_states:
-    print(f"Unused: {ghost['name']} ({ghost['file']}:{ghost['line']})")
 ```
 
 ### Full Codebase Analysis
@@ -424,40 +370,9 @@ Disable lazy loading for complete analysis:
 feynmap . --no-lazy-load --detect-ghosts
 ```
 
-### Custom Analysis Pipeline
-
-```python
-from feynmap.feyn_parser import FeynExtractor
-from feynmap.feyn_notation import FeynNotator
-
-# Extract graph data
-extractor = FeynExtractor("/path/to/project", framework="django")
-graph_data = extractor.scan()
-
-# Generate custom analysis
-high_complexity_views = []
-for node in graph_data["nodes"]:
-    if node["type"] == "VERTEX":
-        complexity = node["metadata"].get("mass", 0)
-        if complexity > 3.0:
-            high_complexity_views.append({
-                "name": node["id"],
-                "complexity": complexity,
-                "file": node["metadata"].get("file_path")
-            })
-
-# Sort by complexity
-high_complexity_views.sort(key=lambda x: x["complexity"], reverse=True)
-
-# Print report
-print("High Complexity Views:")
-for view in high_complexity_views[:10]:
-    print(f"  {view['name']}: {view['complexity']:.1f} ({view['file']})")
-```
-
 ### Recursive Interaction Tracing
 
-FeynMap now traces interaction chains recursively from backend vertices and frontend states. In addition to direct view relationships such as `View → Serializer → Model`, it records project-local function and class calls as mediator nodes (`ψ`) and follows them until the configured depth is reached. This exposes paths such as:
+FeynMap traces interaction chains recursively from backend vertices and frontend states. In addition to direct view relationships such as `View → Serializer → Model`, it records project-local function and class calls as mediator nodes (`ψ`) and follows them until the configured depth is reached.
 
 ```text
 g[URL] -> V[UserView] -> ψ[build_user_profile] -> ψ[normalize_email] -> P[User]
@@ -472,9 +387,7 @@ Use `--trace-depth` to increase or reduce chain length. Cycles are ignored per t
 
 ### Dependencies
 - **Core**: None (uses Python standard library only)
-- **Optional**: 
-  - For better AST parsing: `ast` (built-in)
-  - For Rails support: `ruby_parser` (recommended)
+- **Parsing**: Python's built-in `ast` module
 
 ### System Requirements
 - 512MB RAM minimum
@@ -483,11 +396,11 @@ Use `--trace-depth` to increase or reduce chain length. Cycles are ignored per t
 ### Performance Notes
 
 | Codebase Size | Time (w/ lazy load) | Time (full scan) |
-|---------------|-------------------|-----------------|
-| <10K LOC      | <1 second         | 1-2 seconds    |
-| 10K-50K LOC   | 1-3 seconds       | 5-10 seconds   |
-| 50K-200K LOC  | 3-10 seconds      | 15-30 seconds  |
-| 200K+ LOC     | 10-30 seconds     | 60+ seconds    |
+|---------------|---------------------|------------------|
+| <10K LOC      | <1 second           | 1-2 seconds      |
+| 10K-50K LOC   | 1-3 seconds         | 5-10 seconds     |
+| 50K-200K LOC  | 3-10 seconds        | 15-30 seconds    |
+| 200K+ LOC     | 10-30 seconds       | 60+ seconds      |
 
 ## 🔧 Troubleshooting
 
@@ -497,12 +410,11 @@ Use `--trace-depth` to increase or reduce chain length. Cycles are ignored per t
 
 **Solutions**:
 ```bash
-# Explicitly specify framework
 feynmap . --framework django
-
-# List supported frameworks
 feynmap --list-frameworks
 ```
+
+If the repository is not Django, Flask, or FastAPI, use `--framework generic`. Non-Python frameworks are not currently supported.
 
 ### Issue: No Output Generated
 
@@ -510,14 +422,7 @@ feynmap --list-frameworks
 
 **Solutions**:
 ```bash
-# Check verbose output
 feynmap . --verbose
-
-# Verify project structure matches framework
-# For Django: ensure manage.py and app directories exist
-# For Flask: ensure app.py or wsgi.py exists
-
-# Try generic framework
 feynmap . --framework generic
 ```
 
@@ -527,46 +432,27 @@ feynmap . --framework generic
 
 **Solutions**:
 ```bash
-# Disable ghost detection
 feynmap . --no-detect-ghosts
-
-# Check false positives
 feynmap . --detect-ghosts --verbose
-
-# Increase sensitivity threshold
 feynmap . --ghost-threshold 0.8
 ```
 
 ### Issue: Out of Memory on Large Projects
 
-**Problem**: `MemoryError` on very large codebases.
-
 **Solutions**:
 ```bash
-# Use lazy loading with target nodes
 feynmap . --target-nodes "AppView,CoreModel" --lazy-load
-
-# Exclude unnecessary directories
 feynmap . --exclude "tests/,migrations/,node_modules/"
-
-# Process incrementally
 feynmap . --framework django --lazy-load
 ```
 
 ### Issue: Import Errors
 
-**Problem**: `ModuleNotFoundError` when running analysis.
-
 **Solutions**:
 ```bash
-# Ensure project dependencies are installed
 pip install -r requirements.txt
-
-# Run from project root
 cd /path/to/project
 feynmap .
-
-# Verify Python path
 feynmap . --python-path "/path/to/project"
 ```
 
@@ -619,20 +505,12 @@ If you use FeynMap in your research or projects, please cite:
 }
 ```
 
-Or in plain text:
-
-```
-FeynMap: Physics-Inspired Code Analysis for AI-Assisted Development
-By: Roderick47 (2024)
-https://github.com/Roderick47/FeynMap
-```
-
 ## 📈 Roadmap
 
 - [ ] VSCode Extension for real-time analysis
 - [ ] Interactive web dashboard for visualization
 - [ ] Integration with GitHub Actions for CI/CD
-- [ ] Support for Go, Rust, and Java
+- [ ] Language-adapter architecture for future Rust, Go, Java, and Ruby support
 - [ ] Performance profiling output format
 - [ ] Dependency graph export (GraphML, DOT)
 
