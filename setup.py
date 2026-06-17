@@ -33,9 +33,7 @@ setup(
         "Topic :: Software Development :: Quality Assurance",
     ],
     python_requires=">=3.8",
-    install_requires=[
-        # No external dependencies - uses only Python standard library
-    ],
+    install_requires=[],
     extras_require={
         "dev": [
             "pytest>=6.0",
@@ -46,7 +44,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "feynmap=feynmap.main:run_feynmap",
+            "feynmap=feynmap.pipeline:run_feynmap",
         ],
     },
     include_package_data=True,
