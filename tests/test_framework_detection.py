@@ -46,6 +46,24 @@ class FrameworkDetectionTests(unittest.TestCase):
             self.assertEqual("generic", result.framework)
             self.assertEqual(0.0, result.confidence)
 
+    def test_rails_repository_is_not_reported_as_supported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "config").mkdir()
+            (root / "config" / "routes.rb").write_text(
+                "Rails.application.routes.draw do\nend\n", encoding="utf-8"
+            )
+            (root / "Gemfile").write_text("gem 'rails'\n", encoding="utf-8")
+            result = detect_framework(root)
+            self.assertEqual("generic", result.framework)
+            self.assertNotIn("rails", result.scores)
+
+    def test_explicit_rails_selection_fails_clearly(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(ValueError, "Ruby on Rails support has been removed"):
+                get_framework_config("rails", root)
+
     def test_extractor_auto_uses_detected_config(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
