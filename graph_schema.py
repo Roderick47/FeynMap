@@ -59,6 +59,8 @@ EDGE_CORE_FIELDS = {
     "confidence",
     "evidence",
     "attributes",
+    "resolution",
+    "line",
 }
 
 
@@ -291,7 +293,6 @@ def _normalize_node(node: Any) -> Dict[str, Any]:
         "source": source_location,
         "metadata": metadata,
         "attributes": attributes,
-        # Compatibility aliases retained for v1 consumers of historical output.
         "line_start": line_start,
         "line_end": line_end,
     }
@@ -330,7 +331,6 @@ def _normalize_edge(edge: Any) -> Dict[str, Any]:
         "confidence": confidence,
         "evidence": evidence_list,
         "attributes": attributes,
-        # Frequently consumed evidence remains directly accessible in v1.
         "resolution": source.get("resolution"),
         "line": source.get("line"),
     }
