@@ -4,10 +4,12 @@ from typing import Any, Dict, Set
 
 try:
     from . import main as legacy_main
+    from .impact_analysis import predict_change_impact
     from .reachability import analyze_reachability, possibly_unreachable_nodes, save_reachability
     from .trace_paths import generate_branch_preserving_ledger
 except ImportError:
     import main as legacy_main
+    from impact_analysis import predict_change_impact
     from reachability import analyze_reachability, possibly_unreachable_nodes, save_reachability
     from trace_paths import generate_branch_preserving_ledger
 
@@ -30,6 +32,12 @@ def generate_node_ledger(
 
 legacy_main.detect_unused_nodes = detect_unused_nodes
 legacy_main.generate_node_ledger = generate_node_ledger
+legacy_main.predict_change_impact = predict_change_impact
 run_feynmap = legacy_main.run_feynmap
 
-__all__ = ["detect_unused_nodes", "generate_node_ledger", "run_feynmap"]
+__all__ = [
+    "detect_unused_nodes",
+    "generate_node_ledger",
+    "predict_change_impact",
+    "run_feynmap",
+]
