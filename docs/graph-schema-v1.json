@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://feynmap.dev/schema/graph/v1.json",
+  "title": "FeynMap Graph Schema v1",
+  "description": "Stable exchange contract for FeynMap dependency graphs.",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "generator",
+    "graph",
+    "nodes",
+    "edges",
+    "diagnostics",
+    "extensions"
+  ],
+  "properties": {
+    "schema": {
+      "const": "feynmap.graph"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$"
+    },
+    "generator": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "graph": {
+      "type": "object",
+      "required": ["directed", "multigraph", "node_count", "edge_count"],
+      "properties": {
+        "directed": {"const": true},
+        "multigraph": {"type": "boolean"},
+        "node_count": {"type": "integer", "minimum": 0},
+        "edge_count": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "nodes": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/node"}
+    },
+    "edges": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/edge"}
+    },
+    "diagnostics": {
+      "$ref": "#/$defs/diagnostics"
+    },
+    "extensions": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sourceLocation": {
+      "type": "object",
+      "required": ["file", "line_start", "line_end"],
+      "properties": {
+        "file": {"type": ["string", "null"]},
+        "line_start": {"type": ["integer", "null"], "minimum": 1},
+        "line_end": {"type": ["integer", "null"], "minimum": 1}
+      },
+      "additionalProperties": true
+    },
+    "node": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "qualified_name",
+        "type",
+        "language",
+        "file",
+        "source",
+        "metadata",
+        "attributes",
+        "line_start",
+        "line_end"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "name": {"type": "string"},
+        "qualified_name": {"type": "string"},
+        "type": {"type": "string", "minLength": 1},
+        "language": {"type": ["string", "null"]},
+        "file": {"type": ["string", "null"]},
+        "source": {"$ref": "#/$defs/sourceLocation"},
+        "metadata": {"type": "object"},
+        "attributes": {"type": "object"},
+        "line_start": {"type": ["integer", "null"], "minimum": 1},
+        "line_end": {"type": ["integer", "null"], "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "edge": {
+      "type": "object",
+      "required": [
+        "id",
+        "source",
+        "target",
+        "type",
+        "confidence",
+        "evidence",
+        "attributes",
+        "resolution",
+        "line"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "target": {"type": "string", "minLength": 1},
+        "type": {"type": "string", "minLength": 1},
+        "confidence": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "attributes": {"type": "object"},
+        "resolution": {"type": ["string", "null"]},
+        "line": {"type": ["integer", "null"], "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "diagnostics": {
+      "type": "object",
+      "required": ["valid", "errors", "warnings", "error_count", "warning_count"],
+      "properties": {
+        "valid": {"type": "boolean"},
+        "errors": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "warnings": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "error_count": {"type": "integer", "minimum": 0},
+        "warning_count": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    }
+  }
+}
