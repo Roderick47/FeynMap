@@ -1,6 +1,7 @@
 # FeynMap package
 
-from .change_impact import parse_unified_diff, predict_change_impact
+from .change_impact import parse_unified_diff
+from .impact_analysis import predict_change_impact
 from .feyn_notation import FeynNotator
 from .feyn_parser import FeynExtractor
 from .reachability import (
