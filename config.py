@@ -9,9 +9,11 @@ from typing import Optional, Union
 try:
     from .framework_detection import FrameworkDetectionResult, FrameworkDetector
     from .component_metrics import install_component_metric_calculator
+    from .graph_schema import install_stable_graph_schema
 except ImportError:
     from framework_detection import FrameworkDetectionResult, FrameworkDetector
     from component_metrics import install_component_metric_calculator
+    from graph_schema import install_stable_graph_schema
 
 
 class FrameworkConfig:
@@ -174,18 +176,19 @@ def _caller_project_path() -> Optional[PathLike]:
         del frame
 
 
-def _install_component_metrics() -> None:
-    """Install component-level metrics after the parser class is initialized."""
+def _install_parser_extensions() -> None:
+    """Install parser extensions after the extractor class is initialized."""
     try:
         from .feyn_parser import FeynExtractor
     except ImportError:
         from feyn_parser import FeynExtractor
     install_component_metric_calculator(FeynExtractor)
+    install_stable_graph_schema(FeynExtractor)
 
 
 def get_framework_config(framework_name="auto", project_path: Optional[PathLike] = None):
     """Return an explicit framework config or auto-detect one from a repository."""
-    _install_component_metrics()
+    _install_parser_extensions()
     normalized = (framework_name or "auto").lower()
     detection_result: Optional[FrameworkDetectionResult] = None
 
