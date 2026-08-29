@@ -54,11 +54,18 @@ class EdgeKind(StringEnum):
     FLOWS_TO = "flows_to"
     OBSERVES = "observes"
     RELATED_TO = "related_to"
+    LOADS = "loads"
+    RENDERS = "renders"
+    INVOKES = "invokes"
+    SPAWNS = "spawns"
+    CONNECTS_TO = "connects_to"
+    ROUTES_TO = "routes_to"
 
 
 class EvidenceKind(StringEnum):
     STATIC = "static_analysis"
     FRAMEWORK = "framework_analysis"
+    INTEGRATION = "integration_resolution"
     RUNTIME = "runtime_trace"
     TEST = "test_observation"
     HISTORY = "repository_history"
