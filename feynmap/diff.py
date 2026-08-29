@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, List
 
 from .core import SemanticEdge, SemanticGraph, SemanticNode
-from .snapshots import FileFingerprint, RepositorySnapshot, SnapshotStore
+from .snapshots import RepositorySnapshot, SnapshotStore
 
 
 def _canonical(payload: Any) -> str:
