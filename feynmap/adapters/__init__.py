@@ -1,4 +1,13 @@
 from .base import AdapterRegistry, FrameworkAdapter, LanguageAdapter
-from .python import PythonAdapter, legacy_graph_to_semantic
+from .frameworks import DjangoAdapter, FastAPIAdapter, FlaskAdapter
+from .python import PythonAdapter
 
-__all__ = ["AdapterRegistry", "FrameworkAdapter", "LanguageAdapter", "PythonAdapter", "legacy_graph_to_semantic"]
+__all__ = [
+    "AdapterRegistry",
+    "DjangoAdapter",
+    "FastAPIAdapter",
+    "FlaskAdapter",
+    "FrameworkAdapter",
+    "LanguageAdapter",
+    "PythonAdapter",
+]
