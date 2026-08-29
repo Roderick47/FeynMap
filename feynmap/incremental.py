@@ -14,7 +14,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from .core import EdgeKind, SemanticGraph, SemanticNode
 from .diff import diff_file_inventories
-from .engine import FeynMapEngine
+from .engine import ANALYSIS_CONTRACT_VERSION, FeynMapEngine
 from .snapshots import (
     RepositorySnapshot,
     SnapshotStore,
@@ -167,6 +167,17 @@ def plan_incremental_analysis(
             fallback=True,
         )
 
+    previous_contract = previous_graph.metadata.get("analysis_contract_version")
+    if previous_contract != ANALYSIS_CONTRACT_VERSION:
+        return IncrementalPlan(
+            mode="full_rebuild",
+            reason="analysis contract changed or is missing from the previous snapshot",
+            changed_files=[],
+            impacted_files=sorted(current_paths),
+            reused_files=[],
+            fallback=True,
+        )
+
     requested_options = dict(analysis_options or previous_snapshot.analysis_options)
     if requested_options != dict(previous_snapshot.analysis_options):
         return IncrementalPlan(
@@ -186,7 +197,7 @@ def plan_incremental_analysis(
     if not changed_files:
         return IncrementalPlan(
             mode="reuse",
-            reason="repository file inventory and analysis options are unchanged",
+            reason="repository inventory, analysis options, and analysis contract are unchanged",
             changed_files=[],
             impacted_files=[],
             reused_files=sorted(item.path for item in previous_snapshot.files),
@@ -195,10 +206,6 @@ def plan_incremental_analysis(
 
     removed = set(file_delta["removed"])
     added = set(file_delta["added"])
-
-    # New/deleted files can change language/framework detection and package topology.
-    # Until adapter-level partial parse contracts exist, full rebuild is the only
-    # evidence-preserving choice for those structural changes.
     if added or removed:
         return IncrementalPlan(
             mode="full_rebuild",
