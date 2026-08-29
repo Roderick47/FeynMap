@@ -5,7 +5,18 @@ from pathlib import Path
 
 from feynmap.core import NodeKind, SemanticGraph
 from ..base import FrameworkAdapter
-from ._python import dependency_text, finalize, has_base, imported, imports_by_file, mark_role, node_imports, repository_imports
+from ._python import (
+    attach_decorator_http_contracts,
+    attach_template_render_contracts,
+    dependency_text,
+    finalize,
+    has_base,
+    imported,
+    imports_by_file,
+    mark_role,
+    node_imports,
+    repository_imports,
+)
 
 
 class FlaskAdapter(FrameworkAdapter):
@@ -41,4 +52,6 @@ class FlaskAdapter(FrameworkAdapter):
                 elif has_base(node, "Schema") and (imported(imports, "marshmallow") or imported(imports, "flask_marshmallow")):
                     mark_role(node, self.name, NodeKind.TRANSFORMER, "serializer", "Marshmallow schema used by Flask application", 0.94)
 
+        attach_decorator_http_contracts(graph, self.name)
+        attach_template_render_contracts(graph, project_path, self.name)
         return finalize(graph, self.name)
