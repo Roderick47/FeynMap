@@ -7,14 +7,21 @@ proved from the available static dependency evidence.
 """
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-from .core import EdgeKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode
+from .core import EdgeKind, SemanticGraph, SemanticNode
 from .diff import diff_file_inventories
 from .engine import FeynMapEngine
-from .snapshots import RepositorySnapshot, SnapshotStore, capture_repository_snapshot, repository_file_inventory
+from .snapshots import (
+    RepositorySnapshot,
+    SnapshotStore,
+    capture_repository_snapshot,
+    repository_file_inventory,
+    repository_locator,
+)
 
 
 @dataclass
@@ -134,13 +141,44 @@ def _inventory_snapshot(project_path: Path, previous: RepositorySnapshot) -> Rep
     )
 
 
+def _repository_key(project_path: Path) -> str:
+    locator = repository_locator(project_path)
+    return hashlib.sha256(locator.encode("utf-8")).hexdigest()
+
+
 def plan_incremental_analysis(
     project_path: Path,
     previous_snapshot: RepositorySnapshot,
     previous_graph: SemanticGraph,
+    analysis_options: Optional[Dict[str, object]] = None,
 ) -> IncrementalPlan:
     """Plan a safe incremental step from a previous stored snapshot."""
-    current_inventory = _inventory_snapshot(project_path, previous_snapshot)
+    root = project_path.resolve()
+    current_paths = {item.path for item in repository_file_inventory(root)}
+    previous_paths = {item.path for item in previous_snapshot.files}
+
+    if _repository_key(root) != previous_snapshot.repository_key:
+        return IncrementalPlan(
+            mode="full_rebuild",
+            reason="previous snapshot belongs to a different repository identity",
+            changed_files=sorted(previous_paths | current_paths),
+            impacted_files=sorted(previous_paths | current_paths),
+            reused_files=[],
+            fallback=True,
+        )
+
+    requested_options = dict(analysis_options or previous_snapshot.analysis_options)
+    if requested_options != dict(previous_snapshot.analysis_options):
+        return IncrementalPlan(
+            mode="full_rebuild",
+            reason="analysis options differ from the previous snapshot",
+            changed_files=[],
+            impacted_files=sorted(current_paths),
+            reused_files=[],
+            fallback=True,
+        )
+
+    current_inventory = _inventory_snapshot(root, previous_snapshot)
     file_delta = diff_file_inventories(previous_snapshot, current_inventory)
     changed_files = sorted(
         set(file_delta["added"]) | set(file_delta["removed"]) | set(file_delta["modified"])
@@ -148,15 +186,13 @@ def plan_incremental_analysis(
     if not changed_files:
         return IncrementalPlan(
             mode="reuse",
-            reason="repository file inventory is unchanged",
+            reason="repository file inventory and analysis options are unchanged",
             changed_files=[],
             impacted_files=[],
             reused_files=sorted(item.path for item in previous_snapshot.files),
             fallback=False,
         )
 
-    previous_paths = {item.path for item in previous_snapshot.files}
-    current_paths = {item.path for item in current_inventory.files}
     removed = set(file_delta["removed"])
     added = set(file_delta["added"])
 
@@ -200,7 +236,13 @@ def analyze_incrementally(
     planner exposes the invalidation closure but a full rebuild remains the
     correctness fallback until adapters expose deterministic per-file fragments.
     """
-    plan = plan_incremental_analysis(project_path, previous_snapshot, previous_graph)
+    options = {"language_selection": language, "framework_selection": framework}
+    plan = plan_incremental_analysis(
+        project_path,
+        previous_snapshot,
+        previous_graph,
+        analysis_options=options,
+    )
     if plan.mode == "reuse":
         return previous_graph, plan
     analyzer = engine or FeynMapEngine()
