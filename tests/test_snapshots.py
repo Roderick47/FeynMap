@@ -45,14 +45,18 @@ def _graph():
     )
 
 
-def _fake_git_checkout(root: Path, source: str = "def run():\n    return 1\n") -> None:
+def _fake_git_checkout(
+    root: Path,
+    source: str = "def run():\n    return 1\n",
+    origin: str = "https://example.com/owner/repo.git",
+) -> None:
     root.mkdir(parents=True, exist_ok=True)
     (root / "app.py").write_text(source, encoding="utf-8")
     git_dir = root / ".git"
     git_dir.mkdir()
     (git_dir / "HEAD").write_text("0123456789abcdef0123456789abcdef01234567\n", encoding="utf-8")
     (git_dir / "config").write_text(
-        '[remote "origin"]\n    url = https://example.com/owner/repo.git\n',
+        '[remote "origin"]\n    url = %s\n' % origin,
         encoding="utf-8",
     )
 
@@ -89,11 +93,11 @@ def test_snapshot_identity_is_stable_and_changes_with_repository_content(tmp_pat
     assert changed.snapshot_id != first.snapshot_id
 
 
-def test_equivalent_clones_share_graph_and_snapshot_identity(tmp_path: Path):
+def test_equivalent_clones_share_graph_and_snapshot_identity_across_git_transports(tmp_path: Path):
     clone_a = tmp_path / "first-checkout"
     clone_b = tmp_path / "different-folder-name"
-    _fake_git_checkout(clone_a)
-    _fake_git_checkout(clone_b)
+    _fake_git_checkout(clone_a, origin="https://example.com/owner/repo.git")
+    _fake_git_checkout(clone_b, origin="git@example.com:owner/repo.git")
 
     graph_a = FeynMapEngine().analyze(str(clone_a), language="python", framework="none")
     graph_b = FeynMapEngine().analyze(str(clone_b), language="python", framework="none")
@@ -101,6 +105,8 @@ def test_equivalent_clones_share_graph_and_snapshot_identity(tmp_path: Path):
     snapshot_b = capture_repository_snapshot(clone_b, graph_b)
 
     assert graph_a.to_dict() == graph_b.to_dict()
+    assert snapshot_a.locator == "git:example.com/owner/repo"
+    assert snapshot_b.locator == snapshot_a.locator
     assert snapshot_a.repository_key == snapshot_b.repository_key
     assert snapshot_a.content_hash == snapshot_b.content_hash
     assert snapshot_a.graph_hash == snapshot_b.graph_hash
@@ -159,7 +165,7 @@ def test_snapshot_cli_persists_current_repository_graph(tmp_path: Path, capsys):
     assert any(node.qualified_name == "app.run" for node in loaded_graph.nodes)
 
 
-def test_git_origin_locator_is_sanitized(tmp_path: Path):
+def test_git_origin_locator_is_sanitized_and_transport_neutral(tmp_path: Path):
     git_dir = tmp_path / ".git"
     git_dir.mkdir()
     (git_dir / "HEAD").write_text("0123456789abcdef\n", encoding="utf-8")
@@ -170,5 +176,5 @@ def test_git_origin_locator_is_sanitized(tmp_path: Path):
 
     locator = repository_locator(tmp_path)
 
-    assert locator == "https://example.com/owner/repo.git"
+    assert locator == "git:example.com/owner/repo"
     assert "secret-token" not in locator
