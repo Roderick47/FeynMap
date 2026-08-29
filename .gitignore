@@ -8,9 +8,11 @@ venv/
 dist/
 build/
 *.egg-info/
+.feynmap/
 feyn_ledger.json
 feyn_ledger_enhanced.json
 feyn_semantic_clusters.json
 feyn_change_impact.json
 feynmap.semantic.json
 feynmap.migration.json
+feynmap.self-analysis.json
