@@ -1,1 +1,1 @@
-FeynMap builds an evidence-backed, machine-readable semantic graph of software so humans and AI agents can reason about repositories without guessing. Language adapters extract syntax/semantics; framework adapters enrich them independently. Includes grounded queries, impact analysis, claim validation, and migration planning foundations.
+FeynMap builds an evidence-backed semantic graph of whole software systems across languages, frameworks, files, processes, APIs and runtime boundaries—grounding humans and AI in what the code can actually prove.
