@@ -10,13 +10,13 @@ from __future__ import annotations
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from .core import SemanticEdge, SemanticGraph, SemanticNode
+from .core import SemanticGraph, SemanticNode
 from .engine import FeynMapEngine
 
 
-DEFAULT_GOLDEN = Path(__file__).resolve().parent.parent / "self_hosting" / "feynmap_golden.json"
+DEFAULT_GOLDEN = Path(__file__).resolve().parent / "data" / "feynmap_golden.json"
 
 
 def _counter(items: Iterable[str]) -> Dict[str, int]:
