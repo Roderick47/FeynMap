@@ -114,10 +114,10 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
             module_node = graph.node("python:module:%s" % parsed_file.module)
 
         for binding in parsed_file.imports.values():
-            resolved = resolved_aliases.get(binding.qualified_name)
+            resolved = _binding_resolution(binding.qualified_name, resolved_aliases, nodes_by_qname)
             if resolved is None:
                 continue
-            target_qname, chain, confidence = resolved
+            target_qname, chain, confidence, strategy = resolved
             target_node = nodes_by_qname.get(target_qname)
             if target_node is None:
                 continue
@@ -125,17 +125,24 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
             if module_node is not None:
                 key = (module_node.id, target_node.id, EdgeKind.IMPORTS.value)
                 if key not in existing_keys:
+                    detector = "python.ast.reexport_import" if strategy == "package_reexport" else "python.ast.package_import_repair"
+                    detail = (
+                        "Resolved import %s through package re-export chain: %s"
+                        % (binding.qualified_name, " -> ".join(chain))
+                        if strategy == "package_reexport"
+                        else "Resolved package-relative import %s to canonical symbol %s"
+                        % (binding.qualified_name, target_qname)
+                    )
                     graph.add_edge(
                         _edge(
                             module_node.id,
                             target_node.id,
                             EdgeKind.IMPORTS,
                             confidence,
-                            "python.ast.reexport_import",
-                            "Resolved import %s through package re-export chain: %s"
-                            % (binding.qualified_name, " -> ".join(chain)),
+                            detector,
+                            detail,
                             SourceLocation(_relative(root, parsed_file.path), binding.line),
-                            {"python_resolution": {"strategy": "package_reexport", "alias_chain": chain}},
+                            {"python_resolution": {"strategy": strategy, "alias_chain": chain}},
                         )
                     )
                     existing_keys.add(key)
@@ -147,7 +154,8 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
                     old_target = graph.node(edge.target)
                     if old_target is None or old_target.kind.value != "external_system":
                         continue
-                    if old_target.qualified_name == binding.qualified_name:
+                    local_name = edge.attributes.get("local_name") if isinstance(edge.attributes, dict) else None
+                    if old_target.qualified_name == binding.qualified_name or local_name == binding.local_name:
                         edges_to_remove.add(edge.id)
 
         for callable_node, source_qname in _iter_callables(parsed_file.module, parsed_file.tree):
@@ -162,29 +170,35 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
                 binding = parsed_file.imports.get(call.func.id)
                 if binding is None:
                     continue
-                resolved = resolved_aliases.get(binding.qualified_name)
+                resolved = _binding_resolution(binding.qualified_name, resolved_aliases, nodes_by_qname)
                 if resolved is None:
                     continue
-                target_qname, chain, confidence = resolved
+                target_qname, chain, confidence, strategy = resolved
                 target_node = nodes_by_qname.get(target_qname)
-                if target_node is None:
+                if target_node is None or target_node.kind.value == "module":
                     continue
                 key = (source_node.id, target_node.id, EdgeKind.CALLS.value)
                 if key in existing_keys:
                     _remove_unresolved(source_node, call.func.id)
                     continue
                 line = getattr(call, "lineno", getattr(callable_node, "lineno", 1))
+                detector = "python.ast.reexport_call" if strategy == "package_reexport" else "python.ast.imported_call_repair"
+                detail = (
+                    "Resolved call %s() through package re-export chain: %s"
+                    % (call.func.id, " -> ".join(chain))
+                    if strategy == "package_reexport"
+                    else "Resolved imported call %s() to canonical symbol %s" % (call.func.id, target_qname)
+                )
                 graph.add_edge(
                     _edge(
                         source_node.id,
                         target_node.id,
                         EdgeKind.CALLS,
                         confidence,
-                        "python.ast.reexport_call",
-                        "Resolved call %s() through package re-export chain: %s"
-                        % (call.func.id, " -> ".join(chain)),
+                        detector,
+                        detail,
                         SourceLocation(_relative(root, parsed_file.path), line),
-                        {"python_resolution": {"strategy": "package_reexport", "alias_chain": chain}},
+                        {"python_resolution": {"strategy": strategy, "alias_chain": chain}},
                     )
                 )
                 existing_keys.add(key)
@@ -196,7 +210,7 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
         graph.edges = [edge for edge in graph.edges if edge.id not in edges_to_remove]
         repaired_external_import_edges = before - len(graph.edges)
         graph._reindex()
-        _remove_orphan_reexport_externals(graph, set(resolved_aliases))
+        _remove_orphan_externals(graph)
 
     graph.metadata["python_reexport_resolution"] = {
         "package_aliases": len(raw_aliases),
@@ -209,6 +223,21 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
     }
     graph.validate()
     return graph
+
+
+def _binding_resolution(
+    qualified_name: str,
+    resolved_aliases: Dict[str, Tuple[str, List[str], float]],
+    nodes_by_qname: Dict[str, SemanticNode],
+) -> Optional[Tuple[str, List[str], float, str]]:
+    direct = nodes_by_qname.get(qualified_name)
+    if direct is not None:
+        return qualified_name, [qualified_name], 1.0, "package_relative_import"
+    resolved = resolved_aliases.get(qualified_name)
+    if resolved is None:
+        return None
+    target, chain, confidence = resolved
+    return target, chain, confidence, "package_reexport"
 
 
 def _parse_python_files(root: Path) -> List[ParsedPythonFile]:
@@ -341,16 +370,12 @@ def _remove_unresolved(node: SemanticNode, raw_call: str) -> None:
         python.pop("unresolved_calls", None)
 
 
-def _remove_orphan_reexport_externals(graph: SemanticGraph, aliases: Set[str]) -> None:
+def _remove_orphan_externals(graph: SemanticGraph) -> None:
     connected = {edge.source for edge in graph.edges} | {edge.target for edge in graph.edges}
     graph.nodes = [
         node
         for node in graph.nodes
-        if not (
-            node.kind.value == "external_system"
-            and node.qualified_name in aliases
-            and node.id not in connected
-        )
+        if not (node.kind.value == "external_system" and node.id not in connected)
     ]
     graph._reindex()
 
