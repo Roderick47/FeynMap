@@ -74,3 +74,44 @@ def test_reexport_call_keeps_alias_chain_as_evidence(tmp_path: Path):
     assert resolution["strategy"] == "package_reexport"
     assert resolution["alias_chain"] == ["pkg.Service", "pkg.impl.Service"]
     assert edge.evidence[0].detector == "python.ast.reexport_call"
+
+
+def test_reexported_type_annotation_grounds_instance_method_call(tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text(
+        "from .impl import Registry\n__all__ = ['Registry']\n",
+        encoding="utf-8",
+    )
+    (package / "impl.py").write_text(
+        "class Registry:\n    def ping(self):\n        return True\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "consumer.py").write_text(
+        "from typing import Optional\n"
+        "from pkg import Registry\n\n"
+        "class Engine:\n"
+        "    def __init__(self, registry: Optional[Registry] = None):\n"
+        "        self.registry = registry or Registry()\n\n"
+        "    def run(self):\n"
+        "        return self.registry.ping()\n",
+        encoding="utf-8",
+    )
+
+    graph = FeynMapEngine().analyze(str(tmp_path), language="python", framework="none")
+    source = next(node for node in graph.nodes if node.qualified_name == "consumer.Engine.run")
+    target = next(node for node in graph.nodes if node.qualified_name == "pkg.impl.Registry.ping")
+    edge = next(
+        edge
+        for edge in graph.edges
+        if edge.source == source.id and edge.target == target.id and edge.kind == EdgeKind.CALLS
+    )
+
+    resolution = edge.attributes["python_resolution"]
+    assert resolution["strategy"] == "instance_attribute_type_reexport"
+    assert resolution["type_alias_chain"] == ["pkg.Registry", "pkg.impl.Registry"]
+    assert edge.evidence[0].detector == "python.ast.instance_attribute_call"
+
+    metadata = graph.metadata["python_attribute_resolution"]
+    assert metadata["reexport_aliases_consulted"] >= 1
+    assert metadata["alias_grounded_call_edges"] >= 1
