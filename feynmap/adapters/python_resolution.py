@@ -217,6 +217,9 @@ def _annotation_type_candidates(
 ) -> Set[str]:
     if node is None:
         return set()
+    index_type = getattr(ast, "Index", None)
+    if index_type is not None and isinstance(node, index_type):
+        return _annotation_type_candidates(node.value, module, imports, nodes_by_qname)
     if isinstance(node, (ast.Name, ast.Attribute)):
         resolved = _resolve_class_name(_render_expr(node), module, imports, nodes_by_qname)
         return {resolved} if resolved else set()
