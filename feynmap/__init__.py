@@ -1,5 +1,6 @@
 """FeynMap: grounded semantic infrastructure for AI-assisted software engineering."""
 from .core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
+from .diff import diff_file_inventories, diff_graphs, diff_snapshots, diff_store_snapshots
 from .engine import FeynMapEngine
 from .integration import IntegrationResolver, add_contract, contracts
 from .migration import MigrationPlanner
@@ -25,5 +26,6 @@ __all__ = [
     "FileFingerprint", "IntegrationResolver", "MigrationPlanner", "NodeKind",
     "RepositorySnapshot", "SemanticEdge", "SemanticGraph", "SemanticNode",
     "SnapshotStore", "SourceLocation", "add_contract", "capture_and_store",
-    "capture_repository_snapshot", "contracts",
+    "capture_repository_snapshot", "contracts", "diff_file_inventories",
+    "diff_graphs", "diff_snapshots", "diff_store_snapshots",
 ]
