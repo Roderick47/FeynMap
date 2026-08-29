@@ -117,27 +117,42 @@ def mark_role(node: SemanticNode, framework: str, kind: NodeKind, role: str, det
     node.evidence.append(Evidence(EvidenceKind.FRAMEWORK, "%s.adapter" % framework, detail, node.location, confidence))
 
 
-def attach_decorator_http_contracts(graph: SemanticGraph, framework: str) -> None:
-    """Extract Flask/FastAPI-style HTTP/WebSocket routes from decorators."""
-    for node in graph.nodes:
-        if node.language != "python" or node.kind != NodeKind.HANDLER:
+def attach_decorator_http_contracts(graph: SemanticGraph, root: Path, framework: str) -> None:
+    """Extract Flask/FastAPI-style HTTP/WebSocket routes directly from AST decorators."""
+    for path in iter_python_files(root):
+        relative = path.relative_to(root).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SyntaxError):
             continue
-        for decorator in node_decorators(node):
-            match = re.search(r"\.?(get|post|put|patch|delete|options|head|websocket)\s*\(\s*['\"]([^'\"]+)['\"]", decorator, re.IGNORECASE)
-            if match:
-                method = match.group(1).upper()
-                path = match.group(2)
-                if method == "WEBSOCKET":
-                    add_contract(node, "websocket_server", path, 0.98, framework=framework)
-                else:
-                    add_contract(node, "http_server", path, 0.99, methods=[method], framework=framework)
+        for definition in (item for item in ast.walk(tree) if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))):
+            semantic_node = _node_for_line(graph, relative, getattr(definition, "lineno", 1))
+            if semantic_node is None or semantic_node.kind != NodeKind.HANDLER:
                 continue
-            route_match = re.search(r"\.route\s*\(\s*['\"]([^'\"]+)['\"](.*)\)", decorator, re.IGNORECASE)
-            if route_match:
-                tail = route_match.group(2)
-                methods_match = re.search(r"methods\s*=\s*\[([^\]]+)\]", tail, re.IGNORECASE)
-                methods = [item.upper() for item in re.findall(r"['\"]([A-Za-z]+)['\"]", methods_match.group(1))] if methods_match else ["GET"]
-                add_contract(node, "http_server", route_match.group(1), 0.99, methods=methods or ["GET"], framework=framework)
+            for decorator in definition.decorator_list:
+                if not isinstance(decorator, ast.Call):
+                    continue
+                decorator_name = _expr_name(decorator.func)
+                short = decorator_name.rsplit(".", 1)[-1].lower()
+                if short in set(HTTP_METHODS) | {"websocket"}:
+                    route = _string(decorator.args[0]) if decorator.args else None
+                    if not route:
+                        continue
+                    if short == "websocket":
+                        add_contract(semantic_node, "websocket_server", route, 0.99, framework=framework)
+                    else:
+                        add_contract(semantic_node, "http_server", route, 0.99, methods=[short.upper()], framework=framework)
+                elif short in {"route", "api_route"}:
+                    route = _string(decorator.args[0]) if decorator.args else None
+                    if not route:
+                        continue
+                    methods: List[str] = []
+                    for keyword in decorator.keywords:
+                        if keyword.arg == "methods" and isinstance(keyword.value, (ast.List, ast.Tuple, ast.Set)):
+                            methods = [value for value in (_string(item) for item in keyword.value.elts) if value]
+                    if not methods:
+                        methods = ["GET"] if short == "route" else ["ANY"]
+                    add_contract(semantic_node, "http_server", route, 0.99, methods=[item.upper() for item in methods], framework=framework)
 
 
 def attach_django_url_contracts(graph: SemanticGraph, root: Path) -> None:
