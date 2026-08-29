@@ -147,6 +147,7 @@ def test_stdio_subprocess_serves_snapshot_without_network(tmp_path: Path):
     from mcp.client.stdio import StdioServerParameters, stdio_client
 
     snapshot, _, store = _stored_project(tmp_path)
+    repo_root = Path(__file__).resolve().parents[1]
     params = StdioServerParameters(
         command=sys.executable,
         args=[
@@ -159,6 +160,7 @@ def test_stdio_subprocess_serves_snapshot_without_network(tmp_path: Path):
             "--snapshot",
             snapshot.snapshot_id,
         ],
+        env={"PYTHONPATH": str(repo_root)},
         cwd=str(tmp_path),
     )
 
