@@ -235,10 +235,6 @@ def build_mcp_server(
             },
         )
 
-    # Expose immutable startup selection as ordinary Python attributes for tests,
-    # embedding, and future transport adapters. They are not MCP protocol state.
-    mcp.feynmap_service = service
-    mcp.feynmap_store = store
     return mcp
 
 
