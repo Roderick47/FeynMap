@@ -1,521 +1,266 @@
-# FeynMap V2 - Portable Code Analysis with Physics-Inspired Notation
+# FeynMap
 
-[![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+**A verifiable semantic map of software for humans and AI.**
 
-FeynMap is a powerful code analysis tool that uses physics-inspired notation to help developers and AI editors understand Python codebase architecture. It currently supports Django, Flask, FastAPI, and generic Python projects. Transform complex code relationships into elegant physics diagrams.
+FeynMap analyzes a repository programmatically, builds a machine-readable model of the system, records the evidence behind relationships, and exposes that model to developers and AI coding agents so they can reason about code with less guessing.
 
-> **Rails support has been removed for now.** FeynMap does not yet include a Ruby parser, so advertising Rails analysis would be misleading. Ruby support may return later through a proper language-adapter implementation.
+FeynMap now treats a repository as a **heterogeneous software system** rather than selecting one dominant language. Python, HTML, JavaScript, frameworks, routes, templates, HTTP calls, subprocesses, files, IPC and other runtime boundaries can coexist in one unified semantic graph.
 
-## 📑 Table of Contents
+## Why FeynMap exists
 
-- [Features](#-features)
-- [Installation](#-installation)
-- [Quick Start](#-quick-start)
-- [Supported Frameworks](#-supported-frameworks)
-- [Output & Examples](#-output--examples)
-- [Physics Notation Guide](#-physics-notation-guide)
-- [Configuration](#️-configuration)
-- [Advanced Usage](#-advanced-usage)
-- [Requirements](#-requirements)
-- [Troubleshooting](#-troubleshooting)
-- [Contributing](#-contributing)
-- [License](#-license)
+AI coding agents are powerful, but large repositories force them to reconstruct architecture from partial context. That creates room for hallucinated files, dependencies, call paths, APIs and change assumptions.
 
-## 🚀 Features
+FeynMap changes the workflow:
 
-- **Python Framework Support**: Django, Flask, FastAPI, and generic Python projects
-- **Physics-Inspired Notation**: Uses particle physics concepts to represent code relationships intuitively
-- **Smart Lazy Loading**: Analyze only the components you care about for faster results
-- **Interaction Chain Depth Tracing**: Recursively follow view → service → utility → model call paths instead of stopping at one-hop relationships
-- **Semantic Similarity Clustering**: Group functionally similar nodes even when they are not directly connected, such as CRUD views for the same model or serializers touching the same data
-- **Change Impact Prediction**: Feed FeynMap a git diff to identify changed graph nodes and recursively trace reverse dependencies to views, serializers, templates, and other likely breakage surfaces
-- **Ghost State Detection**: Automatically identify unused/dead code in your codebase
-- **Enhanced Visualization**: Generate structured data compatible with Feynman diagram tools
-- **Zero Runtime Dependencies**: Uses only Python standard library for core functionality
-- **Configurable Patterns**: Define custom detection rules for your framework or codebase
+```text
+source repository
+      ↓
+detect all applicable languages
+      ↓
+deterministic language analysis
+      ↓
+framework enrichment
+      ↓
+merge language graphs
+      ↓
+cross-language / cross-runtime resolution
+      ↓
+canonical semantic graph + evidence
+      ↓
+query / impact / claim validation / migration planning
+      ↓
+human or AI reasoning
+```
 
-## 📦 Installation
+FeynMap distinguishes between facts that are directly evidenced, relationships that are supported by analysis, inferences, and things that are simply unknown.
 
-### Requirements
+## Core principles
 
-- Python 3.8 or higher
-- pip or poetry
+1. **Programmatic truth first.** ASTs, parsers, symbols, imports, calls, framework metadata, integration boundaries, tests, runtime traces and repository history should ground the graph wherever possible.
+2. **Evidence travels with every fact.** Nodes and edges can carry provenance, source locations, detector identity, confidence and evidence type.
+3. **Unknown is not false.** If FeynMap has no evidence for a relationship, it reports it as unsupported/unresolved rather than pretending the relationship cannot exist.
+4. **Language-independent core.** Python, HTML, JavaScript, TypeScript, Rust, Java, C/C++, C#, Go, Swift, Kotlin and future languages should map into the same ontology through adapters.
+5. **Frameworks enrich languages.** Django, Flask, FastAPI, Spring, NestJS, Axum and similar frameworks add semantics on top of language facts instead of duplicating parsers.
+6. **Cross-language edges are protocol-oriented.** FeynMap resolves `http_client` to `http_server`, `process_spawn` to `cli_entrypoint`, `ffi_import` to `ffi_export`, etc., rather than hard-coding language pairs.
+7. **Physics notation is a view, not the data model.** The Feynman-inspired representation remains useful, but the canonical graph is conventional and reusable by other tools.
+8. **AI consumes the map; AI does not define truth.** AI inference can enrich the model, but it is explicitly labeled and should not silently overwrite programmatic evidence.
 
-### From Source
+## Architecture
+
+```text
+                          Repository
+                              │
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+     PythonAdapter       HTMLAdapter      JavaScriptAdapter
+          │                   │                   │
+          ▼                   ▼                   ▼
+    Python graph          HTML graph          JS graph
+          │                                       │
+          ▼                                       │
+ Django / Flask /                              future
+ FastAPI adapters                              frameworks
+          │                                       │
+          └───────────────────┬───────────────────┘
+                              ▼
+                    Unified Repository Graph
+                              │
+                              ▼
+                    Integration Resolver
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+  Grounded Query        AI Grounding          Migration
+       API                 Service             Planning
+```
+
+See [`docs/ARCHITECTURE_V3.md`](docs/ARCHITECTURE_V3.md) and [`docs/MULTILANGUAGE_ORCHESTRATION.md`](docs/MULTILANGUAGE_ORCHESTRATION.md).
+
+## Current capabilities
+
+### Repository-level multi-language analysis
+
+With `language=auto`, FeynMap runs every registered language adapter that recognizes the repository and merges the results beneath one repository node.
+
+Current V3 language adapters:
+
+- **Python** — modules, classes, functions, methods, imports, project-local calls, inheritance, annotations, async/await and unresolved-call metadata.
+- **HTML** — documents/templates, script loads, DOM event handlers, forms, HTMX requests and internal navigation targets.
+- **JavaScript** — modules, functions, arrow functions, classes, methods, imports, local calls, inheritance plus selected runtime boundaries.
+
+The first JavaScript adapter is dependency-free and deterministic. It is intentionally a foundation that can later be replaced/enriched with Tree-sitter or TypeScript compiler APIs without changing the semantic graph contract.
+
+### Framework enrichment
+
+Python framework meaning is added after language analysis:
+
+- `DjangoAdapter`: models, views/DRF handlers, serializers, middleware, URL route contracts and rendered templates.
+- `FlaskAdapter`: routes, Flask-SQLAlchemy models, Marshmallow schemas, route contracts and rendered templates.
+- `FastAPIAdapter`: route handlers, SQLModel models, Pydantic schemas, HTTP/WebSocket route contracts and templates.
+
+Multiple framework adapters can coexist in one repository when independently detected.
+
+### Cross-language and cross-runtime resolution
+
+The resolver currently understands contracts for:
+
+- HTTP client ↔ server
+- WebSocket client ↔ server
+- RPC client ↔ server
+- queue publish ↔ subscribe
+- subprocess spawn ↔ CLI entrypoint
+- FFI/native import ↔ export
+- IPC send ↔ receive
+- database client ↔ server
+- socket client ↔ server
+- deep link ↔ app route
+- file write ↔ read
+- backend template render ↔ HTML document
+- HTML script load ↔ JavaScript module
+- HTML event handler ↔ JavaScript function
+
+Example:
+
+```text
+Python home()
+    ↓ renders
+index.html
+    ↓ loads
+app.js
+    ↓ contains
+loadItems()
+    ↓ GET /api/items
+Python items()
+```
+
+The same model works outside web development. JavaScript/Python currently emit selected process, file, HTTP, database, FFI, Electron IPC, deep-link and native/mobile bridge contracts. Future Swift/Kotlin/Rust/Java/C++ adapters can meet the same contracts without changing the resolver architecture.
+
+### Grounded reasoning and migration foundations
+
+V3 also provides:
+
+- canonical language-neutral node and edge types
+- provenance/evidence objects
+- confidence tiers: `verified`, `supported`, `inferred`, `unknown`
+- independent language/framework adapter registry
+- integration-resolution evidence
+- unresolved integration-contract reporting
+- grounded dependency/caller/impact queries
+- relationship claim validation for AI fact-checking
+- AI context bundles
+- migration-readiness assessment
+- bounded migration units, initially aimed at future Rust migration
+
+### V2 legacy pipeline
+
+The original framework-aware Python analyzer remains available for compatibility and still includes recursive interaction tracing, semantic clustering, change-impact analysis, reachability/dead-code analysis and physics-inspired notation.
+
+V3 no longer depends on this parser for normal `analyze`, `query`, `claim`, or `migrate-plan` commands.
+
+## Install
 
 ```bash
-git clone https://github.com/Roderick47/FeynMap.git
-cd FeynMap
 pip install -e .
 ```
 
-### As a Python Package
+FeynMap keeps the core dependency-free for now.
+
+## CLI
+
+### Analyze a repository
 
 ```bash
-pip install feynmap
+feynmap analyze .
 ```
 
-## 🎯 Quick Start
+`auto` now means **all positively detected language adapters**, not “pick the best language.”
 
-### Command Line Usage
+You can constrain languages explicitly:
 
 ```bash
-# Analyze current directory (auto-detect framework)
-feynmap .
-
-# Analyze a specific supported framework
-feynmap /path/to/project --framework django
-feynmap /path/to/project --framework flask
-feynmap /path/to/project --framework fastapi
-feynmap /path/to/project --framework generic
-
-# Lazy loading - analyze specific nodes only
-feynmap . --target-nodes "UserView,PostModel"
-
-# Disable lazy loading to analyze entire codebase
-feynmap . --no-lazy-load
-
-# Specify output directory
-feynmap . --output-dir ./analysis_results
-
-# Trace deeper interaction chains (default depth: 4 hops)
-feynmap . --trace-depth 6
-
-# Predict blast radius from the current git diff
-git diff | feynmap . --impact-diff -
-
-# Predict blast radius from a saved patch file
-feynmap . --impact-diff ./my-change.patch --impact-depth 8
+feynmap analyze . --language python
+feynmap analyze . --language python,javascript
 ```
 
-### Python API
+Framework enrichment is auto-detected by default. To request one explicitly or disable it:
+
+```bash
+feynmap analyze . --framework django
+feynmap analyze . --framework fastapi
+feynmap analyze . --framework none
+```
+
+The default output is `feynmap.semantic.json`.
+
+### Query a symbol
+
+```bash
+feynmap query . UserView --kind context --depth 2
+feynmap query . loadItems --kind callers --depth 3
+feynmap query . User --kind impact --depth 4
+```
+
+### Fact-check a claimed relationship
+
+```bash
+feynmap claim . loadItems items --relationship requests
+```
+
+If no matching edge exists, FeynMap reports that it currently has **no evidence** for the claim. It does not claim impossibility.
+
+### Plan a future Rust migration
+
+```bash
+feynmap migrate-plan . --to rust
+```
+
+This does **not** generate Rust yet. It measures evidence coverage, graph confidence, unknown regions and partitions the repository into bounded migration units.
+
+### Run the old V2 output pipeline
+
+```bash
+feynmap legacy . --framework django
+```
+
+## Python API
+
+```python
+from feynmap import FeynMapEngine, FeynMapQuery
+
+engine = FeynMapEngine()
+graph = engine.analyze(".")
+
+print(graph.metadata["language_names"])
+print(graph.metadata["integration"])
+
+query = FeynMapQuery(graph)
+print(query.context_bundle("loadItems", depth=3))
+```
+
+For framework-neutral Python only:
+
+```python
+graph = engine.analyze(".", language="python", framework="none")
+```
+
+The old API remains lazily available:
 
 ```python
 from feynmap import FeynExtractor, FeynNotator
-
-extractor = FeynExtractor("/path/to/project", framework="django")
-graph_data = extractor.scan()
-
-print(f"Found {len(graph_data['nodes'])} nodes")
-print(f"Found {len(graph_data['edges'])} relationships")
-
-ledger = {}
-for node in graph_data["nodes"]:
-    if node["type"] == "VERTEX":
-        trace = [("PROPAGATOR_HTTP", "URL"), ("VERTEX", node["id"])]
-        ledger[node["id"]] = FeynNotator.generate_enhanced_string(trace)
-
-for node_id, notation in ledger.items():
-    print(f"{node_id}: {notation}")
 ```
 
-### Change Impact Predictor
+## Direction
 
-The Change Impact Predictor answers: **“If I change this model, what views, serializers, and templates break?”** It parses a unified git diff, maps changed files and line ranges back to graph nodes, then walks reverse dependency edges. Because FeynMap edges typically point from consumers to dependencies (`View -> Model`, `Template -> variable`, `Serializer -> Model`), reverse traversal reveals the consumer surfaces that may need review after the change.
+Phase 1 (framework-neutral Python) and Phase 1.5 (repository multi-language orchestration and cross-runtime resolution) are now implemented on the V3 refactor branch.
 
-Running with `--impact-diff` produces `feyn_change_impact.json` alongside the normal ledgers:
+The next major phase is the AI grounding service: persistent graph snapshots, incremental updates, repository identity, MCP tools and token-budgeted context retrieval.
 
-```json
-{
-  "changed_nodes": [{"id": "User", "type": "PARTICLE"}],
-  "impacted_nodes": [
-    {"id": "UserSerializer", "type": "TRANSFORM"},
-    {"id": "UserDetailView", "type": "VERTEX"},
-    {"id": "user_detail", "type": "FRONTEND"}
-  ],
-  "risk_summary": {
-    "changed_node_count": 1,
-    "impacted_node_count": 3,
-    "potential_breaking_surfaces": ["UserSerializer", "UserDetailView", "user_detail"]
-  }
-}
-```
+Before broad production use, the integration layer still needs hardening for embedded languages, richer JavaScript/TypeScript parsing, composed/nested routes, protocol schemas, build/container topology and additional native/mobile adapters. See [`ROADMAP.md`](ROADMAP.md).
 
-## 🔧 Supported Frameworks
+## Mission
 
-### Django
-- **Models**: Classes inheriting from `models.Model`
-- **Views**: Classes ending with `View` or `APIView`
-- **Serializers**: Classes ending with `Serializer`
-- **Templates**: `.html` files with Django template syntax
-- **ORM**: `Model.objects.all()`, `Model.objects.get()`, etc.
+> **FeynMap builds a verifiable machine-readable model of a software system so humans and AI can reason about code without guessing.**
 
-### Flask
-- **Models**: Classes inheriting from `db.Model` or `SQLAlchemy`
-- **Views**: Functions with `@app.route` or `@bp.route` decorators
-- **Serializers**: Classes ending with `Schema` or inheriting from `ma.Schema`
-- **Templates**: `.html`, `.jinja`, `.jinja2` files
-- **ORM**: `Model.query.all()`, `db.session.add()`, etc.
+## License
 
-### FastAPI
-- **Models**: Classes inheriting from `BaseModel` or `SQLModel`
-- **Views**: Functions with `@app.` or `@router.` decorators
-- **Serializers**: Classes inheriting from `BaseModel`
-- **Templates**: Typically separate frontend (no template parsing)
-- **ORM**: `session.get()`, `Model.select()`, etc.
-
-### Generic Python
-- Basic pattern detection for Python projects without a supported web framework
-- Configurable rules for custom Python codebases
-
-### Not currently supported
-- Ruby on Rails
-- Other non-Python frameworks
-
-Selecting `framework="rails"` now raises a clear error instead of silently falling back to generic analysis.
-
-## 📊 Output & Examples
-
-FeynMap generates three JSON files in your project directory:
-
-### `feyn_ledger.json` (Simple Notation)
-
-```json
-{
-    "UserView": "g[URL] -> V[UserView] -> ψ[build_user_profile] -> ψ[normalize_email] -> P[User] -> ⊗[UserSerializer]",
-    "PostModel": "P[Post]",
-    "CommentView": "g[URL] -> V[CommentView] -> ψ[load_comment_thread] -> P[Comment] -> P[User] -> ⊗[CommentSerializer]",
-    "AuthMiddleware": "s[async] -> 𝕁[validate_token]"
-}
-```
-
-### `feyn_ledger_enhanced.json` (Rich Metadata)
-
-```json
-{
-    "UserView": {
-        "notation": "g[URL]{ₘ0.1,ᴱ1.0,ᶜ0.9} -> V[UserView]{ₘ2.3,ᴱ2.1,ᶜ0.8} -> P[User]{ₘ1.5,ᴱ0.7,ᶜ0.9} -> ⊗[UserSerializer]{ₘ1.2,ᴱ0.5,ᶜ0.7}",
-        "diagram": {
-            "vertices": [{"id": "UserView", "type": "view", "complexity": 2.3}],
-            "propagators": [{"id": "g[URL]", "type": "http", "activity": 1.0}],
-            "particles": [{"id": "User", "type": "model", "complexity": 1.5}],
-            "interactions": [{"from": "URL", "to": "UserView", "type": "request"}]
-        },
-        "metadata": {
-            "interaction_type": "backend",
-            "complexity": 2.3,
-            "energy": 2.1,
-            "coupling": 0.9,
-            "file_path": "views/users.py",
-            "line_number": 42
-        }
-    }
-}
-```
-
-### `feyn_semantic_clusters.json` (Mental Model Categories)
-
-```json
-{
-    "clusters": [
-        {
-            "id": "semantic_cluster_001",
-            "summary": "Crud Interface around User (create, read, update)",
-            "role": "crud_interface",
-            "data_subjects": ["User"],
-            "intents": ["create", "read", "update"],
-            "members": ["UserCreateView", "UserListView", "UserUpdateView"],
-            "confidence": 0.95
-        }
-    ],
-    "node_memberships": {
-        "UserCreateView": ["semantic_cluster_001"]
-    }
-}
-```
-
-Semantic clusters are also copied onto matching entries in `feyn_ledger_enhanced.json`, so an AI agent can read exact interaction traces and higher-level mental categories from the same enhanced ledger.
-
-### Ghost States Detection Output
-
-```
-[!] GHOST STATES DETECTED (3):
-  - OldUserModel (models.py:156) - No references found
-  - LegacyAuthView (views.py:289) - No references found
-  - DeprecatedSerializer (serializers.py:412) - No references found
-
-Run with --no-lazy-load to analyze the full codebase.
-```
-
-## 🎨 Physics Notation Guide
-
-FeynMap maps software architecture to particle physics concepts for intuitive visualization.
-
-### Force Carriers (Propagators)
-
-These represent different types of communication or flow:
-
-- `g` - Gravity-like (HTTP requests, API calls)
-- `em` - Electromagnetic-like (AJAX calls, WebSocket connections)
-- `w` - Weak-like (background signals, event triggers)
-- `s` - Strong-like (async operations, scheduled tasks)
-
-### Particles
-
-These represent code components:
-
-- `P` - Standard particle (Model/Entity, database table)
-- `V` - Vertex (View/Controller, request handler)
-- `⊗` - Transform (Serializer/Schema, data transformer)
-- `𝔽` - Template state (HTML template, template rendering)
-- `𝕁` - Function state (Utility function, service method)
-
-### Metadata Annotations
-
-These quantify properties of components:
-
-- `ₘ` - Mass/Complexity (0.0-10.0, lines of code normalized)
-- `ᴱ` - Energy/Activity (0.0-10.0, call frequency/importance)
-- `ᶜ` - Charge/Importance (0.0-1.0, criticality to system)
-- `ˢ` - Spin/Rotation (direction of data flow)
-
-### Example Notation Breakdown
-
-```
-g[URL]{ₘ0.1,ᴱ1.0,ᶜ0.9} -> V[UserView]{ₘ2.3,ᴱ2.1,ᶜ0.8} -> P[User]{ₘ1.5,ᴱ0.7,ᶜ0.9} -> ⊗[UserSerializer]{ₘ1.2,ᴱ0.5,ᶜ0.7}
-│                          │                              │                        │
-Gravity carrier (HTTP)     View component                 Model component        Serializer (transformer)
-minimal complexity         moderate complexity            simple model           transforms data
-high importance            high activity                  critical               low activity
-```
-
-## ⚙️ Configuration
-
-### Custom Framework Config
-
-Create a configuration for your custom Python framework:
-
-```python
-from feynmap.config import FrameworkConfig, FRAMEWORKS
-
-class MyFrameworkConfig(FrameworkConfig):
-    framework_name = "myframework"
-
-    def __init__(self):
-        super().__init__()
-        self.model_patterns = [
-            {"type": "class_inheritance", "pattern": "MyModel"}
-        ]
-        self.view_patterns = [
-            {"type": "class_name_suffix", "pattern": "Handler"},
-            {"type": "function_decorator", "pattern": "@route"}
-        ]
-        self.serializer_patterns = [
-            {"type": "class_name_suffix", "pattern": "Transformer"}
-        ]
-
-FRAMEWORKS["myframework"] = MyFrameworkConfig
-
-from feynmap import FeynExtractor
-extractor = FeynExtractor("/path/to/project", framework="myframework")
-```
-
-### Pattern Types
-
-- `class_inheritance`: Detect classes inheriting from specific base classes
-- `class_name_suffix`: Match class names ending with specific suffix
-- `class_decoration`: Detect classes with specific decorators
-- `function_decorator`: Detect functions with specific decorators
-- `function_name_contains`: Match functions with substring in name
-
-### Configuration File
-
-Create a `.feynmap.json` in your project root:
-
-```json
-{
-  "framework": "django",
-  "target_nodes": ["UserView", "PostModel"],
-  "exclude_patterns": ["tests/", "migrations/"],
-  "lazy_load": true,
-  "output_dir": "./feyn_analysis"
-}
-```
-
-## 🧠 Advanced Usage
-
-### Lazy Loading - Targeted Analysis
-
-Analyze only specific components and their dependencies:
-
-```bash
-feynmap . --target-nodes "UserView,PostModel,CommentSerializer"
-```
-
-### Semantic Similarity Clustering
-
-Semantic clustering runs as part of the normal FeynMap pipeline and writes `feyn_semantic_clusters.json` next to the standard ledgers:
-
-```bash
-feynmap . --framework django --trace-depth 6
-```
-
-Use this output when you want to understand a codebase by purpose instead of one node at a time. FeynMap infers cluster membership from explicit graph relationships, data subjects touched by `PARTICLE_ENTANGLEMENT` edges, common CRUD intent in class/function names, serializers/schemas, frontend surfaces, and shared semantic tokens.
-
-### Ghost State Detection
-
-Automatically identify unused code (ghost states):
-
-```bash
-feynmap . --detect-ghosts
-```
-
-### Full Codebase Analysis
-
-Disable lazy loading for complete analysis:
-
-```bash
-feynmap . --no-lazy-load --detect-ghosts
-```
-
-### Recursive Interaction Tracing
-
-FeynMap traces interaction chains recursively from backend vertices and frontend states. In addition to direct view relationships such as `View → Serializer → Model`, it records project-local function and class calls as mediator nodes (`ψ`) and follows them until the configured depth is reached.
-
-```text
-g[URL] -> V[UserView] -> ψ[build_user_profile] -> ψ[normalize_email] -> P[User]
-```
-
-Use `--trace-depth` to increase or reduce chain length. Cycles are ignored per trace path so recursive helpers and repeated service calls do not loop forever.
-
-## 📋 Requirements
-
-### Python Version
-- Python 3.8+
-
-### Dependencies
-- **Core**: None (uses Python standard library only)
-- **Parsing**: Python's built-in `ast` module
-
-### System Requirements
-- 512MB RAM minimum
-- Disk space: ~50MB for installation
-
-### Performance Notes
-
-| Codebase Size | Time (w/ lazy load) | Time (full scan) |
-|---------------|---------------------|------------------|
-| <10K LOC      | <1 second           | 1-2 seconds      |
-| 10K-50K LOC   | 1-3 seconds         | 5-10 seconds     |
-| 50K-200K LOC  | 3-10 seconds        | 15-30 seconds    |
-| 200K+ LOC     | 10-30 seconds       | 60+ seconds      |
-
-## 🔧 Troubleshooting
-
-### Issue: Framework Not Detected
-
-**Problem**: FeynMap can't auto-detect your framework.
-
-**Solutions**:
-```bash
-feynmap . --framework django
-feynmap --list-frameworks
-```
-
-If the repository is not Django, Flask, or FastAPI, use `--framework generic`. Non-Python frameworks are not currently supported.
-
-### Issue: No Output Generated
-
-**Problem**: `feyn_ledger.json` not created.
-
-**Solutions**:
-```bash
-feynmap . --verbose
-feynmap . --framework generic
-```
-
-### Issue: Ghost Detection Too Aggressive
-
-**Problem**: Valid code marked as ghost state.
-
-**Solutions**:
-```bash
-feynmap . --no-detect-ghosts
-feynmap . --detect-ghosts --verbose
-feynmap . --ghost-threshold 0.8
-```
-
-### Issue: Out of Memory on Large Projects
-
-**Solutions**:
-```bash
-feynmap . --target-nodes "AppView,CoreModel" --lazy-load
-feynmap . --exclude "tests/,migrations/,node_modules/"
-feynmap . --framework django --lazy-load
-```
-
-### Issue: Import Errors
-
-**Solutions**:
-```bash
-pip install -r requirements.txt
-cd /path/to/project
-feynmap .
-feynmap . --python-path "/path/to/project"
-```
-
-### Getting Help
-
-- **Documentation**: https://github.com/Roderick47/FeynMap/wiki
-- **Issues**: https://github.com/Roderick47/FeynMap/issues
-- **Discussions**: https://github.com/Roderick47/FeynMap/discussions
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how to get started:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Add tests for new functionality
-4. Ensure all tests pass (`pytest`)
-5. Commit your changes (`git commit -m 'Add AmazingFeature'`)
-6. Push to the branch (`git push origin feature/AmazingFeature`)
-7. Open a Pull Request
-
-### Development Setup
-
-```bash
-git clone https://github.com/Roderick47/FeynMap.git
-cd FeynMap
-pip install -e ".[dev]"
-pytest
-```
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## 🔗 Related Projects
-
-- [FeynDiagram](https://github.com/Roderick47/FeynDiagram) - Visualization tool for FeynMap output
-- [FeynLab](https://github.com/Roderick47/FeynLab) - Experimental features and research
-
-## 📚 Citation
-
-If you use FeynMap in your research or projects, please cite:
-
-```bibtex
-@software{feynmap2024,
-  title={FeynMap: Physics-Inspired Code Analysis for AI-Assisted Development},
-  author={Roderick47},
-  year={2024},
-  url={https://github.com/Roderick47/FeynMap}
-}
-```
-
-## 📈 Roadmap
-
-- [ ] VSCode Extension for real-time analysis
-- [ ] Interactive web dashboard for visualization
-- [ ] Integration with GitHub Actions for CI/CD
-- [ ] Language-adapter architecture for future Rust, Go, Java, and Ruby support
-- [ ] Performance profiling output format
-- [ ] Dependency graph export (GraphML, DOT)
-
----
-
-**FeynMap** - Making code architecture as elegant as particle physics! ⚛️
-
-**Questions?** Open an [issue](https://github.com/Roderick47/FeynMap/issues) or start a [discussion](https://github.com/Roderick47/FeynMap/discussions).
+MIT.

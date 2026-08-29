@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+feyn_ledger.json
+feyn_ledger_enhanced.json
+feyn_semantic_clusters.json
+feyn_change_impact.json
+feynmap.semantic.json
+feynmap.migration.json

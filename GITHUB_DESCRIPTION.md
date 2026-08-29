@@ -1,1 +1,1 @@
-FeynMap: Portable code analysis tool with physics-inspired notation. Understand codebase architecture through particle physics concepts. Supports Django, Flask, FastAPI, Rails. Detects models, views, serializers, relationships. Ghost state detection finds dead code. IDE agent integration for intelligent assistance. Framework-agnostic with configurable patterns.
+FeynMap builds an evidence-backed semantic graph of whole software systems across languages, frameworks, files, processes, APIs and runtime boundaries—grounding humans and AI in what the code can actually prove.
