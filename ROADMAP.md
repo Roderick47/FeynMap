@@ -6,23 +6,35 @@
 - [x] Evidence/provenance model
 - [x] Confidence tiers
 - [x] Adapter interfaces and registry
-- [x] Python V2 compatibility adapter
+- [x] Initial Python V2 compatibility bridge
 - [x] Grounded query API
 - [x] Claim validation
 - [x] Migration-readiness model
 - [x] Migration-unit partitioning
 - [x] Modern package/CLI structure
 
-## Phase 1 — Separate Python from frameworks
+## Phase 1 — Separate Python from frameworks ✅
 
-- [ ] Extract pure Python symbols/imports/calls/types into Python adapter
-- [ ] Move Django semantics into `DjangoAdapter`
-- [ ] Move Flask semantics into `FlaskAdapter`
-- [ ] Move FastAPI semantics into `FastAPIAdapter`
-- [ ] Add first-class module/import graph
-- [ ] Add explicit reads/writes/mutations
-- [ ] Add async/await and concurrency facts
-- [ ] Add package/dependency manifest analysis
+- [x] Replace the V3 Python/V2 bridge with a framework-neutral Python AST adapter
+- [x] Extract Python modules, classes, functions, methods, imports, calls, inheritance, annotations, and async/await facts without framework knowledge
+- [x] Add a first-class module/import graph
+- [x] Move Django classification into `DjangoAdapter`
+- [x] Move Flask classification into `FlaskAdapter`
+- [x] Move FastAPI classification into `FastAPIAdapter`
+- [x] Auto-detect framework adapters independently of language detection
+- [x] Support framework-free analysis with `--framework none`
+- [x] Preserve the V2 framework-aware pipeline only as an explicit legacy compatibility path
+- [x] Add regression tests proving generic Python facts exist before framework enrichment
+
+### Python semantic hardening backlog
+
+These improve Python depth but are no longer prerequisites for Phase 2 because the architectural separation is complete.
+
+- [ ] explicit variable/state read, write, and mutation edges
+- [ ] richer type-resolution and inferred type constraints
+- [ ] package/dependency manifest normalization
+- [ ] dynamic dispatch confidence
+- [ ] decorator/metaclass/plugin semantics beyond framework adapters
 
 ## Phase 2 — AI grounding service
 
