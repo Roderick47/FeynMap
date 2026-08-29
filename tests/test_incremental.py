@@ -5,18 +5,18 @@ from feynmap.incremental import analyze_incrementally, incremental_snapshot, pla
 from feynmap.snapshots import SnapshotStore, capture_repository_snapshot
 
 
-def _fake_git(root: Path) -> None:
+def _fake_git(root: Path, origin: str = "https://example.com/owner/repo.git") -> None:
     git_dir = root / ".git"
     git_dir.mkdir(exist_ok=True)
     (git_dir / "HEAD").write_text("0123456789abcdef0123456789abcdef01234567\n", encoding="utf-8")
     (git_dir / "config").write_text(
-        '[remote "origin"]\n    url = https://example.com/owner/repo.git\n',
+        '[remote "origin"]\n    url = %s\n' % origin,
         encoding="utf-8",
     )
 
 
-def _project(root: Path) -> None:
-    _fake_git(root)
+def _project(root: Path, origin: str = "https://example.com/owner/repo.git") -> None:
+    _fake_git(root, origin=origin)
     (root / "lib.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
     (root / "app.py").write_text(
         "from lib import helper\n\n"
@@ -132,6 +132,44 @@ def test_changed_analysis_options_forbid_reuse(tmp_path: Path):
 
     assert plan.mode == "full_rebuild"
     assert "analysis options" in plan.reason
+
+
+def test_changed_analysis_contract_forbids_reuse(tmp_path: Path):
+    _project(tmp_path)
+    snapshot, graph = _baseline(tmp_path)
+    graph.metadata["analysis_contract_version"] = "0.9.0"
+
+    plan = plan_incremental_analysis(
+        tmp_path,
+        snapshot,
+        graph,
+        analysis_options={"language_selection": "python", "framework_selection": "none"},
+    )
+
+    assert plan.mode == "full_rebuild"
+    assert plan.fallback is True
+    assert "analysis contract" in plan.reason
+
+
+def test_different_repository_identity_forbids_reuse(tmp_path: Path):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    _project(first, origin="https://example.com/owner/first.git")
+    _project(second, origin="https://example.com/owner/second.git")
+    snapshot, graph = _baseline(first)
+
+    plan = plan_incremental_analysis(
+        second,
+        snapshot,
+        graph,
+        analysis_options={"language_selection": "python", "framework_selection": "none"},
+    )
+
+    assert plan.mode == "full_rebuild"
+    assert plan.fallback is True
+    assert "different repository identity" in plan.reason
 
 
 def test_incremental_snapshot_updates_current_pointer(tmp_path: Path):
