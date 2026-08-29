@@ -18,6 +18,12 @@ The Phase 0–1.5 whole-system semantic foundation was merged to `main` at:
 
 The intended version tag is `v3.0.0-alpha.1`. The repository also preserves a `baseline/v3.0.0-alpha.1` branch at the same commit because the connected automation used during development could not create a true Git tag.
 
+The initial self-hosting foundation and first recursive improvement were later merged at:
+
+```text
+bbdf1be4e1aeaa37f08239c9361e8508ab83af35
+```
+
 ## Golden architecture
 
 `feynmap/data/feynmap_golden.json` contains architecture facts that should be discoverable independently of the current analyzer implementation. It is included as package data so an installed FeynMap build can evaluate a checked-out FeynMap repository using the same benchmark.
@@ -40,7 +46,7 @@ default_registry
     CALLS -> FastAPIAdapter
 ```
 
-Some golden relationships are intentionally beyond today's resolver. A missing golden edge is therefore a measured semantic blind spot, not permission to fabricate an edge.
+A missing golden edge is a measured semantic blind spot, not permission to fabricate an edge.
 
 ## Running the benchmark
 
@@ -81,7 +87,7 @@ The report records:
 - expected architecture relationship recall,
 - an aggregate architecture score.
 
-The aggregate score intentionally weights relationships more heavily than symbol presence. Discovering that `IntegrationResolver` exists is useful; discovering how `FeynMapEngine` reaches it is more important for architectural reasoning.
+Relationships are weighted more heavily than mere symbol presence because architecture is primarily about how components interact.
 
 ## Recursive improvement loop
 
@@ -110,20 +116,48 @@ Every improvement must preserve FeynMap's uncertainty rule:
 
 > Fewer unresolved relationships are desirable only when new relationships have evidence. Ambiguous relationships must remain unresolved rather than being guessed.
 
-## First expected blind spot
+## Recursive improvement 1 — typed instance attributes
 
-The current generic Python resolver can resolve direct imported calls and `self.method()` calls when the target method belongs to the same statically known class. It does not yet infer the runtime type of attributes such as `self.resolver`.
-
-Therefore this true architecture relationship is an important early benchmark target:
+The first golden miss was:
 
 ```text
 FeynMapEngine.analyze
     CALLS -> IntegrationResolver.resolve
 ```
 
-The source contains `self.resolver.resolve(merged)`, but proving the target requires connecting constructor assignment/type evidence to later attribute dispatch.
+The source uses `self.resolver.resolve(merged)`. FeynMap now infers instance-attribute types from constructor assignments and annotations, and resolves `self.attribute.method()` only when exactly one target type is statically supported.
 
-That gives Phase 1.6 a concrete first research task: improve attribute/type-aware Python call resolution without guessing dynamic dispatch.
+This is a generic Python capability, not a FeynMap-specific special case.
+
+## Recursive improvement 2 — package re-exports
+
+The next self-analysis gap came from FeynMap's own public adapter imports:
+
+```python
+from .adapters import PythonAdapter, HTMLAdapter, JavaScriptAdapter
+```
+
+Those public names are re-exported from deeper defining modules, including a two-hop framework path such as:
+
+```text
+feynmap.adapters.DjangoAdapter
+    -> feynmap.adapters.frameworks.DjangoAdapter
+    -> feynmap.adapters.frameworks.django.DjangoAdapter
+```
+
+FeynMap now builds a conservative package symbol-alias graph from static package imports and literal `__all__` declarations. It follows re-export chains transitively and creates a call/import edge only when the chain terminates at exactly one known semantic target. The full alias chain is retained in edge evidence.
+
+This pass also repairs package-relative import edges that the original module-oriented relative-import resolver could misclassify inside `__init__.py` files.
+
+## Remaining known blind spots
+
+Current benchmark targets still include:
+
+- explicit variable/state reads, writes and mutation,
+- nested functions as first-class semantic nodes,
+- dynamic dispatch, plugins and metaprogramming,
+- parser-backed JavaScript/TypeScript semantics,
+- build-system and CI execution topology.
 
 ## Quality gates
 
@@ -137,4 +171,4 @@ Phase 1.6 should eventually establish release gates such as:
 6. ambiguous relationships remain labeled unresolved,
 7. each newly resolved golden edge includes evidence and confidence.
 
-The exact numeric thresholds will be set after the first executed baseline report rather than invented in advance.
+The exact numeric thresholds will be set after the first actually executed baseline report rather than invented in advance.
