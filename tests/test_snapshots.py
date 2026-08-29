@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from feynmap import FeynMapEngine
 from feynmap.cli import main
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 from feynmap.snapshots import SnapshotStore, capture_repository_snapshot, repository_locator
@@ -44,6 +45,18 @@ def _graph():
     )
 
 
+def _fake_git_checkout(root: Path, source: str = "def run():\n    return 1\n") -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "app.py").write_text(source, encoding="utf-8")
+    git_dir = root / ".git"
+    git_dir.mkdir()
+    (git_dir / "HEAD").write_text("0123456789abcdef0123456789abcdef01234567\n", encoding="utf-8")
+    (git_dir / "config").write_text(
+        '[remote "origin"]\n    url = https://example.com/owner/repo.git\n',
+        encoding="utf-8",
+    )
+
+
 def test_semantic_graph_roundtrips_from_serialized_form():
     graph = _graph()
     payload = graph.to_dict()
@@ -74,6 +87,31 @@ def test_snapshot_identity_is_stable_and_changes_with_repository_content(tmp_pat
 
     assert changed.content_hash != first.content_hash
     assert changed.snapshot_id != first.snapshot_id
+
+
+def test_equivalent_clones_share_graph_and_snapshot_identity(tmp_path: Path):
+    clone_a = tmp_path / "first-checkout"
+    clone_b = tmp_path / "different-folder-name"
+    _fake_git_checkout(clone_a)
+    _fake_git_checkout(clone_b)
+
+    graph_a = FeynMapEngine().analyze(str(clone_a), language="python", framework="none")
+    graph_b = FeynMapEngine().analyze(str(clone_b), language="python", framework="none")
+    snapshot_a = capture_repository_snapshot(clone_a, graph_a)
+    snapshot_b = capture_repository_snapshot(clone_b, graph_b)
+
+    assert graph_a.to_dict() == graph_b.to_dict()
+    assert snapshot_a.repository_key == snapshot_b.repository_key
+    assert snapshot_a.content_hash == snapshot_b.content_hash
+    assert snapshot_a.graph_hash == snapshot_b.graph_hash
+    assert snapshot_a.snapshot_id == snapshot_b.snapshot_id
+    assert snapshot_a.root_hint != snapshot_b.root_hint
+
+    repository_node = graph_a.node("repository:root")
+    assert repository_node is not None
+    assert repository_node.qualified_name == "repository"
+    assert repository_node.attributes["repository"]["root"] == "."
+    assert graph_a.metadata["project_root"] == "."
 
 
 def test_sqlite_store_roundtrips_graph_and_current_pointer(tmp_path: Path):
