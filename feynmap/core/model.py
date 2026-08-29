@@ -256,7 +256,15 @@ class SemanticGraph:
         return evidenced / float(facts)
 
     def to_dict(self) -> Dict[str, Any]:
-        self.validate()
+        previous = {
+            "errors": list(self.diagnostics.get("errors", [])),
+            "warnings": list(self.diagnostics.get("warnings", [])),
+        }
+        structural = self.validate()
+        self.diagnostics = {
+            "errors": _diagnostic_merge(previous["errors"], structural.get("errors", [])),
+            "warnings": _diagnostic_merge(previous["warnings"], structural.get("warnings", [])),
+        }
         return {
             "schema": SEMANTIC_SCHEMA,
             "schema_version": SEMANTIC_SCHEMA_VERSION,
