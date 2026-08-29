@@ -50,6 +50,6 @@ class FastAPIAdapter(FrameworkAdapter):
                 elif has_base(node, "BaseModel") and imported(imports, "pydantic"):
                     mark_role(node, self.name, NodeKind.TRANSFORMER, "schema", "Pydantic model used as FastAPI schema", 0.94)
 
-        attach_decorator_http_contracts(graph, self.name)
+        attach_decorator_http_contracts(graph, project_path, self.name)
         attach_template_render_contracts(graph, project_path, self.name)
         return finalize(graph, self.name)
