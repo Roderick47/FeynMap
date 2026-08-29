@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple
 
 from .adapters import AdapterRegistry, DjangoAdapter, FastAPIAdapter, FlaskAdapter, HTMLAdapter, JavaScriptAdapter, PythonAdapter
 from .adapters.python_boundaries import enrich_python_boundaries
+from .adapters.python_resolution import enrich_python_attribute_calls
 from .core import SemanticGraph
 from .integration import IntegrationResolver
 from .repository import merge_language_graphs
@@ -39,6 +40,7 @@ class FeynMapEngine:
             graph.metadata.setdefault("language_adapter", language_adapter.name)
             if language_adapter.name == "python":
                 graph = enrich_python_boundaries(graph, root)
+                graph = enrich_python_attribute_calls(graph, root)
 
             if not framework_off:
                 selected_frameworks: List[Tuple[float, object]] = []
@@ -73,7 +75,7 @@ class FeynMapEngine:
 
         if len(analyzed) == 1:
             source_graph = analyzed[0][2]
-            for key in ("adapter", "source_model", "language", "language_adapter", "framework_adapter", "framework_detection_score", "framework_detection_scores"):
+            for key in ("adapter", "source_model", "language", "language_adapter", "framework_adapter", "framework_detection_score", "framework_detection_scores", "python_attribute_resolution"):
                 if key in source_graph.metadata:
                     merged.metadata[key] = source_graph.metadata[key]
 
