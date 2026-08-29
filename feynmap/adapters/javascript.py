@@ -10,8 +10,8 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 from feynmap.integration import add_contract
@@ -69,12 +69,10 @@ class JavaScriptAdapter(LanguageAdapter):
             except (OSError, UnicodeDecodeError) as exc:
                 warnings.append("could not parse %s: %s" % (self._relative(root, path), exc))
                 continue
-            definitions = self._definitions(path, text)
-            parsed.append((path, text, definitions))
+            parsed.append((path, text, self._definitions(path, text)))
 
         module_nodes: Dict[str, SemanticNode] = {}
         definitions_by_name: Dict[str, List[JSDefinition]] = {}
-        definitions_by_id: Dict[str, JSDefinition] = {}
 
         for path, text, definitions in parsed:
             relative = self._relative(root, path)
@@ -92,7 +90,6 @@ class JavaScriptAdapter(LanguageAdapter):
             module_nodes[relative] = module
             for definition in definitions:
                 definitions_by_name.setdefault(definition.name, []).append(definition)
-                definitions_by_id[definition.id] = definition
 
         edge_keys: Set[Tuple[str, str, str]] = set()
         for path, text, definitions in parsed:
@@ -164,6 +161,8 @@ class JavaScriptAdapter(LanguageAdapter):
                     target = graph.node(external_id)
                 if target is not None:
                     self._add_edge(graph, edge_keys, module.id, target.id, EdgeKind.IMPORTS, relative, 1, "javascript.source.import", 0.96)
+                if imported.endswith(".node"):
+                    add_contract(module, "ffi_import", imported, 0.96, platform="node-native-addon")
 
             self._attach_integration_contracts(module, definitions, graph, relative, text)
             if re.search(r"require\.main\s*===\s*module|import\.meta\.main", text):
@@ -178,29 +177,22 @@ class JavaScriptAdapter(LanguageAdapter):
     def _definitions(self, path: Path, text: str) -> List[JSDefinition]:
         definitions: List[JSDefinition] = []
         class_spans: List[Tuple[str, int, int]] = []
-        occupied: Set[Tuple[int, str]] = set()
 
         for match in CLASS_RE.finditer(text):
-            start, end = self._brace_span(text, match.end())
+            body_start, end = self._brace_span(text, match.end())
             line = self._line(text, match.start())
-            end_line = self._line(text, end)
             name = match.group(1)
-            item = JSDefinition(self._id(path, name, line), name, NodeKind.CLASS, path, match.start(), end, line, end_line, extends=match.group(2))
-            definitions.append(item)
-            class_spans.append((name, start, end))
-            occupied.add((match.start(), name))
+            definitions.append(JSDefinition(self._id(path, name, line), name, NodeKind.CLASS, path, match.start(), end, line, self._line(text, end), extends=match.group(2)))
+            class_spans.append((name, body_start, end))
 
         for match in FUNCTION_RE.finditer(text):
             name = match.group(1)
-            start, end = self._brace_span(text, match.end())
+            _, end = self._brace_span(text, match.end())
             line = self._line(text, match.start())
             definitions.append(JSDefinition(self._id(path, name, line), name, NodeKind.FUNCTION, path, match.start(), end, line, self._line(text, end)))
-            occupied.add((match.start(), name))
 
         for match in ARROW_RE.finditer(text):
             name = match.group(1)
-            if (match.start(), name) in occupied:
-                continue
             brace = text.find("{", match.end(), min(len(text), match.end() + 240))
             if brace >= 0:
                 _, end = self._brace_span(text, brace)
@@ -217,7 +209,8 @@ class JavaScriptAdapter(LanguageAdapter):
                 absolute = body_start + match.start()
                 if name in {"if", "for", "while", "switch", "catch"}:
                     continue
-                start, end = self._brace_span(text, body_start + match.end())
+                method_brace = body_start + match.end() - 1
+                _, end = self._brace_span(text, method_brace)
                 if end > body_end:
                     continue
                 line = self._line(text, absolute)
@@ -261,6 +254,13 @@ class JavaScriptAdapter(LanguageAdapter):
 
         for match in re.finditer(r"\b(?:Linking\.openURL|openURL)\s*\(\s*['\"]([^'\"]+)['\"]", text):
             add_contract(owner(match.start()), "deep_link", match.group(1), 0.9, platform="app", line=self._line(text, match.start()))
+
+        for match in re.finditer(r"\bNativeModules\.([A-Za-z_$][A-Za-z0-9_$]*)\.", text):
+            add_contract(owner(match.start()), "ffi_import", match.group(1), 0.88, platform="react-native", line=self._line(text, match.start()))
+        for match in re.finditer(r"\bwindow\.ReactNativeWebView\.postMessage\s*\(", text):
+            add_contract(owner(match.start()), "ipc_send", "react-native-webview", 0.9, platform="react-native-webview", line=self._line(text, match.start()))
+        for match in re.finditer(r"\bwebkit\.messageHandlers\.([A-Za-z_$][A-Za-z0-9_$]*)\.postMessage\s*\(", text):
+            add_contract(owner(match.start()), "ipc_send", match.group(1), 0.92, platform="ios-wkwebview", line=self._line(text, match.start()))
 
         for match in re.finditer(r"\bprocess\.env\.([A-Za-z_][A-Za-z0-9_]*)", text):
             add_contract(owner(match.start()), "config_read", "env:%s" % match.group(1), 0.98, line=self._line(text, match.start()))
