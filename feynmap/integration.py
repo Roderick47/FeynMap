@@ -34,13 +34,13 @@ def add_contract(
     for key, value in fields.items():
         if value is not None:
             payload[key] = value
-    contracts = node.attributes.setdefault(CONTRACT_KEY, [])
-    if not isinstance(contracts, list):
-        contracts = []
-        node.attributes[CONTRACT_KEY] = contracts
+    raw_contracts = node.attributes.setdefault(CONTRACT_KEY, [])
+    if not isinstance(raw_contracts, list):
+        raw_contracts = []
+        node.attributes[CONTRACT_KEY] = raw_contracts
     fingerprint = _contract_fingerprint(payload)
-    if not any(_contract_fingerprint(item) == fingerprint for item in contracts if isinstance(item, dict)):
-        contracts.append(payload)
+    if not any(_contract_fingerprint(item) == fingerprint for item in raw_contracts if isinstance(item, dict)):
+        raw_contracts.append(payload)
 
 
 def contracts(node: SemanticNode, kind: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -62,6 +62,7 @@ class IntegrationResolver:
         ("deep_link", "app_route", EdgeKind.ROUTES_TO),
         ("ipc_send", "ipc_receive", EdgeKind.FLOWS_TO),
         ("database_client", "database_server", EdgeKind.CONNECTS_TO),
+        ("socket_client", "socket_server", EdgeKind.CONNECTS_TO),
     )
 
     def resolve(self, graph: SemanticGraph) -> SemanticGraph:
@@ -230,6 +231,8 @@ class IntegrationResolver:
                 "integration": {
                     "source_contract": source_contract,
                     "target_contract": target_contract,
+                    "source_fingerprint": list(_contract_fingerprint(source_contract)),
+                    "target_fingerprint": list(_contract_fingerprint(target_contract)) if target_contract else None,
                     "cross_language": source.language != target.language,
                 }
             },
@@ -239,15 +242,23 @@ class IntegrationResolver:
         return True
 
     def _unresolved_contracts(self, graph: SemanticGraph) -> List[Dict[str, Any]]:
-        connected: set = set()
+        resolved: set = set()
         for edge in graph.edges:
-            if edge.attributes.get("integration"):
-                connected.add(edge.source)
-                connected.add(edge.target)
+            integration = edge.attributes.get("integration")
+            if not isinstance(integration, dict):
+                continue
+            source_contract = integration.get("source_contract")
+            target_contract = integration.get("target_contract")
+            if isinstance(source_contract, dict):
+                resolved.add((edge.source, _contract_fingerprint(source_contract)))
+            if isinstance(target_contract, dict):
+                resolved.add((edge.target, _contract_fingerprint(target_contract)))
+
         result: List[Dict[str, Any]] = []
         for node in graph.nodes:
             for item in contracts(node):
-                if node.id not in connected and item.get("kind") not in {"config_read"}:
+                key = (node.id, _contract_fingerprint(item))
+                if key not in resolved and item.get("kind") not in {"config_read"}:
                     result.append({"node": node.id, "kind": item.get("kind"), "target": item.get("target")})
         return result
 
@@ -264,7 +275,18 @@ def _contracts_match(source: Dict[str, Any], target: Dict[str, Any], source_kind
         return source_method in methods or "ANY" in methods
     if source_kind == "websocket_client" and target_kind == "websocket_server":
         return _http_route_matches(source_target, target_target)
-    return _normalize_channel(source_target) == _normalize_channel(target_target)
+
+    source_values = {_normalize_channel(value) for value in _contract_values(source)}
+    target_values = {_normalize_channel(value) for value in _contract_values(target)}
+    return bool(source_values & target_values)
+
+
+def _contract_values(contract: Dict[str, Any]) -> List[str]:
+    values = [str(contract.get("target", ""))]
+    aliases = contract.get("aliases")
+    if isinstance(aliases, list):
+        values.extend(str(item) for item in aliases)
+    return [value for value in values if value]
 
 
 def _http_route_matches(client: str, server: str) -> bool:
@@ -274,13 +296,25 @@ def _http_route_matches(client: str, server: str) -> bool:
         return False
     if client_path == server_path:
         return True
-    escaped = re.escape(server_path)
-    escaped = re.sub(r"\\\{[^/]+?\\\}", r"[^/]+", escaped)
-    escaped = re.sub(r"\\<(?:(?:int|str|slug|uuid|path):)?[^>]+\\>", r"[^/]+", escaped)
+    pattern = _route_pattern(server_path)
     try:
-        return re.fullmatch(escaped.rstrip("/") + "/?", client_path) is not None
+        return re.fullmatch(pattern.rstrip("/") + "/?", client_path) is not None
     except re.error:
         return False
+
+
+def _route_pattern(route: str) -> str:
+    token_re = re.compile(r"(\{[^{}]+\}|<(?:(?:int|str|slug|uuid|path):)?[^<>]+>)")
+    parts = token_re.split(route)
+    result: List[str] = []
+    for part in parts:
+        if not part:
+            continue
+        if token_re.fullmatch(part):
+            result.append(".+" if part.startswith("<path:") else "[^/]+")
+        else:
+            result.append(re.escape(part))
+    return "".join(result)
 
 
 def _url_path(value: str) -> str:
@@ -328,11 +362,15 @@ def _best_path_match(nodes: Iterable[SemanticNode], target: str, prefer_modules:
     return candidates[0] if len(candidates) == 1 else None
 
 
-def _contract_fingerprint(payload: Dict[str, Any]) -> Tuple[Any, ...]:
+def _contract_fingerprint(payload: Optional[Dict[str, Any]]) -> Tuple[Any, ...]:
+    if not isinstance(payload, dict):
+        return ()
+    aliases = payload.get("aliases", [])
     return (
         payload.get("kind"),
         payload.get("target"),
         payload.get("method"),
         tuple(payload.get("methods", [])) if isinstance(payload.get("methods"), list) else payload.get("methods"),
         payload.get("channel"),
+        tuple(aliases) if isinstance(aliases, list) else aliases,
     )
