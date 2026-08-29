@@ -111,7 +111,9 @@ These remain useful improvements but do not block stored-graph/MCP work over alr
 
 Phase 2 starts with persistent repository identity so coding agents do not force a full reparse on every request.
 
-### Phase 2A — Repository snapshots and persistence 🚧
+### Phase 2A — Repository snapshots and persistence ✅
+
+The Phase 2A foundation is complete. True changed-file fragment reuse remains a performance optimization, not a correctness or MCP blocker.
 
 - [x] Semantic graph deserialization with schema/version checks and diagnostic preservation
 - [x] Repository locator and snapshot/hash identity
@@ -131,20 +133,31 @@ Phase 2 starts with persistent repository identity so coding agents do not force
 - [x] Full-rebuild fallback whenever changed-fragment equivalence cannot yet be proven
 - [x] Token-budgeted context primitives over a stored snapshot
 - [x] Add `feynmap incremental` and `feynmap stored-query` workflows
+
+#### Phase 2A optimization backlog
+
 - [ ] True changed-file semantic fragment reuse with adapter-level partial parse/merge conformance
 
 See `docs/SNAPSHOTS.md` for the snapshot identity/persistence contract and `docs/INCREMENTAL_CONTEXT.md` for incremental/context safety semantics.
 
-### Phase 2B — MCP grounding service
+### Phase 2B — MCP grounding service 🚧
 
-- [ ] MCP server transport
-- [ ] repository/snapshot-aware grounding service
-- [ ] `get_symbol`, `find_callers`, `find_dependencies`, `trace_path`, `find_integrations`
-- [ ] `validate_claim`, `change_impact`, `explain_evidence`, `unresolved`
-- [ ] `semantic_diff` and snapshot inspection tools
-- [ ] context bundles that do not reparse the repository per request
+Groundwork has started, but no MCP SDK/transport or remote hosting dependency has been introduced yet.
 
-The stored snapshot/context service is now the intended substrate for Phase 2B. MCP should wrap these transport-neutral operations rather than invoke repository analysis per tool call.
+- [x] Transport-neutral repository/snapshot-aware `GroundingService`
+- [x] Versioned read-only grounding tool catalog with JSON Schema 2020-12 inputs
+- [x] Service-layer `get_symbol`, `find_callers`, `find_dependencies`, `trace_path`, `find_integrations`
+- [x] Service-layer `validate_claim`, `change_impact`, `explain_evidence`, `unresolved`
+- [x] Service-layer `semantic_diff`, repository summary, and token-budgeted `context_bundle`
+- [x] Keep MCP/application contracts independent of Python server internals for future Rust compatibility
+- [ ] Decide MCP runtime packaging: raise Python floor to 3.10+, optional 3.10+ MCP component, or another split
+- [ ] Register the grounding catalog with the official MCP SDK
+- [ ] Local stdio MCP server transport and protocol/conformance tests
+- [ ] Remote Streamable HTTP transport
+- [ ] Remote authentication/authorization and tenant/repository access controls
+- [ ] Production hosting/shared-storage deployment
+
+See `docs/MCP_GROUNDING.md` for the tool boundary, transport plan, hosting choices and the project-owner decisions required before remote deployment.
 
 ## Phase 3 — More language adapters
 
