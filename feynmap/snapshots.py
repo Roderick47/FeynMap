@@ -10,12 +10,13 @@ from __future__ import annotations
 import configparser
 import hashlib
 import json
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import urlsplit, urlunsplit
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlsplit
 
 from .core.model import SEMANTIC_SCHEMA_VERSION, SemanticGraph
 
@@ -201,15 +202,45 @@ def _git_revision(root: Path) -> Optional[str]:
     return None
 
 
-def _sanitize_locator(value: str) -> str:
+def _normalize_repository_path(path: str) -> str:
+    normalized = path.strip().replace("\\", "/").strip("/")
+    if normalized.endswith(".git"):
+        normalized = normalized[:-4]
+    return normalized.rstrip("/")
+
+
+def _canonical_git_locator(value: str) -> str:
+    """Normalize common Git transport forms to a host/path repository identity.
+
+    `https://host/org/repo.git`, `ssh://git@host/org/repo.git`, and
+    `git@host:org/repo.git` therefore identify the same repository. Embedded
+    credentials and transport-specific user names are not retained.
+    """
     text = value.strip()
-    if "://" not in text:
+    if not text:
         return text
-    parts = urlsplit(text)
-    hostname = parts.hostname or ""
-    if parts.port:
-        hostname = "%s:%s" % (hostname, parts.port)
-    return urlunsplit((parts.scheme, hostname, parts.path, parts.query, parts.fragment))
+
+    if "://" in text:
+        parts = urlsplit(text)
+        host = (parts.hostname or "").lower()
+        path = _normalize_repository_path(parts.path)
+        if host and path:
+            port = parts.port
+            authority = "%s:%s" % (host, port) if port else host
+            return "git:%s/%s" % (authority, path)
+        return text
+
+    # Git's common scp-like SSH syntax: git@github.com:owner/repo.git
+    if not (len(text) >= 2 and text[1] == ":"):
+        match = re.match(r"^(?:[^@/]+@)?([^:/]+):(.+)$", text)
+        if match:
+            host = match.group(1).lower()
+            path = _normalize_repository_path(match.group(2))
+            if host and path:
+                return "git:%s/%s" % (host, path)
+
+    # Local-path remotes are intentionally not made cross-machine portable.
+    return text
 
 
 def _git_origin(root: Path) -> Optional[str]:
@@ -229,7 +260,7 @@ def _git_origin(root: Path) -> Optional[str]:
         value = parser.get(section, "url")
     except (configparser.Error, KeyError):
         return None
-    return _sanitize_locator(value) if value else None
+    return _canonical_git_locator(value) if value else None
 
 
 def repository_locator(project_path: Path) -> str:
@@ -260,6 +291,7 @@ def capture_repository_snapshot(
             if key in graph.metadata:
                 options[key] = graph.metadata[key]
     identity_payload = {
+        "snapshot_schema_version": SNAPSHOT_SCHEMA_VERSION,
         "repository_key": repository_key,
         "revision": revision,
         "content_hash": content_hash,

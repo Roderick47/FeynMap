@@ -122,9 +122,10 @@ Phase 2 starts with persistent repository identity so coding agents do not force
 - [x] Stored graph hash verification on load
 - [x] Exclude `.feynmap` state from repository content identity
 - [x] Add `feynmap snapshot` analyze-once-and-persist workflow
-- [ ] Normalize repository-root semantic identity so graph/snapshot hashes can be clone-independent
-- [ ] File-inventory diff between repository snapshots
-- [ ] Semantic graph diffing between repository snapshots
+- [x] Normalize repository-root semantic identity for clone-independent graph/snapshot hashes
+- [x] File-inventory diff between repository snapshots
+- [x] Semantic graph diffing between repository snapshots
+- [x] Add `feynmap diff` stored-snapshot workflow without reparsing historical states
 - [ ] Incremental analysis driven by changed-file inventory
 - [ ] Token-budgeted context primitives over a stored snapshot
 
@@ -136,6 +137,7 @@ See `docs/SNAPSHOTS.md` for the snapshot identity and persistence contract.
 - [ ] repository/snapshot-aware grounding service
 - [ ] `get_symbol`, `find_callers`, `find_dependencies`, `trace_path`, `find_integrations`
 - [ ] `validate_claim`, `change_impact`, `explain_evidence`, `unresolved`
+- [ ] `semantic_diff` and snapshot inspection tools
 - [ ] context bundles that do not reparse the repository per request
 
 ## Phase 3 — More language adapters
@@ -164,6 +166,8 @@ JavaScript is now present as the first non-Python implementation and should late
 
 ## Phase 5 — Rust migration engine
 
+This phase is about FeynMap helping migrate *other software* into Rust. It is separate from the later Rust-native implementation of FeynMap itself.
+
 - [ ] source type constraints
 - [ ] mutation graph
 - [ ] ownership/lifetime evidence
@@ -185,3 +189,20 @@ JavaScript is now present as the first non-Python implementation and should late
 - [ ] IDE integrations
 - [ ] CI/change-review integration
 - [ ] graph storage backends for very large repositories
+
+## Phase 7 — Rust-native FeynMap implementation
+
+After the Python/reference architecture, snapshot model, query API, MCP surface, and adapter contracts are stable, implement FeynMap itself in Rust for lower latency, stronger concurrency, and efficient API/MCP deployment.
+
+The Rust implementation should be a compatible implementation of the same contracts rather than a separate product.
+
+- [ ] Freeze/version the semantic graph, evidence, snapshot, diff, and MCP contracts for cross-runtime compatibility
+- [ ] Add Python ↔ Rust conformance fixtures: identical inputs must produce contract-compatible semantic outputs
+- [ ] Port the language-neutral ontology and semantic graph core to Rust
+- [ ] Port repository identity, hashing, snapshot persistence, and semantic diffing to Rust
+- [ ] Port grounded query/claim/impact/context services to Rust
+- [ ] Implement the MCP server and API service natively in Rust
+- [ ] Port or replace language adapters with Rust/parser-backed implementations where performance justifies it
+- [ ] Preserve compatibility with snapshots produced by the Python reference implementation
+- [ ] Benchmark latency, throughput, memory use, startup time, and incremental-analysis performance against the Python implementation
+- [ ] Keep Python bindings/client libraries where they are useful without making the Rust service depend on Python at runtime

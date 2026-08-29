@@ -11,7 +11,7 @@ from .engine import FeynMapEngine
 from .migration import MigrationPlanner
 from .query import FeynMapQuery
 
-COMMANDS = {"analyze", "query", "claim", "migrate-plan", "self-check", "snapshot", "legacy"}
+COMMANDS = {"analyze", "query", "claim", "migrate-plan", "self-check", "snapshot", "diff", "legacy"}
 
 
 def _write(payload: Dict[str, Any], output: Optional[str]) -> None:
@@ -78,6 +78,13 @@ def build_parser() -> argparse.ArgumentParser:
     snapshot.add_argument("--language", default="auto", help=_language_help())
     snapshot.add_argument("--framework", default="auto", help=_framework_help())
 
+    snapshot_diff = sub.add_parser("diff", help="Compare two stored repository semantic snapshots without reparsing")
+    snapshot_diff.add_argument("before", help="Before snapshot ID")
+    snapshot_diff.add_argument("after", help="After snapshot ID")
+    snapshot_diff.add_argument("--path", default=".", help="Repository checkout used to locate the default store")
+    snapshot_diff.add_argument("--store", help="SQLite snapshot store; defaults to <path>/.feynmap/snapshots.sqlite")
+    snapshot_diff.add_argument("--output", "-o")
+
     legacy = sub.add_parser("legacy", help="Run the V2 physics-notation pipeline")
     legacy.add_argument("path", nargs="?", default=".")
     legacy.add_argument("--framework", default="auto")
@@ -127,6 +134,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         payload["store"] = str(store.path)
         payload["current"] = True
         _write(payload, None)
+        return 0
+
+    if args.command == "diff":
+        from .diff import diff_store_snapshots
+        from .snapshots import SnapshotStore
+
+        root = Path(args.path).resolve()
+        store_path = Path(args.store).expanduser() if args.store else root / ".feynmap" / "snapshots.sqlite"
+        _write(diff_store_snapshots(SnapshotStore(store_path), args.before, args.after), args.output)
         return 0
 
     graph = FeynMapEngine().analyze(args.path, language=args.language, framework=args.framework)
