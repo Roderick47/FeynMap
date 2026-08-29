@@ -52,6 +52,6 @@ class FlaskAdapter(FrameworkAdapter):
                 elif has_base(node, "Schema") and (imported(imports, "marshmallow") or imported(imports, "flask_marshmallow")):
                     mark_role(node, self.name, NodeKind.TRANSFORMER, "serializer", "Marshmallow schema used by Flask application", 0.94)
 
-        attach_decorator_http_contracts(graph, self.name)
+        attach_decorator_http_contracts(graph, project_path, self.name)
         attach_template_render_contracts(graph, project_path, self.name)
         return finalize(graph, self.name)
