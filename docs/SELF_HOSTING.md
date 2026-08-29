@@ -20,7 +20,7 @@ The intended version tag is `v3.0.0-alpha.1`. The repository also preserves a `b
 
 ## Golden architecture
 
-`self_hosting/feynmap_golden.json` contains architecture facts that should be discoverable independently of the current analyzer implementation.
+`feynmap/data/feynmap_golden.json` contains architecture facts that should be discoverable independently of the current analyzer implementation. It is included as package data so an installed FeynMap build can evaluate a checked-out FeynMap repository using the same benchmark.
 
 Examples include:
 
