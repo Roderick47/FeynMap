@@ -1,8 +1,10 @@
+import json
 from pathlib import Path
 
 import pytest
 
 from feynmap import FeynMapEngine
+from feynmap.cli import main
 from feynmap.diff import diff_snapshots, diff_store_snapshots
 from feynmap.snapshots import SnapshotStore, capture_repository_snapshot
 
@@ -21,14 +23,14 @@ def _analyze(root: Path):
     return FeynMapEngine().analyze(str(root), language="python", framework="none")
 
 
-def test_snapshot_diff_reports_file_and_semantic_changes(tmp_path: Path):
-    _fake_git(tmp_path)
-    app = tmp_path / "app.py"
+def _stored_pair(root: Path):
+    _fake_git(root)
+    app = root / "app.py"
     app.write_text("def run():\n    return 1\n", encoding="utf-8")
+    store = SnapshotStore(root / ".feynmap" / "snapshots.sqlite")
 
-    before_graph = _analyze(tmp_path)
-    before_snapshot = capture_repository_snapshot(tmp_path, before_graph)
-    store = SnapshotStore(tmp_path / ".feynmap" / "snapshots.sqlite")
+    before_graph = _analyze(root)
+    before_snapshot = capture_repository_snapshot(root, before_graph)
     store.save(before_snapshot, before_graph)
 
     app.write_text(
@@ -38,9 +40,14 @@ def test_snapshot_diff_reports_file_and_semantic_changes(tmp_path: Path):
         "    return helper()\n",
         encoding="utf-8",
     )
-    after_graph = _analyze(tmp_path)
-    after_snapshot = capture_repository_snapshot(tmp_path, after_graph)
+    after_graph = _analyze(root)
+    after_snapshot = capture_repository_snapshot(root, after_graph)
     store.save(after_snapshot, after_graph)
+    return store, before_snapshot, after_snapshot
+
+
+def test_snapshot_diff_reports_file_and_semantic_changes(tmp_path: Path):
+    store, before_snapshot, after_snapshot = _stored_pair(tmp_path)
 
     delta = diff_store_snapshots(store, before_snapshot.snapshot_id, after_snapshot.snapshot_id)
 
@@ -61,6 +68,27 @@ def test_snapshot_diff_reports_file_and_semantic_changes(tmp_path: Path):
         for item in delta["semantic"]["relationships"]["added"]
     }
     assert "python:symbol:app.run|calls|python:symbol:app.helper" in added_relationship_keys
+
+
+def test_snapshot_diff_cli_loads_stored_graphs_without_reanalysis(tmp_path: Path, capsys):
+    store, before_snapshot, after_snapshot = _stored_pair(tmp_path)
+
+    result = main(
+        [
+            "diff",
+            before_snapshot.snapshot_id,
+            after_snapshot.snapshot_id,
+            "--store",
+            str(store.path),
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert result == 0
+    assert payload["before_snapshot_id"] == before_snapshot.snapshot_id
+    assert payload["after_snapshot_id"] == after_snapshot.snapshot_id
+    assert payload["files"]["modified"] == ["app.py"]
+    assert payload["semantic"]["nodes"]["added_count"] >= 1
 
 
 def test_snapshot_diff_rejects_different_repositories(tmp_path: Path):
