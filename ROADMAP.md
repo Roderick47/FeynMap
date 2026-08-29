@@ -28,13 +28,45 @@
 
 ### Python semantic hardening backlog
 
-These improve Python depth but are no longer prerequisites for Phase 2 because the architectural separation is complete.
+These improve Python depth but are no longer architectural blockers.
 
 - [ ] explicit variable/state read, write, and mutation edges
 - [ ] richer type-resolution and inferred type constraints
 - [ ] package/dependency manifest normalization
 - [ ] dynamic dispatch confidence
 - [ ] decorator/metaclass/plugin semantics beyond framework adapters
+
+## Phase 1.5 — Repository orchestration & integration resolution ✅
+
+FeynMap now treats a repository as a heterogeneous software system rather than choosing one dominant language.
+
+- [x] Detect and run every applicable language adapter in one repository scan
+- [x] Merge language graphs under one repository root while preserving node identity/evidence
+- [x] Apply multiple framework adapters independently where applicable
+- [x] Add framework-neutral HTML analysis
+- [x] Add initial framework-neutral JavaScript analysis
+- [x] Map multiple JavaScript functions/classes/methods and local calls
+- [x] Resolve Python/framework template rendering → HTML
+- [x] Resolve HTML script loading → JavaScript modules
+- [x] Resolve HTML event handlers → JavaScript functions
+- [x] Resolve JavaScript HTTP requests → Python framework endpoints
+- [x] Add framework-neutral Python HTTP/process/file/database/FFI boundary extraction
+- [x] Add JavaScript WebSocket/process/file/Electron/deep-link/native-bridge boundary extraction
+- [x] Add a language-neutral integration-contract model
+- [x] Resolve non-web channels: subprocess/CLI, queues, files, FFI, IPC, databases, sockets, deep links/app routes
+- [x] Preserve unresolved/ambiguous boundaries instead of guessing
+- [x] Track integration resolution at individual-contract granularity
+- [x] Add mixed-language and non-web regression tests
+
+### Integration hardening backlog
+
+- [ ] embedded-language regions (inline `<script>`, Vue/Svelte single-file components, templated JS/CSS)
+- [ ] richer JavaScript parsing via Tree-sitter/TypeScript compiler APIs
+- [ ] route-prefix composition (`include_router`, nested routers, mounted apps, reverse routing)
+- [ ] CSS/assets and bundler-generated dependency graphs
+- [ ] protocol schemas (OpenAPI, protobuf/gRPC, GraphQL schemas)
+- [ ] container/process topology from Docker/Compose/Kubernetes
+- [ ] build-system orchestration (Make, Gradle, Cargo build scripts, npm scripts, CI workflows)
 
 ## Phase 2 — AI grounding service
 
@@ -45,18 +77,20 @@ These improve Python depth but are no longer prerequisites for Phase 2 because t
 - [ ] `validate_claim`, `change_impact`
 - [ ] token-budgeted context bundles
 
-## Phase 3 — More languages
+## Phase 3 — More language adapters
 
 Suggested order based on reuse and migration value:
 
-1. TypeScript / JavaScript
+1. TypeScript
 2. Rust
 3. Java
 4. C / C++
 5. C#
 6. Go
+7. Swift / Kotlin for native/mobile application graphs
+8. Shell and build/config languages where they materially affect execution topology
 
-Framework adapters can then be added independently: Express/NestJS, Spring, ASP.NET, etc.
+JavaScript is now present as the first non-Python implementation and should later be upgraded with a parser-backed adapter. Framework adapters can then be added independently: Express/NestJS, Spring, ASP.NET, Axum/Actix, Android/iOS frameworks, etc.
 
 ## Phase 4 — Multi-source truth
 
