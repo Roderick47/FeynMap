@@ -4,23 +4,34 @@ This pass stays framework-neutral. It resolves calls such as
 ``self.resolver.resolve()`` only when the repository contains enough static
 evidence to identify exactly one possible type for ``self.resolver``.
 
-The first use case is FeynMap's own ``FeynMapEngine``: ``self.resolver`` is
-assigned from an ``Optional[IntegrationResolver]`` parameter or from an
-``IntegrationResolver()`` constructor. That evidence is sufficient to connect
-``FeynMapEngine.analyze`` to ``IntegrationResolver.resolve`` without guessing.
+Package re-export evidence is also consumed. For example, an annotation imported
+as ``from feynmap.adapters import AdapterRegistry`` can be grounded to the
+canonical ``feynmap.adapters.base.AdapterRegistry`` definition before resolving
+``self.registry.detect_languages()``.
 """
 from __future__ import annotations
 
 import ast
 import hashlib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 
+from .python_reexports import ResolvedAlias, python_reexport_aliases
+
 
 EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache"}
 OPTIONAL_WRAPPERS = {"Optional", "Union", "Annotated"}
+CLASS_KINDS = {"class", "data_model", "service", "handler", "transformer", "middleware"}
+
+
+@dataclass(frozen=True)
+class ResolvedType:
+    qualified_name: str
+    alias_chain: Tuple[str, ...] = ()
+    confidence: float = 1.0
 
 
 class _MethodCallCollector(ast.NodeVisitor):
@@ -55,9 +66,9 @@ class _MethodCallCollector(ast.NodeVisitor):
 def enrich_python_attribute_calls(graph: SemanticGraph, project_path: Path) -> SemanticGraph:
     """Resolve statically provable ``self.attribute.method()`` calls.
 
-    A relationship is added only when attribute evidence produces exactly one
-    method target. Multiple candidate target types are intentionally left
-    unresolved.
+    A relationship is added only when constructor/annotation evidence produces
+    exactly one method target. Re-export aliases may ground the type, but cycles
+    or ambiguous aliases remain unresolved.
     """
     root = project_path.resolve()
     nodes_by_qname: Dict[str, SemanticNode] = {
@@ -68,6 +79,7 @@ def enrich_python_attribute_calls(graph: SemanticGraph, project_path: Path) -> S
     if not nodes_by_qname:
         return graph
 
+    reexport_aliases = python_reexport_aliases(graph, root)
     parsed: List[Tuple[Path, str, ast.Module, Dict[str, str]]] = []
     for path in _iter_python_files(root):
         relative = _relative(root, path)
@@ -78,7 +90,7 @@ def enrich_python_attribute_calls(graph: SemanticGraph, project_path: Path) -> S
         module = _module_name(root, path)
         parsed.append((path, module, tree, _collect_imports(tree, module)))
 
-    attribute_types: Dict[str, Dict[str, Set[str]]] = {}
+    attribute_types: Dict[str, Dict[str, Dict[str, ResolvedType]]] = {}
     for path, module, tree, imports in parsed:
         for class_node in (item for item in tree.body if isinstance(item, ast.ClassDef)):
             class_qname = _qualify(module, class_node.name)
@@ -92,11 +104,13 @@ def enrich_python_attribute_calls(graph: SemanticGraph, project_path: Path) -> S
             )
             if init is None:
                 continue
-            inferred = _infer_instance_attributes(init, module, imports, nodes_by_qname)
+            inferred = _infer_instance_attributes(init, module, imports, nodes_by_qname, reexport_aliases)
             if inferred:
                 attribute_types[class_qname] = inferred
 
     existing = {(edge.source, edge.target, edge.kind.value) for edge in graph.edges}
+    edges_added = 0
+    alias_grounded_edges = 0
     for path, module, tree, imports in parsed:
         relative = _relative(root, path)
         for class_node in (item for item in tree.body if isinstance(item, ast.ClassDef)):
@@ -118,29 +132,38 @@ def enrich_python_attribute_calls(graph: SemanticGraph, project_path: Path) -> S
                     if parsed_call is None:
                         continue
                     attribute, method_name = parsed_call
-                    candidate_types = class_attrs.get(attribute, set())
-                    target_nodes = []
+                    candidate_types = class_attrs.get(attribute, {})
+                    target_records: List[Tuple[SemanticNode, ResolvedType]] = []
                     for candidate_type in sorted(candidate_types):
                         target = nodes_by_qname.get("%s.%s" % (candidate_type, method_name))
                         if target is not None:
-                            target_nodes.append(target)
-                    unique_targets = {node.id: node for node in target_nodes}
+                            target_records.append((target, candidate_types[candidate_type]))
+                    unique_targets = {node.id: (node, type_info) for node, type_info in target_records}
                     if len(unique_targets) != 1:
                         continue
-                    target_node = next(iter(unique_targets.values()))
+                    target_node, type_info = next(iter(unique_targets.values()))
                     key = (source_node.id, target_node.id, EdgeKind.CALLS.value)
                     if key in existing:
                         _remove_unresolved(source_node, "self.%s.%s" % (attribute, method_name))
                         continue
                     line = getattr(call, "lineno", getattr(method, "lineno", 1))
                     raw = "%s|%s|attribute-call|%s" % (source_node.id, target_node.id, line)
+                    confidence = min(0.98, type_info.confidence)
+                    alias_chain = list(type_info.alias_chain)
+                    strategy = "instance_attribute_type_reexport" if alias_chain else "instance_attribute_type"
+                    detail = "Resolved self.%s.%s() from unique constructor/annotation type evidence: %s" % (
+                        attribute,
+                        method_name,
+                        type_info.qualified_name,
+                    )
+                    if alias_chain:
+                        detail += " via package re-export chain: %s" % " -> ".join(alias_chain)
                     evidence = Evidence(
                         EvidenceKind.STATIC,
                         "python.ast.instance_attribute_call",
-                        "Resolved self.%s.%s() from unique constructor/annotation type evidence: %s"
-                        % (attribute, method_name, ", ".join(sorted(candidate_types))),
+                        detail,
                         SourceLocation(relative, line),
-                        0.98,
+                        confidence,
                     )
                     graph.add_edge(
                         SemanticEdge(
@@ -148,22 +171,29 @@ def enrich_python_attribute_calls(graph: SemanticGraph, project_path: Path) -> S
                             source=source_node.id,
                             target=target_node.id,
                             kind=EdgeKind.CALLS,
-                            confidence=0.98,
+                            confidence=confidence,
                             evidence=[evidence],
                             attributes={
                                 "python_resolution": {
-                                    "strategy": "instance_attribute_type",
+                                    "strategy": strategy,
                                     "attribute": attribute,
                                     "candidate_types": sorted(candidate_types),
+                                    "type_alias_chain": alias_chain,
                                 }
                             },
                         )
                     )
                     existing.add(key)
+                    edges_added += 1
+                    if alias_chain:
+                        alias_grounded_edges += 1
                     _remove_unresolved(source_node, "self.%s.%s" % (attribute, method_name))
 
     graph.metadata["python_attribute_resolution"] = {
         "classes_with_typed_attributes": len(attribute_types),
+        "reexport_aliases_consulted": len(reexport_aliases),
+        "call_edges_added": edges_added,
+        "alias_grounded_call_edges": alias_grounded_edges,
         "strategy": "unique-static-type-only",
     }
     graph.validate()
@@ -175,8 +205,9 @@ def _infer_instance_attributes(
     module: str,
     imports: Dict[str, str],
     nodes_by_qname: Dict[str, SemanticNode],
-) -> Dict[str, Set[str]]:
-    parameter_types: Dict[str, Set[str]] = {}
+    reexport_aliases: Dict[str, ResolvedAlias],
+) -> Dict[str, Dict[str, ResolvedType]]:
+    parameter_types: Dict[str, Dict[str, ResolvedType]] = {}
     args = getattr(init, "args", None)
     if args is not None:
         parameters = list(getattr(args, "posonlyargs", [])) + list(args.args) + list(args.kwonlyargs)
@@ -184,10 +215,10 @@ def _infer_instance_attributes(
             if parameter.arg in {"self", "cls"}:
                 continue
             parameter_types[parameter.arg] = _annotation_type_candidates(
-                getattr(parameter, "annotation", None), module, imports, nodes_by_qname
+                getattr(parameter, "annotation", None), module, imports, nodes_by_qname, reexport_aliases
             )
 
-    result: Dict[str, Set[str]] = {}
+    result: Dict[str, Dict[str, ResolvedType]] = {}
     for statement in getattr(init, "body", []):
         targets_and_values: List[Tuple[ast.AST, Optional[ast.AST], Optional[ast.AST]]] = []
         if isinstance(statement, ast.Assign):
@@ -201,11 +232,18 @@ def _infer_instance_attributes(
             attribute = _self_attribute_name(target)
             if not attribute:
                 continue
-            candidates = set()
-            candidates.update(_annotation_type_candidates(annotation, module, imports, nodes_by_qname))
-            candidates.update(_value_type_candidates(value, module, imports, nodes_by_qname, parameter_types))
+            candidates: Dict[str, ResolvedType] = {}
+            _merge_type_candidates(
+                candidates,
+                _annotation_type_candidates(annotation, module, imports, nodes_by_qname, reexport_aliases),
+            )
+            _merge_type_candidates(
+                candidates,
+                _value_type_candidates(value, module, imports, nodes_by_qname, parameter_types, reexport_aliases),
+            )
             if candidates:
-                result.setdefault(attribute, set()).update(candidates)
+                bucket = result.setdefault(attribute, {})
+                _merge_type_candidates(bucket, candidates)
     return result
 
 
@@ -214,30 +252,41 @@ def _annotation_type_candidates(
     module: str,
     imports: Dict[str, str],
     nodes_by_qname: Dict[str, SemanticNode],
-) -> Set[str]:
+    reexport_aliases: Dict[str, ResolvedAlias],
+) -> Dict[str, ResolvedType]:
     if node is None:
-        return set()
+        return {}
     index_type = getattr(ast, "Index", None)
     if index_type is not None and isinstance(node, index_type):
-        return _annotation_type_candidates(node.value, module, imports, nodes_by_qname)
+        return _annotation_type_candidates(node.value, module, imports, nodes_by_qname, reexport_aliases)
     if isinstance(node, (ast.Name, ast.Attribute)):
-        resolved = _resolve_class_name(_render_expr(node), module, imports, nodes_by_qname)
-        return {resolved} if resolved else set()
+        resolved = _resolve_class_name(_render_expr(node), module, imports, nodes_by_qname, reexport_aliases)
+        return {resolved.qualified_name: resolved} if resolved else {}
     if isinstance(node, ast.Subscript):
         wrapper = _render_expr(node.value).rsplit(".", 1)[-1]
         if wrapper not in OPTIONAL_WRAPPERS:
-            return set()
-        return _annotation_type_candidates(node.slice, module, imports, nodes_by_qname)
+            return {}
+        return _annotation_type_candidates(node.slice, module, imports, nodes_by_qname, reexport_aliases)
     if isinstance(node, (ast.Tuple, ast.List)):
-        result: Set[str] = set()
+        result: Dict[str, ResolvedType] = {}
         for item in node.elts:
-            result.update(_annotation_type_candidates(item, module, imports, nodes_by_qname))
+            _merge_type_candidates(
+                result,
+                _annotation_type_candidates(item, module, imports, nodes_by_qname, reexport_aliases),
+            )
         return result
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return _annotation_type_candidates(node.left, module, imports, nodes_by_qname) | _annotation_type_candidates(
-            node.right, module, imports, nodes_by_qname
+        result: Dict[str, ResolvedType] = {}
+        _merge_type_candidates(
+            result,
+            _annotation_type_candidates(node.left, module, imports, nodes_by_qname, reexport_aliases),
         )
-    return set()
+        _merge_type_candidates(
+            result,
+            _annotation_type_candidates(node.right, module, imports, nodes_by_qname, reexport_aliases),
+        )
+        return result
+    return {}
 
 
 def _value_type_candidates(
@@ -245,25 +294,36 @@ def _value_type_candidates(
     module: str,
     imports: Dict[str, str],
     nodes_by_qname: Dict[str, SemanticNode],
-    parameter_types: Dict[str, Set[str]],
-) -> Set[str]:
+    parameter_types: Dict[str, Dict[str, ResolvedType]],
+    reexport_aliases: Dict[str, ResolvedAlias],
+) -> Dict[str, ResolvedType]:
     if node is None:
-        return set()
+        return {}
     if isinstance(node, ast.Name):
-        return set(parameter_types.get(node.id, set()))
+        return dict(parameter_types.get(node.id, {}))
     if isinstance(node, ast.Call):
-        resolved = _resolve_class_name(_render_expr(node.func), module, imports, nodes_by_qname)
-        return {resolved} if resolved else set()
+        resolved = _resolve_class_name(_render_expr(node.func), module, imports, nodes_by_qname, reexport_aliases)
+        return {resolved.qualified_name: resolved} if resolved else {}
     if isinstance(node, ast.BoolOp):
-        result: Set[str] = set()
+        result: Dict[str, ResolvedType] = {}
         for value in node.values:
-            result.update(_value_type_candidates(value, module, imports, nodes_by_qname, parameter_types))
+            _merge_type_candidates(
+                result,
+                _value_type_candidates(value, module, imports, nodes_by_qname, parameter_types, reexport_aliases),
+            )
         return result
     if isinstance(node, ast.IfExp):
-        return _value_type_candidates(node.body, module, imports, nodes_by_qname, parameter_types) | _value_type_candidates(
-            node.orelse, module, imports, nodes_by_qname, parameter_types
+        result: Dict[str, ResolvedType] = {}
+        _merge_type_candidates(
+            result,
+            _value_type_candidates(node.body, module, imports, nodes_by_qname, parameter_types, reexport_aliases),
         )
-    return set()
+        _merge_type_candidates(
+            result,
+            _value_type_candidates(node.orelse, module, imports, nodes_by_qname, parameter_types, reexport_aliases),
+        )
+        return result
+    return {}
 
 
 def _resolve_class_name(
@@ -271,7 +331,8 @@ def _resolve_class_name(
     module: str,
     imports: Dict[str, str],
     nodes_by_qname: Dict[str, SemanticNode],
-) -> Optional[str]:
+    reexport_aliases: Dict[str, ResolvedAlias],
+) -> Optional[ResolvedType]:
     if not raw or raw in {"None", "NoneType"}:
         return None
     candidates: List[str] = []
@@ -286,11 +347,32 @@ def _resolve_class_name(
         if imported:
             candidates.append("%s.%s" % (imported, tail))
         candidates.append(raw)
+
     for candidate in candidates:
         node = nodes_by_qname.get(candidate)
-        if node is not None and node.kind.value in {"class", "data_model", "service", "handler", "transformer", "middleware"}:
-            return candidate
+        if node is not None and node.kind.value in CLASS_KINDS:
+            return ResolvedType(candidate)
+        alias = reexport_aliases.get(candidate)
+        if alias is None:
+            continue
+        target, chain, confidence = alias
+        target_node = nodes_by_qname.get(target)
+        if target_node is not None and target_node.kind.value in CLASS_KINDS:
+            return ResolvedType(target, tuple(chain), confidence)
     return None
+
+
+def _merge_type_candidates(target: Dict[str, ResolvedType], incoming: Dict[str, ResolvedType]) -> None:
+    for qualified_name, candidate in incoming.items():
+        current = target.get(qualified_name)
+        if current is None:
+            target[qualified_name] = candidate
+            continue
+        if candidate.confidence > current.confidence:
+            target[qualified_name] = candidate
+            continue
+        if candidate.confidence == current.confidence and len(candidate.alias_chain) < len(current.alias_chain):
+            target[qualified_name] = candidate
 
 
 def _self_attribute_method(node: ast.AST) -> Optional[Tuple[str, str]]:
