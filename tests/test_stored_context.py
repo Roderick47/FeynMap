@@ -70,11 +70,14 @@ def test_context_budget_truncates_deterministically(tmp_path: Path):
     snapshot, graph, store = _stored_project(tmp_path)
     context = StoredSnapshotContext.load(store, snapshot.snapshot_id)
 
-    first = context.context_bundle("app.run", depth=4, budget=ContextBudget(max_tokens=128, max_nodes=50, max_edges=50))
-    second = context.context_bundle("app.run", depth=4, budget=ContextBudget(max_tokens=128, max_nodes=50, max_edges=50))
+    budget = ContextBudget(max_tokens=512, max_nodes=1, max_edges=1)
+    first = context.context_bundle("app.run", depth=4, budget=budget)
+    second = context.context_bundle("app.run", depth=4, budget=budget)
 
     assert first == second
     assert first["budget"]["truncated"] is True
+    assert first["budget"]["included_nodes"] <= 2
+    assert first["budget"]["included_relationships"] <= 1
     assert first["budget"]["estimated_tokens"] <= first["budget"]["max_tokens"]
 
 
