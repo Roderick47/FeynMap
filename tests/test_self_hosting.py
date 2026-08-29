@@ -43,3 +43,32 @@ def test_golden_architecture_checks_engine_merge_relationship():
         and item["kind"] == EdgeKind.CALLS.value
     )
     assert merge_fact["found"] is True
+
+
+def test_feynmap_resolves_its_adapter_reexports_in_default_registry():
+    graph = FeynMapEngine().analyze(str(REPO_ROOT), language="python", framework="none")
+    report = SelfAnalysisBenchmark(graph, load_golden()).report()
+    relationships = report["evaluation"]["relationships"]
+
+    expected_targets = {
+        "feynmap.adapters.python.PythonAdapter",
+        "feynmap.adapters.html.HTMLAdapter",
+        "feynmap.adapters.javascript.JavaScriptAdapter",
+        "feynmap.adapters.frameworks.django.DjangoAdapter",
+        "feynmap.adapters.frameworks.flask.FlaskAdapter",
+        "feynmap.adapters.frameworks.fastapi.FastAPIAdapter",
+    }
+    adapter_facts = [
+        item
+        for item in relationships
+        if item["source"] == "feynmap.engine.default_registry"
+        and item["target"] in expected_targets
+        and item["kind"] == EdgeKind.CALLS.value
+    ]
+
+    assert {item["target"] for item in adapter_facts} == expected_targets
+    assert all(item["found"] is True for item in adapter_facts)
+
+    metadata = graph.metadata["python_reexport_resolution"]
+    assert metadata["resolved_aliases"] >= len(expected_targets)
+    assert metadata["call_edges_added"] >= len(expected_targets)
