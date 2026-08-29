@@ -5,7 +5,19 @@ from pathlib import Path
 
 from feynmap.core import NodeKind, SemanticGraph
 from ..base import FrameworkAdapter
-from ._python import dependency_text, finalize, has_base, imported, imports_by_file, mark_role, node_imports, repository_imports, route_method_decorator
+from ._python import (
+    attach_decorator_http_contracts,
+    attach_template_render_contracts,
+    dependency_text,
+    finalize,
+    has_base,
+    imported,
+    imports_by_file,
+    mark_role,
+    node_imports,
+    repository_imports,
+    route_method_decorator,
+)
 
 
 class FastAPIAdapter(FrameworkAdapter):
@@ -38,4 +50,6 @@ class FastAPIAdapter(FrameworkAdapter):
                 elif has_base(node, "BaseModel") and imported(imports, "pydantic"):
                     mark_role(node, self.name, NodeKind.TRANSFORMER, "schema", "Pydantic model used as FastAPI schema", 0.94)
 
+        attach_decorator_http_contracts(graph, self.name)
+        attach_template_render_contracts(graph, project_path, self.name)
         return finalize(graph, self.name)
