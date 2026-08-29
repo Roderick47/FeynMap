@@ -13,7 +13,7 @@ class LanguageAdapter(ABC):
 
     Language adapters must not classify framework roles. They parse syntax,
     symbols, imports, calls, inheritance, and other semantics defined by the
-    source language itself.
+    source language itself. Multiple language adapters may run for one repo.
     """
 
     name = "unknown"
@@ -80,27 +80,32 @@ class AdapterRegistry:
             key=lambda adapter: adapter.name,
         )
 
-    def detect_language(self, project_path: Path) -> LanguageAdapter:
-        if not self._languages:
-            raise RuntimeError("no language adapters are registered")
+    def detect_languages(self, project_path: Path, minimum_score: float = 0.01) -> List[Tuple[float, LanguageAdapter]]:
+        """Return every language adapter that recognizes the repository."""
         ranked = sorted(
             ((adapter.detect_score(project_path), adapter) for adapter in self._languages.values()),
-            key=lambda item: item[0],
+            key=lambda item: (item[0], item[1].name),
             reverse=True,
         )
-        score, adapter = ranked[0]
-        if score <= 0:
-            raise ValueError("no registered language adapter recognized this repository")
-        return adapter
+        return [(score, adapter) for score, adapter in ranked if score >= minimum_score and score > 0]
 
-    def detect_framework(self, project_path: Path, language: str) -> Optional[Tuple[float, FrameworkAdapter]]:
+    def detect_language(self, project_path: Path) -> LanguageAdapter:
+        """Compatibility helper returning only the highest-scoring language."""
+        ranked = self.detect_languages(project_path)
+        if not ranked:
+            raise ValueError("no registered language adapter recognized this repository")
+        return ranked[0][1]
+
+    def detect_frameworks(self, project_path: Path, language: str, minimum_score: float = 0.01) -> List[Tuple[float, FrameworkAdapter]]:
         candidates = self.frameworks_for_language(language)
-        if not candidates:
-            return None
         ranked = sorted(
             ((adapter.detect_score(project_path), adapter) for adapter in candidates),
-            key=lambda item: item[0],
+            key=lambda item: (item[0], item[1].name),
             reverse=True,
         )
-        score, adapter = ranked[0]
-        return (score, adapter) if score > 0 else None
+        return [(score, adapter) for score, adapter in ranked if score >= minimum_score and score > 0]
+
+    def detect_framework(self, project_path: Path, language: str) -> Optional[Tuple[float, FrameworkAdapter]]:
+        """Compatibility helper returning only the highest-scoring framework."""
+        ranked = self.detect_frameworks(project_path, language)
+        return ranked[0] if ranked else None
