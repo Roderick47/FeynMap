@@ -15,6 +15,18 @@ SEMANTIC_SCHEMA = "feynmap.semantic_graph"
 SEMANTIC_SCHEMA_VERSION = "1.0.0"
 
 
+def _diagnostic_merge(left: List[str], right: List[str]) -> List[str]:
+    result: List[str] = []
+    seen = set()
+    for item in list(left) + list(right):
+        text = str(item)
+        if text in seen:
+            continue
+        seen.add(text)
+        result.append(text)
+    return result
+
+
 @dataclass(frozen=True)
 class SourceLocation:
     path: str
@@ -24,6 +36,15 @@ class SourceLocation:
 
     def to_dict(self) -> Dict[str, Any]:
         return {key: value for key, value in asdict(self).items() if value is not None}
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "SourceLocation":
+        return cls(
+            path=str(payload.get("path", "")),
+            line=payload.get("line"),
+            end_line=payload.get("end_line"),
+            column=payload.get("column"),
+        )
 
 
 @dataclass(frozen=True)
@@ -45,6 +66,17 @@ class Evidence:
         if self.location:
             payload["location"] = self.location.to_dict()
         return payload
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "Evidence":
+        location_payload = payload.get("location")
+        return cls(
+            kind=EvidenceKind(str(payload.get("kind", EvidenceKind.STATIC.value))),
+            detector=str(payload.get("detector", "")),
+            detail=str(payload.get("detail", "")),
+            location=SourceLocation.from_dict(location_payload) if isinstance(location_payload, dict) else None,
+            confidence=float(payload.get("confidence", 1.0)),
+        )
 
 
 @dataclass
@@ -87,6 +119,22 @@ class SemanticNode:
             payload["location"] = self.location.to_dict()
         return payload
 
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "SemanticNode":
+        location_payload = payload.get("location")
+        evidence_payload = payload.get("evidence", [])
+        return cls(
+            id=str(payload.get("id", "")),
+            name=str(payload.get("name", "")),
+            kind=NodeKind(str(payload.get("kind", NodeKind.UNKNOWN.value))),
+            language=payload.get("language"),
+            framework=payload.get("framework"),
+            qualified_name=payload.get("qualified_name"),
+            location=SourceLocation.from_dict(location_payload) if isinstance(location_payload, dict) else None,
+            attributes=dict(payload.get("attributes") or {}),
+            evidence=[Evidence.from_dict(item) for item in evidence_payload if isinstance(item, dict)],
+        )
+
 
 @dataclass
 class SemanticEdge:
@@ -114,6 +162,19 @@ class SemanticEdge:
             "evidence": [item.to_dict() for item in self.evidence],
             "attributes": self.attributes,
         }
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "SemanticEdge":
+        evidence_payload = payload.get("evidence", [])
+        return cls(
+            id=str(payload.get("id", "")),
+            source=str(payload.get("source", "")),
+            target=str(payload.get("target", "")),
+            kind=EdgeKind(str(payload.get("kind", EdgeKind.RELATED_TO.value))),
+            confidence=float(payload.get("confidence", 0.0)),
+            evidence=[Evidence.from_dict(item) for item in evidence_payload if isinstance(item, dict)],
+            attributes=dict(payload.get("attributes") or {}),
+        )
 
 
 @dataclass
@@ -209,3 +270,33 @@ class SemanticGraph:
             "edges": [edge.to_dict() for edge in self.edges],
             "diagnostics": self.diagnostics,
         }
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "SemanticGraph":
+        schema = payload.get("schema")
+        if schema and schema != SEMANTIC_SCHEMA:
+            raise ValueError("unsupported semantic graph schema: %s" % schema)
+        schema_version = payload.get("schema_version")
+        if schema_version and schema_version != SEMANTIC_SCHEMA_VERSION:
+            raise ValueError(
+                "unsupported semantic graph schema version %s; expected %s"
+                % (schema_version, SEMANTIC_SCHEMA_VERSION)
+            )
+
+        metadata = dict(payload.get("metadata") or {})
+        for derived in ("node_count", "edge_count", "evidence_coverage"):
+            metadata.pop(derived, None)
+        nodes_payload = payload.get("nodes", [])
+        edges_payload = payload.get("edges", [])
+        diagnostics_payload = payload.get("diagnostics") or {}
+        graph = cls(
+            nodes=[SemanticNode.from_dict(item) for item in nodes_payload if isinstance(item, dict)],
+            edges=[SemanticEdge.from_dict(item) for item in edges_payload if isinstance(item, dict)],
+            metadata=metadata,
+        )
+        structural = graph.validate()
+        graph.diagnostics = {
+            "errors": _diagnostic_merge(list(diagnostics_payload.get("errors", [])), structural.get("errors", [])),
+            "warnings": _diagnostic_merge(list(diagnostics_payload.get("warnings", [])), structural.get("warnings", [])),
+        }
+        return graph
