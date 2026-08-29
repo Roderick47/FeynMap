@@ -5,7 +5,18 @@ from pathlib import Path
 
 from feynmap.core import NodeKind, SemanticGraph
 from ..base import FrameworkAdapter
-from ._python import dependency_text, finalize, has_base, imported, imports_by_file, mark_role, node_imports, repository_imports
+from ._python import (
+    attach_django_url_contracts,
+    attach_template_render_contracts,
+    dependency_text,
+    finalize,
+    has_base,
+    imported,
+    imports_by_file,
+    mark_role,
+    node_imports,
+    repository_imports,
+)
 
 
 class DjangoAdapter(FrameworkAdapter):
@@ -47,4 +58,6 @@ class DjangoAdapter(FrameworkAdapter):
             elif node.kind == NodeKind.FUNCTION and (path.endswith("views.py") or "/views/" in path):
                 mark_role(node, self.name, NodeKind.HANDLER, "request_handler", "Function defined in a Django views module", 0.82)
 
+        attach_django_url_contracts(graph, project_path)
+        attach_template_render_contracts(graph, project_path, self.name)
         return finalize(graph, self.name)
