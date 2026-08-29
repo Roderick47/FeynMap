@@ -152,6 +152,10 @@ feynmap stored-query <snapshot-id> --kind unresolved
 
 The reference token estimator is deterministic and tokenizer-independent: serialized context length divided by four, rounded up. It is an approximate budgeting contract, not a claim about any particular LLM tokenizer. A future Rust implementation can reproduce the same behavior exactly or add an explicitly versioned exact-tokenizer mode.
 
+The current evidence-bearing context format has a minimum supported budget of **512 approximate tokens**. Requests below that value are normalized to 512 and the response reports both `requested_max_tokens` and the effective `max_tokens`. This avoids pretending that required snapshot, symbol, grounding and budget metadata can fit into an arbitrarily small payload.
+
+Relationships are trimmed before neighboring nodes. The root symbol and grounding semantics remain present. Final budget metadata reports the effective limit, estimated token count, included nodes/relationships, and whether truncation occurred.
+
 ## Remaining incremental work
 
 The next performance step is true changed-file reuse:
