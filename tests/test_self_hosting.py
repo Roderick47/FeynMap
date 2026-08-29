@@ -17,6 +17,8 @@ def test_feynmap_can_analyze_its_own_repository():
     assert report["metrics"]["edge_count"] > 0
     assert report["evaluation"]["expected_symbol_count"] >= 10
     assert report["evaluation"]["missing_symbol_count"] == 0
+    assert report["quality_gates"]["gate_count"] == 4
+    assert report["quality_gates"]["status"] == "pass"
 
 
 def test_self_analysis_exposes_current_semantic_blind_spots():
@@ -28,6 +30,7 @@ def test_self_analysis_exposes_current_semantic_blind_spots():
     assert "architecture_score" in report["evaluation"]
     assert report["evaluation"]["architecture_score"] >= 0.0
     assert report["evaluation"]["architecture_score"] <= 1.0
+    assert "python_unresolved_call_count" in report["quality_gates"]["deferred_numeric_thresholds"]
 
 
 def test_golden_architecture_checks_engine_merge_relationship():
