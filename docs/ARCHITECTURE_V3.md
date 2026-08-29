@@ -30,17 +30,62 @@ Each record identifies the detector, source location when known, detail, and con
 
 Confidence tiers are `verified`, `supported`, `inferred`, and `unknown`.
 
+## Phase 1 architecture: language first, framework second
+
+Phase 1 removes framework knowledge from the V3 Python extractor.
+
+`PythonAdapter` now uses Python's AST directly and owns only Python semantics:
+
+- modules,
+- classes,
+- functions and methods,
+- lexical containment,
+- imports,
+- project-local call resolution,
+- inheritance,
+- decorators/annotations stored as Python attributes,
+- async/await relationships,
+- unresolved-call evidence where static resolution is insufficient.
+
+It does **not** decide that a class is a Django model, a function is a Flask route, or a Pydantic class is a FastAPI schema.
+
+The engine performs framework enrichment only after the language graph exists:
+
+```text
+repository
+    ↓
+PythonAdapter
+    ↓
+framework-neutral Python graph
+    ↓
+DjangoAdapter / FlaskAdapter / FastAPIAdapter
+    ↓
+framework-enriched semantic graph
+```
+
+This same contract is intended to support future combinations such as TypeScript + Express/NestJS, Java + Spring, C# + ASP.NET, and Rust + Axum/Actix without duplicating language parsers.
+
 ## Language adapters
 
-A language adapter detects whether it can analyze a repository and emits language-level facts. The current Python adapter bridges the mature FeynMap V2 extractor into the V3 graph so the architecture can change without discarding tested Python logic.
+A language adapter detects whether it can analyze a repository and emits language-level facts only.
+
+The current Python adapter is a native V3 adapter backed by the standard-library AST. It no longer calls the V2 Django/Flask/FastAPI-aware extractor.
 
 Future adapters may use tree-sitter, compiler APIs, language servers, native AST tooling, or other deterministic sources.
 
 ## Framework adapters
 
-Framework semantics belong above language parsing. For example, Python classes/functions/calls are language facts; Django models/routes/ORM semantics are framework enrichment.
+Framework semantics belong above language parsing. Python classes/functions/calls are language facts; Django models/views/serializers, Flask routes, and FastAPI endpoints/schemas are framework enrichment.
 
-The V2 bridge still resolves Django/Flask/FastAPI inside the legacy extractor. The next major refactor is to move those rules into independent `FrameworkAdapter` implementations.
+Built-in V3 framework adapters now live under `feynmap/adapters/frameworks/`:
+
+- `DjangoAdapter`
+- `FlaskAdapter`
+- `FastAPIAdapter`
+
+Framework detection is independent of language detection. `--framework auto` selects the strongest compatible framework adapter; `--framework none` intentionally exposes the raw language graph.
+
+The old framework-aware V2 parser remains only behind the explicit `legacy` compatibility path.
 
 ## Query layer
 
