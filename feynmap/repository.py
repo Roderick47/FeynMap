@@ -3,26 +3,40 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Dict, Iterable, List, Sequence, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode
+
+
+REPOSITORY_NODE_ID = "repository:root"
+REPOSITORY_QUALIFIED_NAME = "repository"
+REPOSITORY_ROOT = "."
 
 
 def merge_language_graphs(
     root: Path,
     analyzed: Sequence[Tuple[str, float, SemanticGraph]],
 ) -> SemanticGraph:
-    """Merge independently analyzed language graphs into one repository graph."""
-    repository_id = "repository:%s" % hashlib.sha1(str(root).encode("utf-8")).hexdigest()[:14]
+    """Merge independently analyzed language graphs into one repository graph.
+
+    The semantic repository root is intentionally clone-independent. Local
+    checkout paths belong to repository snapshot metadata (`root_hint`), not to
+    the canonical graph. This keeps graph identity stable when the same source
+    tree is analyzed from different filesystem locations.
+    """
+    repository_id = REPOSITORY_NODE_ID
     repository_node = SemanticNode(
         id=repository_id,
-        name=root.name,
-        qualified_name=str(root),
+        name=REPOSITORY_QUALIFIED_NAME,
+        qualified_name=REPOSITORY_QUALIFIED_NAME,
         kind=NodeKind.REPOSITORY,
-        attributes={"repository": {"root": str(root)}},
-        evidence=[Evidence(EvidenceKind.STATIC, "repository.orchestrator", "Repository analysis root", None, 1.0)],
+        attributes={"repository": {"root": REPOSITORY_ROOT}},
+        evidence=[Evidence(EvidenceKind.STATIC, "repository.orchestrator", "Canonical repository analysis root", None, 1.0)],
     )
-    merged = SemanticGraph(nodes=[repository_node], metadata={"project_root": str(root), "adapter": "repository-orchestrator"})
+    merged = SemanticGraph(
+        nodes=[repository_node],
+        metadata={"project_root": REPOSITORY_ROOT, "adapter": "repository-orchestrator"},
+    )
     language_metadata: List[Dict[str, object]] = []
     frameworks: List[str] = []
 
