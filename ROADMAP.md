@@ -82,38 +82,55 @@ FeynMap is its own first serious benchmark. The objective is not merely to prove
 - [x] Recursive improvement 1: resolve `self.attribute.method()` from unique constructor/type evidence
 - [x] Recursive improvement 2: resolve transitive Python package re-exports conservatively
 - [x] Repair package-relative import edges discovered while analyzing FeynMap's own `__init__.py` surfaces
+- [x] Recursive improvement 3: reuse package re-export evidence in annotation/instance-type resolution
+- [x] Require FeynMap's own `self.registry.*` dispatch relationships in the golden benchmark
+- [x] Establish invariant self-hosting quality gates: golden symbols, critical relationships, graph validity, and critical-edge evidence
 - [ ] Record the first actually executed self-analysis baseline report
-- [ ] Classify every remaining missing critical relationship by root cause
-- [ ] Re-run the self-analysis and record semantic-quality deltas
-- [ ] Establish minimum self-hosting quality gates for future releases
+- [ ] Record before/after numeric semantic-quality deltas once an execution environment is available
 
-### Self-hosting quality targets
+### Self-hosting quality gates
 
-The benchmark tracks these as measurements rather than pretending all are solved:
+These gates are deterministic and do not depend on invented numeric thresholds:
 
-- critical architecture symbol recall
-- critical architecture relationship recall
-- unresolved Python call count
-- nodes containing unresolved calls
-- evidence coverage
-- graph validation errors/warnings
-- integration resolved/unresolved counts
-- orphan semantic nodes
-- confidence-tier distribution
+- [x] all golden architecture symbols must be present
+- [x] all critical golden architecture relationships must be resolved
+- [x] semantic graph validation must have zero errors
+- [x] every resolved critical golden relationship must carry evidence
+- [x] ambiguity regression tests preserve the rule that multiple candidate targets remain unresolved
 
-Improvements should reduce unknown/unresolved regions while preserving the rule that ambiguous relationships remain unresolved rather than guessed.
+The benchmark continues to record unresolved-call count, evidence coverage, orphan nodes and integration resolution counts. Absolute thresholds for those metrics are deferred until the first actually executed baseline report exists.
+
+### Remaining self-hosting hardening
+
+The known remaining gaps are valuable but no longer block beginning Phase 2 over already-evidenced facts:
+
+- explicit variable/state reads, writes and mutations
+- nested functions as first-class nodes
+- dynamic dispatch, plugin and metaprogramming semantics
+- parser-backed JavaScript/TypeScript
+- build-system and CI execution topology
 
 ## Phase 2 — AI grounding service
 
-Phase 2 begins after the self-hosting baseline has exposed the most important semantic gaps.
+Phase 2 can begin once the Phase 1.6 recursive improvements are merged. The first work should establish persistent repository identity before MCP so coding agents do not force a full reparse on every request.
 
-- [ ] Persistent graph cache with incremental updates
+### Phase 2A — Repository snapshots and persistence
+
 - [ ] Repository snapshot/hash identity
+- [ ] Semantic graph deserialization (`SemanticGraph.from_dict` or equivalent)
+- [ ] Persistent graph cache/store
+- [ ] Immutable snapshots + current snapshot pointer
+- [ ] File/content hash inventory for incremental analysis
 - [ ] Semantic graph diffing between repository snapshots
-- [ ] MCP server
+- [ ] Token-budgeted context primitives over a stored snapshot
+
+### Phase 2B — MCP grounding service
+
+- [ ] MCP server transport
+- [ ] repository/snapshot-aware grounding service
 - [ ] `get_symbol`, `find_callers`, `find_dependencies`, `trace_path`, `find_integrations`
 - [ ] `validate_claim`, `change_impact`, `explain_evidence`, `unresolved`
-- [ ] token-budgeted context bundles
+- [ ] context bundles that do not reparse the repository per request
 
 ## Phase 3 — More language adapters
 
