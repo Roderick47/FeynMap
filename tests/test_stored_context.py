@@ -43,6 +43,7 @@ def test_stored_context_loads_without_repository_reparse(tmp_path: Path):
 
     assert summary["snapshot"]["snapshot_id"] == snapshot.snapshot_id
     assert summary["graph"]["node_count"] == len(graph.nodes)
+    assert summary["graph"]["analysis_contract_version"] == "1.0.0"
     assert symbol["symbol"]["qualified_name"] == "app.run"
     assert any(edge["kind"] == "calls" for edge in symbol["outgoing"])
 
@@ -60,21 +61,25 @@ def test_context_bundle_is_evidence_preserving_and_budgeted(tmp_path: Path):
     assert bundle["snapshot"]["snapshot_id"] == snapshot.snapshot_id
     assert bundle["root"]["qualified_name"] == "app.run"
     assert bundle["grounding"]["unknown"]
+    assert bundle["budget"]["requested_max_tokens"] == 700
     assert bundle["budget"]["max_tokens"] == 700
     assert bundle["budget"]["estimated_tokens"] <= 700
     assert bundle["budget"]["included_nodes"] >= 1
     assert any(item["relationship"] == "calls" for item in bundle["relationships"])
 
 
-def test_context_budget_truncates_deterministically(tmp_path: Path):
+def test_context_budget_has_explicit_minimum_and_truncates_deterministically(tmp_path: Path):
     snapshot, graph, store = _stored_project(tmp_path)
     context = StoredSnapshotContext.load(store, snapshot.snapshot_id)
 
-    budget = ContextBudget(max_tokens=512, max_nodes=1, max_edges=1)
-    first = context.context_bundle("app.run", depth=4, budget=budget)
-    second = context.context_bundle("app.run", depth=4, budget=budget)
+    requested = ContextBudget(max_tokens=128, max_nodes=1, max_edges=1)
+    first = context.context_bundle("app.run", depth=4, budget=requested)
+    second = context.context_bundle("app.run", depth=4, budget=requested)
 
     assert first == second
+    assert first["budget"]["requested_max_tokens"] == 128
+    assert first["budget"]["minimum_supported_tokens"] == 512
+    assert first["budget"]["max_tokens"] == 512
     assert first["budget"]["truncated"] is True
     assert first["budget"]["included_nodes"] <= 2
     assert first["budget"]["included_relationships"] <= 1
