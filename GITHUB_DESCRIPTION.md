@@ -1,1 +1,1 @@
-FeynMap builds a verifiable, evidence-backed semantic model of software so humans and AI coding agents can reason about large codebases without guessing. Language-agnostic core; Python/Django/Flask/FastAPI today, more adapters ahead.
+FeynMap builds an evidence-backed, machine-readable semantic graph of software so humans and AI agents can reason about repositories without guessing. Language adapters extract syntax/semantics; framework adapters enrich them independently. Includes grounded queries, impact analysis, claim validation, and migration planning foundations.
