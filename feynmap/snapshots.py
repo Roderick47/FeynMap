@@ -217,7 +217,7 @@ def _git_origin(root: Path) -> Optional[str]:
     if git_dir is None:
         return None
     config_path = git_dir / "config"
-    parser = configparser.ConfigParser()
+    parser = configparser.ConfigParser(interpolation=None)
     try:
         parser.read(str(config_path), encoding="utf-8")
     except (OSError, configparser.Error):
