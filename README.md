@@ -4,22 +4,28 @@
 
 FeynMap analyzes a repository programmatically, builds a machine-readable model of the system, records the evidence behind relationships, and exposes that model to developers and AI coding agents so they can reason about code with less guessing.
 
-The long-term goal is language and framework independence. Python is the first native V3 language adapter. Django, Flask, and FastAPI are now independent framework adapters that enrich the generic Python graph after language analysis. The older V2 framework-aware analyzer remains available only as an explicit legacy path.
+FeynMap now treats a repository as a **heterogeneous software system** rather than selecting one dominant language. Python, HTML, JavaScript, frameworks, routes, templates, HTTP calls, subprocesses, files, IPC and other runtime boundaries can coexist in one unified semantic graph.
 
 ## Why FeynMap exists
 
-AI coding agents are powerful, but large repositories force them to reconstruct architecture from partial context. That creates room for hallucinated files, dependencies, call paths, APIs, and change assumptions.
+AI coding agents are powerful, but large repositories force them to reconstruct architecture from partial context. That creates room for hallucinated files, dependencies, call paths, APIs and change assumptions.
 
 FeynMap changes the workflow:
 
 ```text
 source repository
       ↓
+detect all applicable languages
+      ↓
 deterministic language analysis
       ↓
-canonical language graph + evidence
+framework enrichment
       ↓
-optional framework enrichment
+merge language graphs
+      ↓
+cross-language / cross-runtime resolution
+      ↓
+canonical semantic graph + evidence
       ↓
 query / impact / claim validation / migration planning
       ↓
@@ -30,67 +36,104 @@ FeynMap distinguishes between facts that are directly evidenced, relationships t
 
 ## Core principles
 
-1. **Programmatic truth first.** ASTs, symbols, imports, calls, data flow, framework metadata, tests, runtime traces, and repository history should ground the graph wherever possible.
-2. **Evidence travels with every fact.** Nodes and edges can carry provenance, source locations, detector identity, confidence, and evidence type.
-3. **Unknown is not false.** If FeynMap has no evidence for a relationship, the API reports it as unsupported/unknown rather than pretending the relationship cannot exist.
-4. **Language-independent core.** Python, TypeScript, Rust, Java, C/C++, C#, Go, and future languages should map into the same ontology through adapters.
-5. **Frameworks enrich languages.** Django, FastAPI, Rails, Spring, NestJS, and similar frameworks add semantics on top of language facts instead of duplicating parsers.
-6. **Physics notation is a view, not the data model.** The Feynman-inspired representation remains useful, but the canonical graph is conventional and reusable by other tools.
-7. **AI consumes the map; AI does not define truth.** AI inference can enrich the model, but it is explicitly labeled and should not silently overwrite programmatic evidence.
+1. **Programmatic truth first.** ASTs, parsers, symbols, imports, calls, framework metadata, integration boundaries, tests, runtime traces and repository history should ground the graph wherever possible.
+2. **Evidence travels with every fact.** Nodes and edges can carry provenance, source locations, detector identity, confidence and evidence type.
+3. **Unknown is not false.** If FeynMap has no evidence for a relationship, it reports it as unsupported/unresolved rather than pretending the relationship cannot exist.
+4. **Language-independent core.** Python, HTML, JavaScript, TypeScript, Rust, Java, C/C++, C#, Go, Swift, Kotlin and future languages should map into the same ontology through adapters.
+5. **Frameworks enrich languages.** Django, Flask, FastAPI, Spring, NestJS, Axum and similar frameworks add semantics on top of language facts instead of duplicating parsers.
+6. **Cross-language edges are protocol-oriented.** FeynMap resolves `http_client` to `http_server`, `process_spawn` to `cli_entrypoint`, `ffi_import` to `ffi_export`, etc., rather than hard-coding language pairs.
+7. **Physics notation is a view, not the data model.** The Feynman-inspired representation remains useful, but the canonical graph is conventional and reusable by other tools.
+8. **AI consumes the map; AI does not define truth.** AI inference can enrich the model, but it is explicitly labeled and should not silently overwrite programmatic evidence.
 
 ## Architecture
 
 ```text
-                    Language adapters
-          ┌────────────┬────────────┬────────────┐
-          │ Python     │ TypeScript │ Rust ...   │
-          └──────┬─────┴──────┬─────┴──────┬─────┘
-                 │            │            │
-                 └────────────┼────────────┘
+                          Repository
+                              │
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+     PythonAdapter       HTMLAdapter      JavaScriptAdapter
+          │                   │                   │
+          ▼                   ▼                   ▼
+    Python graph          HTML graph          JS graph
+          │                                       │
+          ▼                                       │
+ Django / Flask /                              future
+ FastAPI adapters                              frameworks
+          │                                       │
+          └───────────────────┬───────────────────┘
                               ▼
-                    Canonical Language Graph
+                    Unified Repository Graph
                               │
                               ▼
-                    Framework adapters
-          ┌────────────┬────────────┬────────────┐
-          │ Django     │ Flask      │ FastAPI... │
-          └────────────┴────────────┴────────────┘
+                    Integration Resolver
                               │
-                              ▼
-                    Canonical Semantic Graph
-                              │
-            ┌─────────────────┼─────────────────┐
-            ▼                 ▼                 ▼
-      Grounded Query      AI Grounding       Migration
-          API               Service          Planning
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+  Grounded Query        AI Grounding          Migration
+       API                 Service             Planning
 ```
 
-See [`docs/ARCHITECTURE_V3.md`](docs/ARCHITECTURE_V3.md) for the detailed design.
+See [`docs/ARCHITECTURE_V3.md`](docs/ARCHITECTURE_V3.md) and [`docs/MULTILANGUAGE_ORCHESTRATION.md`](docs/MULTILANGUAGE_ORCHESTRATION.md).
 
 ## Current capabilities
 
-### V3 semantic engine
+### Repository-level multi-language analysis
 
-The V3 `PythonAdapter` is framework-neutral and uses Python's standard-library AST directly. It currently emits:
+With `language=auto`, FeynMap runs every registered language adapter that recognizes the repository and merges the results beneath one repository node.
 
-- Python modules
-- classes, functions, and methods
-- lexical containment
-- local and external imports
-- project-local call relationships
-- inheritance relationships
-- decorators, parameters, and return annotations as Python attributes
-- async/await relationships when the awaited call can be resolved
-- explicit evidence and source locations
-- unresolved-call metadata rather than fabricated edges
+Current V3 language adapters:
 
-Framework meaning is added afterward by independent adapters:
+- **Python** — modules, classes, functions, methods, imports, project-local calls, inheritance, annotations, async/await and unresolved-call metadata.
+- **HTML** — documents/templates, script loads, DOM event handlers, forms, HTMX requests and internal navigation targets.
+- **JavaScript** — modules, functions, arrow functions, classes, methods, imports, local calls, inheritance plus selected runtime boundaries.
 
-- `DjangoAdapter`: Django models, views/DRF handlers, serializers, middleware
-- `FlaskAdapter`: routes, Flask-SQLAlchemy models, Marshmallow schemas
-- `FastAPIAdapter`: route handlers, SQLModel models, Pydantic schemas
+The first JavaScript adapter is dependency-free and deterministic. It is intentionally a foundation that can later be replaced/enriched with Tree-sitter or TypeScript compiler APIs without changing the semantic graph contract.
 
-Use `--framework none` to inspect only the raw Python language graph.
+### Framework enrichment
+
+Python framework meaning is added after language analysis:
+
+- `DjangoAdapter`: models, views/DRF handlers, serializers, middleware, URL route contracts and rendered templates.
+- `FlaskAdapter`: routes, Flask-SQLAlchemy models, Marshmallow schemas, route contracts and rendered templates.
+- `FastAPIAdapter`: route handlers, SQLModel models, Pydantic schemas, HTTP/WebSocket route contracts and templates.
+
+Multiple framework adapters can coexist in one repository when independently detected.
+
+### Cross-language and cross-runtime resolution
+
+The resolver currently understands contracts for:
+
+- HTTP client ↔ server
+- WebSocket client ↔ server
+- RPC client ↔ server
+- queue publish ↔ subscribe
+- subprocess spawn ↔ CLI entrypoint
+- FFI/native import ↔ export
+- IPC send ↔ receive
+- database client ↔ server
+- socket client ↔ server
+- deep link ↔ app route
+- file write ↔ read
+- backend template render ↔ HTML document
+- HTML script load ↔ JavaScript module
+- HTML event handler ↔ JavaScript function
+
+Example:
+
+```text
+Python home()
+    ↓ renders
+index.html
+    ↓ loads
+app.js
+    ↓ contains
+loadItems()
+    ↓ GET /api/items
+Python items()
+```
+
+The same model works outside web development. JavaScript/Python currently emit selected process, file, HTTP, database, FFI, Electron IPC, deep-link and native/mobile bridge contracts. Future Swift/Kotlin/Rust/Java/C++ adapters can meet the same contracts without changing the resolver architecture.
 
 ### Grounded reasoning and migration foundations
 
@@ -100,6 +143,8 @@ V3 also provides:
 - provenance/evidence objects
 - confidence tiers: `verified`, `supported`, `inferred`, `unknown`
 - independent language/framework adapter registry
+- integration-resolution evidence
+- unresolved integration-contract reporting
 - grounded dependency/caller/impact queries
 - relationship claim validation for AI fact-checking
 - AI context bundles
@@ -108,14 +153,7 @@ V3 also provides:
 
 ### V2 legacy pipeline
 
-The original framework-aware Python analyzer remains available for compatibility and still includes:
-
-- Django, Flask, FastAPI, and generic Python analysis
-- recursive interaction tracing
-- semantic clustering
-- change-impact analysis
-- reachability/dead-code analysis
-- physics-inspired notation
+The original framework-aware Python analyzer remains available for compatibility and still includes recursive interaction tracing, semantic clustering, change-impact analysis, reachability/dead-code analysis and physics-inspired notation.
 
 V3 no longer depends on this parser for normal `analyze`, `query`, `claim`, or `migrate-plan` commands.
 
@@ -135,13 +173,14 @@ FeynMap keeps the core dependency-free for now.
 feynmap analyze .
 ```
 
-For backwards-friendly usage, this also works:
+`auto` now means **all positively detected language adapters**, not “pick the best language.”
+
+You can constrain languages explicitly:
 
 ```bash
-feynmap .
+feynmap analyze . --language python
+feynmap analyze . --language python,javascript
 ```
-
-The default output is `feynmap.semantic.json`.
 
 Framework enrichment is auto-detected by default. To request one explicitly or disable it:
 
@@ -151,21 +190,23 @@ feynmap analyze . --framework fastapi
 feynmap analyze . --framework none
 ```
 
+The default output is `feynmap.semantic.json`.
+
 ### Query a symbol
 
 ```bash
 feynmap query . UserView --kind context --depth 2
-feynmap query . process_payment --kind callers --depth 3
+feynmap query . loadItems --kind callers --depth 3
 feynmap query . User --kind impact --depth 4
 ```
 
 ### Fact-check a claimed relationship
 
 ```bash
-feynmap claim . PaymentView FraudDetector --relationship calls
+feynmap claim . loadItems items --relationship requests
 ```
 
-If no matching edge exists, FeynMap reports that it currently has **no evidence** for the claim and returns nearby relationships. It does not claim impossibility.
+If no matching edge exists, FeynMap reports that it currently has **no evidence** for the claim. It does not claim impossibility.
 
 ### Plan a future Rust migration
 
@@ -173,7 +214,7 @@ If no matching edge exists, FeynMap reports that it currently has **no evidence*
 feynmap migrate-plan . --to rust
 ```
 
-This does **not** generate Rust yet. It measures evidence coverage, graph confidence, unknown regions, and partitions the repository into bounded migration units that can later feed a conversion/verification engine.
+This does **not** generate Rust yet. It measures evidence coverage, graph confidence, unknown regions and partitions the repository into bounded migration units.
 
 ### Run the old V2 output pipeline
 
@@ -187,14 +228,16 @@ feynmap legacy . --framework django
 from feynmap import FeynMapEngine, FeynMapQuery
 
 engine = FeynMapEngine()
-graph = engine.analyze(".", framework="auto")
+graph = engine.analyze(".")
+
+print(graph.metadata["language_names"])
+print(graph.metadata["integration"])
 
 query = FeynMapQuery(graph)
-print(query.context_bundle("UserView", depth=2))
-print(query.validate_claim("UserView", "User", "uses_data"))
+print(query.context_bundle("loadItems", depth=3))
 ```
 
-For a framework-neutral Python graph:
+For framework-neutral Python only:
 
 ```python
 graph = engine.analyze(".", language="python", framework="none")
@@ -208,13 +251,11 @@ from feynmap import FeynExtractor, FeynNotator
 
 ## Direction
 
-Phase 1—the separation of Python parsing from Django/Flask/FastAPI semantics—is complete. Phase 2 focuses on turning the semantic engine into an AI grounding service: persistent graph snapshots, incremental updates, MCP tools, and token-budgeted context retrieval.
+Phase 1 (framework-neutral Python) and Phase 1.5 (repository multi-language orchestration and cross-runtime resolution) are now implemented on the V3 refactor branch.
 
-Planned language adapters include TypeScript/JavaScript, Rust, Java, C/C++, C#, and Go. Planned evidence sources include runtime traces, tests/coverage, git/history coupling, dependency manifests, and type-checker/compiler facts.
+The next major phase is the AI grounding service: persistent graph snapshots, incremental updates, repository identity, MCP tools and token-budgeted context retrieval.
 
-Planned consumers include MCP tools for AI coding agents, IDE integration, code review and change-impact tools, architecture documentation, refactoring assistance, migration engines, Python/TypeScript/C++ → Rust conversion, and behavior verification after automated rewrites.
-
-See [`ROADMAP.md`](ROADMAP.md).
+Before broad production use, the integration layer still needs hardening for embedded languages, richer JavaScript/TypeScript parsing, composed/nested routes, protocol schemas, build/container topology and additional native/mobile adapters. See [`ROADMAP.md`](ROADMAP.md).
 
 ## Mission
 
