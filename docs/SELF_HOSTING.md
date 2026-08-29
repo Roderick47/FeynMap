@@ -24,6 +24,13 @@ The initial self-hosting foundation and first recursive improvement were later m
 bbdf1be4e1aeaa37f08239c9361e8508ab83af35
 ```
 
+Additional recursive reference points are preserved as branches, including:
+
+- `baseline/self-hosting-pre-type-resolution`
+- `baseline/self-hosting-pre-reexport-type-sharing`
+
+These references let later snapshot/diff work compare semantic quality across accepted self-improvement stages.
+
 ## Golden architecture
 
 `feynmap/data/feynmap_golden.json` contains architecture facts that should be discoverable independently of the current analyzer implementation. It is included as package data so an installed FeynMap build can evaluate a checked-out FeynMap repository using the same benchmark.
@@ -36,6 +43,14 @@ FeynMapEngine.analyze
 
 FeynMapEngine.analyze
     CALLS -> IntegrationResolver.resolve
+
+FeynMapEngine._select_languages
+    CALLS -> AdapterRegistry.detect_languages
+    CALLS -> AdapterRegistry.language
+
+FeynMapEngine.analyze
+    CALLS -> AdapterRegistry.detect_frameworks
+    CALLS -> AdapterRegistry.framework
 
 default_registry
     CALLS -> PythonAdapter
@@ -149,6 +164,33 @@ FeynMap now builds a conservative package symbol-alias graph from static package
 
 This pass also repairs package-relative import edges that the original module-oriented relative-import resolver could misclassify inside `__init__.py` files.
 
+## Recursive improvement 3 — share alias evidence with type resolution
+
+FeynMap then exposed a boundary between its own semantic passes. `AdapterRegistry` is imported into `engine.py` through the public `feynmap.adapters` re-export surface, while instance dispatch such as:
+
+```python
+self.registry.detect_languages(...)
+self.registry.detect_frameworks(...)
+```
+
+requires the attribute/type resolver to know the canonical class behind that public name.
+
+The re-export pass now exposes its uniquely resolved alias index as reusable evidence. The instance-type resolver consumes that index when resolving annotations and constructor expressions. A grounded call edge retains the canonical type plus the exact alias chain used to reach it.
+
+The golden benchmark now requires these FeynMap-on-FeynMap relationships:
+
+```text
+FeynMapEngine._select_languages
+    CALLS -> AdapterRegistry.detect_languages
+    CALLS -> AdapterRegistry.language
+
+FeynMapEngine.analyze
+    CALLS -> AdapterRegistry.detect_frameworks
+    CALLS -> AdapterRegistry.framework
+```
+
+The ambiguity rule is unchanged: if an attribute can still denote multiple target types, no method edge is created.
+
 ## Remaining known blind spots
 
 Current benchmark targets still include:
@@ -159,16 +201,18 @@ Current benchmark targets still include:
 - parser-backed JavaScript/TypeScript semantics,
 - build-system and CI execution topology.
 
+These are important hardening areas, but none is required to begin repository snapshots or an MCP interface over already-evidenced facts.
+
 ## Quality gates
 
-Phase 1.6 should eventually establish release gates such as:
+Phase 1.6 should establish release gates that do not require invented numeric thresholds:
 
 1. all critical golden symbols are present,
-2. all previously resolved critical golden relationships remain resolved,
+2. all critical golden relationships are resolved,
 3. graph validation has zero errors,
-4. unresolved-call count does not regress without an explicit explanation,
-5. evidence coverage does not regress materially,
-6. ambiguous relationships remain labeled unresolved,
-7. each newly resolved golden edge includes evidence and confidence.
+4. every critical resolved relationship has evidence,
+5. ambiguous relationships remain unresolved rather than guessed,
+6. previously accepted critical relationships never silently regress,
+7. unresolved-call/evidence metrics are recorded so later snapshot diffs can detect deterioration.
 
-The exact numeric thresholds will be set after the first actually executed baseline report rather than invented in advance.
+Absolute numeric thresholds for unresolved-call counts or evidence percentages should be set only after an actually executed baseline report exists.
