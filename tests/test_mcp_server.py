@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from pathlib import Path
 
 import pytest
@@ -133,5 +134,41 @@ def test_mcp_protocol_lists_and_calls_grounding_tools(tmp_path: Path):
             assert bundle.is_error is False
             assert bundle.structured_content["root"]["qualified_name"] == "app.run"
             assert bundle.structured_content["budget"]["estimated_tokens"] <= bundle.structured_content["budget"]["max_tokens"]
+
+    asyncio.run(exercise())
+
+
+def test_stdio_subprocess_serves_snapshot_without_network(tmp_path: Path):
+    pytest.importorskip("mcp")
+    if not mcp_runtime_supported():
+        pytest.skip("official MCP SDK requires Python 3.10+")
+
+    from mcp import Client
+    from mcp.client.stdio import StdioServerParameters, stdio_client
+
+    snapshot, _, store = _stored_project(tmp_path)
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=[
+            "-m",
+            "feynmap.mcp_server",
+            "--project",
+            str(tmp_path),
+            "--store",
+            str(store.path),
+            "--snapshot",
+            snapshot.snapshot_id,
+        ],
+        cwd=str(tmp_path),
+    )
+
+    async def exercise() -> None:
+        async with Client(stdio_client(params)) as client:
+            listed = await client.list_tools()
+            assert "get_symbol" in {tool.name for tool in listed.tools}
+            result = await client.call_tool("get_symbol", {"symbol": "app.run"})
+            assert result.is_error is False
+            assert result.structured_content["snapshot_id"] == snapshot.snapshot_id
+            assert result.structured_content["symbol"]["qualified_name"] == "app.run"
 
     asyncio.run(exercise())
