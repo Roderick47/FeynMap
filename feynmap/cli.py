@@ -23,14 +23,22 @@ def _write(payload: Dict[str, Any], output: Optional[str]) -> None:
         print(text)
 
 
+def _language_help() -> str:
+    return "Language selection. 'auto' analyzes all detected languages; comma-separated values such as python,javascript are supported."
+
+
+def _framework_help() -> str:
+    return "Framework selection. 'auto' applies all detected compatible frameworks; 'none' disables framework enrichment."
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="feynmap", description="Build a verifiable semantic model of software so humans and AI can reason about code without guessing.")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    analyze = sub.add_parser("analyze", help="Build the canonical semantic graph")
+    analyze = sub.add_parser("analyze", help="Build one unified repository semantic graph")
     analyze.add_argument("path", nargs="?", default=".")
-    analyze.add_argument("--language", default="auto")
-    analyze.add_argument("--framework", default="auto")
+    analyze.add_argument("--language", default="auto", help=_language_help())
+    analyze.add_argument("--framework", default="auto", help=_framework_help())
     analyze.add_argument("--output", "-o", default="feynmap.semantic.json")
 
     query = sub.add_parser("query", help="Query dependencies, callers, impact, or an AI context bundle")
@@ -38,23 +46,23 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("symbol")
     query.add_argument("--kind", choices=["dependencies", "callers", "impact", "context"], default="context")
     query.add_argument("--depth", type=int, default=2)
-    query.add_argument("--language", default="auto")
-    query.add_argument("--framework", default="auto")
+    query.add_argument("--language", default="auto", help=_language_help())
+    query.add_argument("--framework", default="auto", help=_framework_help())
 
     claim = sub.add_parser("claim", help="Fact-check a claimed code relationship")
     claim.add_argument("path")
     claim.add_argument("source")
     claim.add_argument("target")
     claim.add_argument("--relationship")
-    claim.add_argument("--language", default="auto")
-    claim.add_argument("--framework", default="auto")
+    claim.add_argument("--language", default="auto", help=_language_help())
+    claim.add_argument("--framework", default="auto", help=_framework_help())
 
     migration = sub.add_parser("migrate-plan", help="Assess and partition a repository for migration")
     migration.add_argument("path")
     migration.add_argument("--to", default="rust")
     migration.add_argument("--max-unit-nodes", type=int, default=25)
-    migration.add_argument("--language", default="auto")
-    migration.add_argument("--framework", default="auto")
+    migration.add_argument("--language", default="auto", help=_language_help())
+    migration.add_argument("--framework", default="auto", help=_framework_help())
     migration.add_argument("--output", "-o", default="feynmap.migration.json")
 
     legacy = sub.add_parser("legacy", help="Run the V2 physics-notation pipeline")
