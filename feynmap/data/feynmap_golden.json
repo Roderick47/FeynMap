@@ -1,14 +1,19 @@
 {
   "name": "FeynMap recursive self-analysis",
-  "benchmark_version": "1.0.0",
+  "benchmark_version": "1.2.0",
   "repository": "Roderick47/FeynMap",
   "baseline_version": "v3.0.0-alpha.1",
   "baseline_commit": "4c378e3155b713b2b25bdb1c900c15244b213dad",
   "expected_symbols": [
     "feynmap.engine.FeynMapEngine",
     "feynmap.engine.FeynMapEngine.analyze",
+    "feynmap.engine.FeynMapEngine._select_languages",
     "feynmap.engine.default_registry",
     "feynmap.adapters.base.AdapterRegistry",
+    "feynmap.adapters.base.AdapterRegistry.detect_languages",
+    "feynmap.adapters.base.AdapterRegistry.detect_frameworks",
+    "feynmap.adapters.base.AdapterRegistry.language",
+    "feynmap.adapters.base.AdapterRegistry.framework",
     "feynmap.adapters.python.PythonAdapter",
     "feynmap.adapters.html.HTMLAdapter",
     "feynmap.adapters.javascript.JavaScriptAdapter",
@@ -36,7 +41,35 @@
       "kind": "calls",
       "target": "feynmap.integration.IntegrationResolver.resolve",
       "importance": "critical",
-      "note": "The unified graph is passed through cross-language integration resolution. This currently exercises attribute/type-aware call resolution."
+      "note": "The unified graph is passed through cross-language integration resolution; this is grounded through unique constructor/type evidence for self.resolver."
+    },
+    {
+      "source": "feynmap.engine.FeynMapEngine._select_languages",
+      "kind": "calls",
+      "target": "feynmap.adapters.base.AdapterRegistry.detect_languages",
+      "importance": "critical",
+      "note": "The engine asks its registry to detect all applicable languages. The registry type is imported through the public feynmap.adapters re-export surface."
+    },
+    {
+      "source": "feynmap.engine.FeynMapEngine._select_languages",
+      "kind": "calls",
+      "target": "feynmap.adapters.base.AdapterRegistry.language",
+      "importance": "critical",
+      "note": "Explicit language selection resolves names through the typed registry instance."
+    },
+    {
+      "source": "feynmap.engine.FeynMapEngine.analyze",
+      "kind": "calls",
+      "target": "feynmap.adapters.base.AdapterRegistry.detect_frameworks",
+      "importance": "critical",
+      "note": "Framework auto-detection dispatches through self.registry."
+    },
+    {
+      "source": "feynmap.engine.FeynMapEngine.analyze",
+      "kind": "calls",
+      "target": "feynmap.adapters.base.AdapterRegistry.framework",
+      "importance": "critical",
+      "note": "Explicit framework selection dispatches through self.registry."
     },
     {
       "source": "feynmap.engine.default_registry",
@@ -94,7 +127,6 @@
     }
   ],
   "known_blind_spots": [
-    "Attribute calls such as self.resolver.resolve() require type-aware resolution to prove the IntegrationResolver target.",
     "Variable/state reads, writes and mutation are not yet represented explicitly.",
     "Nested functions are not yet promoted to first-class Python semantic nodes.",
     "Dynamic dispatch, plugin registration and metaprogramming remain conservative/unresolved.",
