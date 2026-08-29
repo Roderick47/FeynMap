@@ -87,3 +87,40 @@ def test_feynmap_resolves_its_adapter_reexports_in_default_registry():
     metadata = graph.metadata["python_reexport_resolution"]
     assert metadata["resolved_aliases"] >= len(expected_targets)
     assert metadata["call_edges_added"] >= len(expected_targets)
+
+
+def test_feynmap_uses_reexported_registry_type_for_instance_dispatch():
+    graph = FeynMapEngine().analyze(str(REPO_ROOT), language="python", framework="none")
+    report = SelfAnalysisBenchmark(graph, load_golden()).report()
+    relationships = report["evaluation"]["relationships"]
+
+    expected = {
+        (
+            "feynmap.engine.FeynMapEngine._select_languages",
+            "feynmap.adapters.base.AdapterRegistry.detect_languages",
+        ),
+        (
+            "feynmap.engine.FeynMapEngine._select_languages",
+            "feynmap.adapters.base.AdapterRegistry.language",
+        ),
+        (
+            "feynmap.engine.FeynMapEngine.analyze",
+            "feynmap.adapters.base.AdapterRegistry.detect_frameworks",
+        ),
+        (
+            "feynmap.engine.FeynMapEngine.analyze",
+            "feynmap.adapters.base.AdapterRegistry.framework",
+        ),
+    }
+    registry_facts = [
+        item
+        for item in relationships
+        if (item["source"], item["target"]) in expected and item["kind"] == EdgeKind.CALLS.value
+    ]
+
+    assert {(item["source"], item["target"]) for item in registry_facts} == expected
+    assert all(item["found"] is True for item in registry_facts)
+
+    metadata = graph.metadata["python_attribute_resolution"]
+    assert metadata["reexport_aliases_consulted"] >= 1
+    assert metadata["alias_grounded_call_edges"] >= len(expected)
