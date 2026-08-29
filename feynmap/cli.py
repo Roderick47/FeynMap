@@ -11,7 +11,7 @@ from .engine import FeynMapEngine
 from .migration import MigrationPlanner
 from .query import FeynMapQuery
 
-COMMANDS = {"analyze", "query", "claim", "migrate-plan", "self-check", "legacy"}
+COMMANDS = {"analyze", "query", "claim", "migrate-plan", "self-check", "snapshot", "legacy"}
 
 
 def _write(payload: Dict[str, Any], output: Optional[str]) -> None:
@@ -67,10 +67,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     self_check = sub.add_parser("self-check", help="Run the recursive FeynMap-on-FeynMap architecture benchmark")
     self_check.add_argument("path", nargs="?", default=".")
-    self_check.add_argument("--golden", help="Optional golden architecture JSON; defaults to self_hosting/feynmap_golden.json")
+    self_check.add_argument("--golden", help="Optional golden architecture JSON; defaults to the packaged FeynMap golden model")
     self_check.add_argument("--language", default="auto", help=_language_help())
     self_check.add_argument("--framework", default="auto", help=_framework_help())
     self_check.add_argument("--output", "-o", default="feynmap.self-analysis.json")
+
+    snapshot = sub.add_parser("snapshot", help="Analyze once and persist an immutable repository semantic snapshot")
+    snapshot.add_argument("path", nargs="?", default=".")
+    snapshot.add_argument("--store", help="SQLite snapshot store; defaults to <path>/.feynmap/snapshots.sqlite")
+    snapshot.add_argument("--language", default="auto", help=_language_help())
+    snapshot.add_argument("--framework", default="auto", help=_framework_help())
 
     legacy = sub.add_parser("legacy", help="Run the V2 physics-notation pipeline")
     legacy.add_argument("path", nargs="?", default=".")
@@ -102,6 +108,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             ),
             args.output,
         )
+        return 0
+
+    if args.command == "snapshot":
+        from .snapshots import SnapshotStore, capture_and_store
+
+        root = Path(args.path).resolve()
+        graph = FeynMapEngine().analyze(str(root), language=args.language, framework=args.framework)
+        store_path = Path(args.store).expanduser() if args.store else root / ".feynmap" / "snapshots.sqlite"
+        store = SnapshotStore(store_path)
+        persisted = capture_and_store(
+            root,
+            graph,
+            store,
+            analysis_options={"language_selection": args.language, "framework_selection": args.framework},
+        )
+        payload = persisted.to_dict(include_files=False)
+        payload["store"] = str(store.path)
+        payload["current"] = True
+        _write(payload, None)
         return 0
 
     graph = FeynMapEngine().analyze(args.path, language=args.language, framework=args.framework)
