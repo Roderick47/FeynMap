@@ -100,7 +100,8 @@ The report records:
 - resolved and unresolved integration contracts,
 - expected architecture symbol recall,
 - expected architecture relationship recall,
-- an aggregate architecture score.
+- an aggregate architecture score,
+- deterministic Phase 1.6 quality-gate results.
 
 Relationships are weighted more heavily than mere symbol presence because architecture is primarily about how components interact.
 
@@ -203,16 +204,19 @@ Current benchmark targets still include:
 
 These are important hardening areas, but none is required to begin repository snapshots or an MCP interface over already-evidenced facts.
 
-## Quality gates
+## Implemented quality gates
 
-Phase 1.6 should establish release gates that do not require invented numeric thresholds:
+`SelfAnalysisBenchmark.report()` now includes a `quality_gates` section. Phase 1.6 passes its invariant gates only when:
 
-1. all critical golden symbols are present,
+1. all golden architecture symbols are present,
 2. all critical golden relationships are resolved,
 3. graph validation has zero errors,
-4. every critical resolved relationship has evidence,
-5. ambiguous relationships remain unresolved rather than guessed,
-6. previously accepted critical relationships never silently regress,
-7. unresolved-call/evidence metrics are recorded so later snapshot diffs can detect deterioration.
+4. every resolved critical golden relationship has evidence.
 
-Absolute numeric thresholds for unresolved-call counts or evidence percentages should be set only after an actually executed baseline report exists.
+Ambiguous-target behavior is protected separately by regression tests that require multiple possible targets to remain unresolved.
+
+The benchmark deliberately defers absolute thresholds for unresolved-call count, evidence coverage, orphan nodes, and unresolved integration contracts. Those metrics are recorded now and become useful comparative gates once Phase 2 snapshot identity can provide trustworthy before/after baselines.
+
+## Validation caveat
+
+The connected GitHub Actions runs are still failing before runner steps execute. Jobs have reported `steps: null`, so Phase 1.6 must not be described as CI-verified until checkout/install/test steps actually run in an execution environment.
