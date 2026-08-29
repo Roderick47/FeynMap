@@ -13,15 +13,48 @@ A language adapter must:
 5. preserve language-specific details in `attributes`,
 6. report uncertainty instead of manufacturing relationships.
 
-A language adapter should not encode framework semantics that can be separated cleanly.
+A language adapter **must not classify framework roles**. Python should emit a class as a Python class, not a Django model; TypeScript should emit a function as a TypeScript function, not an Express route. Framework meaning is a separate enrichment step.
+
+The current `PythonAdapter` is the reference implementation. It uses the standard-library AST and emits modules, classes, functions, methods, containment, imports, calls, inheritance, annotations, and await relationships without importing Django, Flask, or FastAPI.
 
 ## Framework adapters
 
 Implement `FrameworkAdapter`.
 
-A framework adapter enriches an existing language graph. It may identify routes, models, serializers, dependency injection, ORM behavior, middleware, lifecycle hooks, templates, queues, or other framework-level concepts.
+A framework adapter consumes an already-built language graph and enriches it. It may identify routes, models, serializers, dependency injection, ORM behavior, middleware, lifecycle hooks, templates, queues, or other framework-level concepts.
 
-Framework adapters should add evidence with `EvidenceKind.FRAMEWORK`.
+Framework adapters should:
+
+1. declare the language they enrich,
+2. detect themselves independently of language detection,
+3. preserve existing language facts,
+4. reclassify or annotate nodes only when framework evidence supports the role,
+5. add evidence with `EvidenceKind.FRAMEWORK`,
+6. never become a second parser for language syntax that the language adapter already owns.
+
+Built-in Python framework adapters currently include `DjangoAdapter`, `FlaskAdapter`, and `FastAPIAdapter` under `feynmap/adapters/frameworks/`.
+
+## Engine order
+
+The engine always follows this order:
+
+```text
+repository
+  ↓
+language detection
+  ↓
+language adapter
+  ↓
+canonical language graph
+  ↓
+framework detection
+  ↓
+framework adapter enrichment
+  ↓
+final semantic graph
+```
+
+`--framework none` skips framework enrichment entirely and exposes the raw language graph.
 
 ## Evidence rule
 
