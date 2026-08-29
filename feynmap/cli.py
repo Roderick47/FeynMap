@@ -11,7 +11,10 @@ from .engine import FeynMapEngine
 from .migration import MigrationPlanner
 from .query import FeynMapQuery
 
-COMMANDS = {"analyze", "query", "claim", "migrate-plan", "self-check", "snapshot", "diff", "legacy"}
+COMMANDS = {
+    "analyze", "query", "claim", "migrate-plan", "self-check", "snapshot",
+    "diff", "incremental", "stored-query", "legacy",
+}
 
 
 def _write(payload: Dict[str, Any], output: Optional[str]) -> None:
@@ -85,10 +88,32 @@ def build_parser() -> argparse.ArgumentParser:
     snapshot_diff.add_argument("--store", help="SQLite snapshot store; defaults to <path>/.feynmap/snapshots.sqlite")
     snapshot_diff.add_argument("--output", "-o")
 
+    incremental = sub.add_parser("incremental", help="Reuse or safely refresh a stored snapshot from repository changes")
+    incremental.add_argument("path", nargs="?", default=".")
+    incremental.add_argument("--from", dest="previous_snapshot", required=True, help="Previous snapshot ID")
+    incremental.add_argument("--store", help="SQLite snapshot store; defaults to <path>/.feynmap/snapshots.sqlite")
+    incremental.add_argument("--language", default="auto", help=_language_help())
+    incremental.add_argument("--framework", default="auto", help=_framework_help())
+
+    stored_query = sub.add_parser("stored-query", help="Query one stored semantic snapshot without reparsing source")
+    stored_query.add_argument("snapshot", help="Snapshot ID")
+    stored_query.add_argument("symbol", nargs="?", help="Symbol for symbol/context queries")
+    stored_query.add_argument("--kind", choices=["summary", "symbol", "context", "unresolved"], default="context")
+    stored_query.add_argument("--depth", type=int, default=2)
+    stored_query.add_argument("--max-tokens", type=int, default=4000)
+    stored_query.add_argument("--path", default=".", help="Repository checkout used to locate the default store")
+    stored_query.add_argument("--store", help="SQLite snapshot store; defaults to <path>/.feynmap/snapshots.sqlite")
+    stored_query.add_argument("--output", "-o")
+
     legacy = sub.add_parser("legacy", help="Run the V2 physics-notation pipeline")
     legacy.add_argument("path", nargs="?", default=".")
     legacy.add_argument("--framework", default="auto")
     return parser
+
+
+def _store_path(path: str, explicit: Optional[str]) -> Path:
+    root = Path(path).resolve()
+    return Path(explicit).expanduser() if explicit else root / ".feynmap" / "snapshots.sqlite"
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -122,8 +147,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         root = Path(args.path).resolve()
         graph = FeynMapEngine().analyze(str(root), language=args.language, framework=args.framework)
-        store_path = Path(args.store).expanduser() if args.store else root / ".feynmap" / "snapshots.sqlite"
-        store = SnapshotStore(store_path)
+        store = SnapshotStore(_store_path(args.path, args.store))
         persisted = capture_and_store(
             root,
             graph,
@@ -140,9 +164,62 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from .diff import diff_store_snapshots
         from .snapshots import SnapshotStore
 
+        _write(
+            diff_store_snapshots(SnapshotStore(_store_path(args.path, args.store)), args.before, args.after),
+            args.output,
+        )
+        return 0
+
+    if args.command == "incremental":
+        from .incremental import incremental_snapshot
+        from .snapshots import SnapshotStore
+
         root = Path(args.path).resolve()
-        store_path = Path(args.store).expanduser() if args.store else root / ".feynmap" / "snapshots.sqlite"
-        _write(diff_store_snapshots(SnapshotStore(store_path), args.before, args.after), args.output)
+        store = SnapshotStore(_store_path(args.path, args.store))
+        snapshot, graph, plan = incremental_snapshot(
+            root,
+            store,
+            args.previous_snapshot,
+            language=args.language,
+            framework=args.framework,
+        )
+        _write(
+            {
+                "snapshot": snapshot.to_dict(include_files=False),
+                "plan": plan.to_dict(),
+                "graph": {"node_count": len(graph.nodes), "edge_count": len(graph.edges)},
+                "store": str(store.path),
+                "current": True,
+            },
+            None,
+        )
+        return 0
+
+    if args.command == "stored-query":
+        from .context import ContextBudget, StoredSnapshotContext
+        from .snapshots import SnapshotStore
+
+        context = StoredSnapshotContext.load(
+            SnapshotStore(_store_path(args.path, args.store)),
+            args.snapshot,
+        )
+        if args.kind == "summary":
+            payload = context.repository_summary()
+        elif args.kind == "unresolved":
+            payload = context.unresolved()
+        elif args.kind == "symbol":
+            if not args.symbol:
+                raise ValueError("stored-query --kind symbol requires SYMBOL")
+            payload = context.symbol(args.symbol)
+        else:
+            if not args.symbol:
+                raise ValueError("stored-query --kind context requires SYMBOL")
+            payload = context.context_bundle(
+                args.symbol,
+                depth=args.depth,
+                budget=ContextBudget(max_tokens=args.max_tokens),
+            )
+        _write(payload, args.output)
         return 0
 
     graph = FeynMapEngine().analyze(args.path, language=args.language, framework=args.framework)
