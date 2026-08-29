@@ -45,6 +45,21 @@ def test_golden_architecture_checks_engine_merge_relationship():
     assert merge_fact["found"] is True
 
 
+def test_first_recursive_improvement_resolves_integration_resolver_call():
+    graph = FeynMapEngine().analyze(str(REPO_ROOT), language="python", framework="none")
+    report = SelfAnalysisBenchmark(graph, load_golden()).report()
+    relationships = report["evaluation"]["relationships"]
+
+    resolver_fact = next(
+        item
+        for item in relationships
+        if item["source"] == "feynmap.engine.FeynMapEngine.analyze"
+        and item["target"] == "feynmap.integration.IntegrationResolver.resolve"
+        and item["kind"] == EdgeKind.CALLS.value
+    )
+    assert resolver_fact["found"] is True
+
+
 def test_feynmap_resolves_its_adapter_reexports_in_default_registry():
     graph = FeynMapEngine().analyze(str(REPO_ROOT), language="python", framework="none")
     report = SelfAnalysisBenchmark(graph, load_golden()).report()
