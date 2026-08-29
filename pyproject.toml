@@ -52,6 +52,9 @@ py-modules = [
   "trace_paths",
 ]
 
+[tool.setuptools.package-data]
+feynmap = ["data/*.json"]
+
 [tool.setuptools.packages.find]
 include = ["feynmap*"]
 

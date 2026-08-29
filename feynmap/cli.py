@@ -11,7 +11,7 @@ from .engine import FeynMapEngine
 from .migration import MigrationPlanner
 from .query import FeynMapQuery
 
-COMMANDS = {"analyze", "query", "claim", "migrate-plan", "legacy"}
+COMMANDS = {"analyze", "query", "claim", "migrate-plan", "self-check", "legacy"}
 
 
 def _write(payload: Dict[str, Any], output: Optional[str]) -> None:
@@ -65,6 +65,13 @@ def build_parser() -> argparse.ArgumentParser:
     migration.add_argument("--framework", default="auto", help=_framework_help())
     migration.add_argument("--output", "-o", default="feynmap.migration.json")
 
+    self_check = sub.add_parser("self-check", help="Run the recursive FeynMap-on-FeynMap architecture benchmark")
+    self_check.add_argument("path", nargs="?", default=".")
+    self_check.add_argument("--golden", help="Optional golden architecture JSON; defaults to self_hosting/feynmap_golden.json")
+    self_check.add_argument("--language", default="auto", help=_language_help())
+    self_check.add_argument("--framework", default="auto", help=_framework_help())
+    self_check.add_argument("--output", "-o", default="feynmap.self-analysis.json")
+
     legacy = sub.add_parser("legacy", help="Run the V2 physics-notation pipeline")
     legacy.add_argument("path", nargs="?", default=".")
     legacy.add_argument("--framework", default="auto")
@@ -82,6 +89,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.command == "legacy":
         from pipeline import run_feynmap
         run_feynmap(args.path, framework=args.framework)
+        return 0
+
+    if args.command == "self-check":
+        from .self_hosting import run_self_analysis
+        _write(
+            run_self_analysis(
+                args.path,
+                golden_path=args.golden,
+                language=args.language,
+                framework=args.framework,
+            ),
+            args.output,
+        )
         return 0
 
     graph = FeynMapEngine().analyze(args.path, language=args.language, framework=args.framework)

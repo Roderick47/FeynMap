@@ -68,13 +68,49 @@ FeynMap now treats a repository as a heterogeneous software system rather than c
 - [ ] container/process topology from Docker/Compose/Kubernetes
 - [ ] build-system orchestration (Make, Gradle, Cargo build scripts, npm scripts, CI workflows)
 
+## Phase 1.6 — Recursive self-analysis / dogfooding 🚧
+
+FeynMap is its own first serious benchmark. The objective is not merely to prove that self-analysis runs; it is to measure whether the graph captures FeynMap's known architecture and to turn every miss into an explicit improvement target.
+
+- [x] Preserve the Phase 0–1.5 merge as baseline commit `4c378e3155b713b2b25bdb1c900c15244b213dad`
+- [x] Create the `phase-1.6-self-hosting` development branch
+- [x] Add a checked-in golden FeynMap architecture specification
+- [x] Add `SelfAnalysisBenchmark` metrics for graph size, languages, evidence, unresolved calls, orphan nodes, and integration coverage
+- [x] Add architecture symbol/relationship scoring
+- [x] Add `feynmap self-check` CLI command
+- [x] Add a regression test that runs `FeynMapEngine` on the FeynMap repository itself
+- [ ] Record the first executed self-analysis baseline report
+- [ ] Classify every missing critical relationship by root cause
+- [ ] Improve the Python resolver using the baseline findings without weakening uncertainty handling
+- [ ] Re-run the self-analysis and record semantic-quality deltas
+- [ ] Establish minimum self-hosting quality gates for future releases
+
+### Self-hosting quality targets
+
+The first benchmark tracks these as measurements rather than pretending all are solved:
+
+- critical architecture symbol recall
+- critical architecture relationship recall
+- unresolved Python call count
+- nodes containing unresolved calls
+- evidence coverage
+- graph validation errors/warnings
+- integration resolved/unresolved counts
+- orphan semantic nodes
+- confidence-tier distribution
+
+Improvements should reduce unknown/unresolved regions while preserving the rule that ambiguous relationships remain unresolved rather than guessed.
+
 ## Phase 2 — AI grounding service
+
+Phase 2 begins after the self-hosting baseline has exposed the most important semantic gaps.
 
 - [ ] Persistent graph cache with incremental updates
 - [ ] Repository snapshot/hash identity
+- [ ] Semantic graph diffing between repository snapshots
 - [ ] MCP server
-- [ ] `get_symbol`, `find_callers`, `find_dependencies`, `trace_path`
-- [ ] `validate_claim`, `change_impact`
+- [ ] `get_symbol`, `find_callers`, `find_dependencies`, `trace_path`, `find_integrations`
+- [ ] `validate_claim`, `change_impact`, `explain_evidence`, `unresolved`
 - [ ] token-budgeted context bundles
 
 ## Phase 3 — More language adapters
