@@ -68,12 +68,11 @@ FeynMap now treats a repository as a heterogeneous software system rather than c
 - [ ] container/process topology from Docker/Compose/Kubernetes
 - [ ] build-system orchestration (Make, Gradle, Cargo build scripts, npm scripts, CI workflows)
 
-## Phase 1.6 — Recursive self-analysis / dogfooding 🚧
+## Phase 1.6 — Recursive self-analysis / dogfooding ✅
 
-FeynMap is its own first serious benchmark. The objective is not merely to prove that self-analysis runs; it is to measure whether the graph captures FeynMap's known architecture and to turn every miss into an explicit improvement target.
+FeynMap is its own first serious benchmark. The architectural self-hosting foundation is complete and merged; numeric baseline execution remains externally blocked by the GitHub Actions runner condition.
 
 - [x] Preserve the Phase 0–1.5 merge as baseline commit `4c378e3155b713b2b25bdb1c900c15244b213dad`
-- [x] Create the initial self-hosting development branch
 - [x] Add a checked-in golden FeynMap architecture specification
 - [x] Add `SelfAnalysisBenchmark` metrics for graph size, languages, evidence, unresolved calls, orphan nodes, and integration coverage
 - [x] Add architecture symbol/relationship scoring
@@ -85,12 +84,10 @@ FeynMap is its own first serious benchmark. The objective is not merely to prove
 - [x] Recursive improvement 3: reuse package re-export evidence in annotation/instance-type resolution
 - [x] Require FeynMap's own `self.registry.*` dispatch relationships in the golden benchmark
 - [x] Establish invariant self-hosting quality gates: golden symbols, critical relationships, graph validity, and critical-edge evidence
-- [ ] Record the first actually executed self-analysis baseline report
-- [ ] Record before/after numeric semantic-quality deltas once an execution environment is available
+- [ ] Record the first actually executed self-analysis baseline report when an execution environment is available
+- [ ] Record before/after numeric semantic-quality deltas once snapshots can be executed and compared
 
 ### Self-hosting quality gates
-
-These gates are deterministic and do not depend on invented numeric thresholds:
 
 - [x] all golden architecture symbols must be present
 - [x] all critical golden architecture relationships must be resolved
@@ -102,7 +99,7 @@ The benchmark continues to record unresolved-call count, evidence coverage, orph
 
 ### Remaining self-hosting hardening
 
-The known remaining gaps are valuable but no longer block beginning Phase 2 over already-evidenced facts:
+These remain useful improvements but do not block stored-graph/MCP work over already-evidenced facts:
 
 - explicit variable/state reads, writes and mutations
 - nested functions as first-class nodes
@@ -110,19 +107,28 @@ The known remaining gaps are valuable but no longer block beginning Phase 2 over
 - parser-backed JavaScript/TypeScript
 - build-system and CI execution topology
 
-## Phase 2 — AI grounding service
+## Phase 2 — AI grounding service 🚧
 
-Phase 2 can begin once the Phase 1.6 recursive improvements are merged. The first work should establish persistent repository identity before MCP so coding agents do not force a full reparse on every request.
+Phase 2 starts with persistent repository identity so coding agents do not force a full reparse on every request.
 
-### Phase 2A — Repository snapshots and persistence
+### Phase 2A — Repository snapshots and persistence 🚧
 
-- [ ] Repository snapshot/hash identity
-- [ ] Semantic graph deserialization (`SemanticGraph.from_dict` or equivalent)
-- [ ] Persistent graph cache/store
-- [ ] Immutable snapshots + current snapshot pointer
-- [ ] File/content hash inventory for incremental analysis
+- [x] Semantic graph deserialization with schema/version checks and diagnostic preservation
+- [x] Repository locator and snapshot/hash identity
+- [x] Sanitized Git-origin identity where available
+- [x] File/content SHA-256 inventory
+- [x] Immutable SQLite snapshot store
+- [x] Per-repository current snapshot pointer
+- [x] Stored graph hash verification on load
+- [x] Exclude `.feynmap` state from repository content identity
+- [x] Add `feynmap snapshot` analyze-once-and-persist workflow
+- [ ] Normalize repository-root semantic identity so graph/snapshot hashes can be clone-independent
+- [ ] File-inventory diff between repository snapshots
 - [ ] Semantic graph diffing between repository snapshots
+- [ ] Incremental analysis driven by changed-file inventory
 - [ ] Token-budgeted context primitives over a stored snapshot
+
+See `docs/SNAPSHOTS.md` for the snapshot identity and persistence contract.
 
 ### Phase 2B — MCP grounding service
 
