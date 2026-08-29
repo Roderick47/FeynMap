@@ -73,21 +73,23 @@ FeynMap now treats a repository as a heterogeneous software system rather than c
 FeynMap is its own first serious benchmark. The objective is not merely to prove that self-analysis runs; it is to measure whether the graph captures FeynMap's known architecture and to turn every miss into an explicit improvement target.
 
 - [x] Preserve the Phase 0–1.5 merge as baseline commit `4c378e3155b713b2b25bdb1c900c15244b213dad`
-- [x] Create the `phase-1.6-self-hosting` development branch
+- [x] Create the initial self-hosting development branch
 - [x] Add a checked-in golden FeynMap architecture specification
 - [x] Add `SelfAnalysisBenchmark` metrics for graph size, languages, evidence, unresolved calls, orphan nodes, and integration coverage
 - [x] Add architecture symbol/relationship scoring
 - [x] Add `feynmap self-check` CLI command
 - [x] Add a regression test that runs `FeynMapEngine` on the FeynMap repository itself
-- [ ] Record the first executed self-analysis baseline report
-- [ ] Classify every missing critical relationship by root cause
-- [ ] Improve the Python resolver using the baseline findings without weakening uncertainty handling
+- [x] Recursive improvement 1: resolve `self.attribute.method()` from unique constructor/type evidence
+- [x] Recursive improvement 2: resolve transitive Python package re-exports conservatively
+- [x] Repair package-relative import edges discovered while analyzing FeynMap's own `__init__.py` surfaces
+- [ ] Record the first actually executed self-analysis baseline report
+- [ ] Classify every remaining missing critical relationship by root cause
 - [ ] Re-run the self-analysis and record semantic-quality deltas
 - [ ] Establish minimum self-hosting quality gates for future releases
 
 ### Self-hosting quality targets
 
-The first benchmark tracks these as measurements rather than pretending all are solved:
+The benchmark tracks these as measurements rather than pretending all are solved:
 
 - critical architecture symbol recall
 - critical architecture relationship recall
