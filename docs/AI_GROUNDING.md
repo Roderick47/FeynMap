@@ -1,36 +1,39 @@
-# AI Grounding with FeynMap
+# AI Grounding
 
-FeynMap's role is not to make an AI omniscient. Its role is to reduce unnecessary guessing and make uncertainty explicit.
+FeynMap is intended to give coding agents a repository model they can query instead of repeatedly reconstructing architecture from partial file context.
 
-## Grounded workflow
+## Grounding layers
 
-Before editing a symbol, an agent should ask FeynMap for a context bundle containing:
+The semantic graph is built in layers:
 
-- symbol definition and location,
-- outgoing dependencies,
-- incoming callers,
-- evidence behind each relationship,
-- confidence tiers,
-- relevant change-impact surfaces.
+1. a language adapter extracts syntax and language semantics,
+2. an optional framework adapter enriches those facts,
+3. evidence and confidence remain attached to every resulting fact,
+4. query/MCP consumers retrieve only the grounded context they need.
 
-After proposing an architectural claim, the agent can use claim validation to check whether the graph contains supporting evidence.
+The Python implementation now follows this boundary directly: `PythonAdapter` is framework-neutral, while Django, Flask, and FastAPI are separate enrichment adapters.
 
-## Interpretation rules
+## Conservative answers
 
-- `verified`: strong programmatic evidence.
-- `supported`: useful evidence, but review is still appropriate.
-- `inferred`: do not treat as fact without additional verification.
-- `unknown`: the graph cannot currently support the claim.
-- `unsupported`: no matching relationship exists in the current graph. This is not proof of impossibility.
+A missing relationship means **no current evidence**, not impossibility. AI-facing tools should preserve that distinction.
 
-## Desired agent behavior
+For example, if an agent claims `PaymentView -> FraudDetector`, `validate_claim` should return the matching evidence when it exists. If no edge exists, it should report the claim as unsupported and surface nearby known relationships rather than inventing certainty.
 
-An AI agent using FeynMap should say:
+## Target MCP surface
 
-> FeynMap shows `PaymentView` calls `PaymentService` with static source evidence.
+Phase 2 should expose small, evidence-preserving tools such as:
 
-not:
+- `get_symbol`
+- `find_callers`
+- `find_dependencies`
+- `trace_path`
+- `change_impact`
+- `validate_claim`
+- `find_entrypoints`
+- `context_bundle`
 
-> The repository definitely works this way everywhere.
+These tools should query a persistent repository snapshot instead of re-parsing the entire repository for every request.
 
-FeynMap is a grounding layer, not a substitute for compilers, tests, runtime verification, or developer judgment.
+## Evidence preservation
+
+Every AI-facing response should retain source location, detector, evidence kind, and confidence wherever available. AI inference may enrich the graph, but it must remain visibly distinct from parser, framework, runtime, test, history, and compiler evidence.
