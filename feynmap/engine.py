@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .adapters import AdapterRegistry, DjangoAdapter, FastAPIAdapter, FlaskAdapter, HTMLAdapter, JavaScriptAdapter, PythonAdapter
+from .adapters.python_boundaries import enrich_python_boundaries
 from .core import SemanticGraph
 from .integration import IntegrationResolver
 from .repository import merge_language_graphs
@@ -36,6 +37,8 @@ class FeynMapEngine:
         for language_score, language_adapter in language_choices:
             graph = language_adapter.analyze(root)
             graph.metadata.setdefault("language_adapter", language_adapter.name)
+            if language_adapter.name == "python":
+                graph = enrich_python_boundaries(graph, root)
 
             if not framework_off:
                 selected_frameworks: List[Tuple[float, object]] = []
