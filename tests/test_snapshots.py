@@ -1,5 +1,7 @@
+import json
 from pathlib import Path
 
+from feynmap.cli import main
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 from feynmap.snapshots import SnapshotStore, capture_repository_snapshot, repository_locator
 
@@ -48,7 +50,9 @@ def test_semantic_graph_roundtrips_from_serialized_form():
 
     restored = SemanticGraph.from_dict(payload)
 
+    assert payload["diagnostics"]["warnings"] == ["fixture warning"]
     assert restored.to_dict() == payload
+    assert restored.diagnostics["warnings"] == ["fixture warning"]
     assert restored.node("python:symbol:app.run").qualified_name == "app.run"
     assert restored.edges[0].kind == EdgeKind.CONTAINS
     assert restored.edges[0].evidence[0].kind == EvidenceKind.STATIC
@@ -84,6 +88,7 @@ def test_sqlite_store_roundtrips_graph_and_current_pointer(tmp_path: Path):
     assert loaded_snapshot.snapshot_id == snapshot.snapshot_id
     assert loaded_snapshot.content_hash == snapshot.content_hash
     assert loaded_graph.to_dict() == graph.to_dict()
+    assert loaded_graph.diagnostics["warnings"] == ["fixture warning"]
     assert store.current_snapshot_id(snapshot.repository_key) == snapshot.snapshot_id
     assert store.load_current(snapshot.repository_key)[0].snapshot_id == snapshot.snapshot_id
     assert store.list_snapshots(snapshot.repository_key)[0]["snapshot_id"] == snapshot.snapshot_id
@@ -91,6 +96,29 @@ def test_sqlite_store_roundtrips_graph_and_current_pointer(tmp_path: Path):
     recaptured = capture_repository_snapshot(tmp_path, graph)
     assert recaptured.content_hash == snapshot.content_hash
     assert recaptured.snapshot_id == snapshot.snapshot_id
+
+
+def test_snapshot_cli_persists_current_repository_graph(tmp_path: Path, capsys):
+    (tmp_path / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+
+    result = main(["snapshot", str(tmp_path), "--language", "python", "--framework", "none"])
+    output = json.loads(capsys.readouterr().out)
+
+    assert result == 0
+    assert output["current"] is True
+    assert output["analysis_options"] == {
+        "language_selection": "python",
+        "framework_selection": "none",
+    }
+    assert output["file_count"] == 1
+    store_path = tmp_path / ".feynmap" / "snapshots.sqlite"
+    assert store_path.exists()
+
+    store = SnapshotStore(store_path)
+    loaded_snapshot, loaded_graph = store.load(output["snapshot_id"])
+    assert loaded_snapshot.snapshot_id == output["snapshot_id"]
+    assert store.current_snapshot_id(loaded_snapshot.repository_key) == loaded_snapshot.snapshot_id
+    assert any(node.qualified_name == "app.run" for node in loaded_graph.nodes)
 
 
 def test_git_origin_locator_is_sanitized(tmp_path: Path):
