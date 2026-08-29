@@ -142,7 +142,7 @@ See `docs/SNAPSHOTS.md` for the snapshot identity/persistence contract and `docs
 
 ### Phase 2B — MCP grounding service 🚧
 
-Groundwork has started, but no MCP SDK/transport or remote hosting dependency has been introduced yet.
+The local/private MCP path is now being implemented while remote hosting remains deliberately deferred.
 
 - [x] Transport-neutral repository/snapshot-aware `GroundingService`
 - [x] Versioned read-only grounding tool catalog with JSON Schema 2020-12 inputs
@@ -150,14 +150,17 @@ Groundwork has started, but no MCP SDK/transport or remote hosting dependency ha
 - [x] Service-layer `validate_claim`, `change_impact`, `explain_evidence`, `unresolved`
 - [x] Service-layer `semantic_diff`, repository summary, and token-budgeted `context_bundle`
 - [x] Keep MCP/application contracts independent of Python server internals for future Rust compatibility
-- [ ] Decide MCP runtime packaging: raise Python floor to 3.10+, optional 3.10+ MCP component, or another split
-- [ ] Register the grounding catalog with the official MCP SDK
-- [ ] Local stdio MCP server transport and protocol/conformance tests
+- [x] Keep FeynMap core on Python 3.8+ and package MCP as an optional Python 3.10+ component
+- [x] Register the grounding operations with the official MCP Python SDK v2
+- [x] Add local stdio MCP server entry point `feynmap-mcp`
+- [x] Add protocol-level in-memory MCP discovery/call tests on supported runtimes
+- [x] Ensure MCP tool calls query stored snapshots and never trigger repository analysis
+- [ ] Connect the local stdio server to one or more real MCP hosts/clients and record interoperability results
 - [ ] Remote Streamable HTTP transport
 - [ ] Remote authentication/authorization and tenant/repository access controls
 - [ ] Production hosting/shared-storage deployment
 
-See `docs/MCP_GROUNDING.md` for the tool boundary, transport plan, hosting choices and the project-owner decisions required before remote deployment.
+See `docs/MCP_GROUNDING.md` for the tool boundary, local stdio workflow, transport plan, hosting choices and the project-owner decisions required before remote deployment.
 
 ## Phase 3 — More language adapters
 
