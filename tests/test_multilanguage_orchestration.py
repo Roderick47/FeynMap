@@ -61,6 +61,68 @@ def test_mixed_web_app_becomes_one_cross_language_graph(tmp_path):
     assert graph.metadata["integration"]["resolved_edges"] >= 4
 
 
+def test_fastapi_route_is_resolved_from_javascript_client(tmp_path):
+    (tmp_path / "requirements.txt").write_text("fastapi\n", encoding="utf-8")
+    (tmp_path / "api.py").write_text(
+        "from fastapi import FastAPI\n"
+        "app = FastAPI()\n\n"
+        "@app.get('/health')\n"
+        "async def health():\n"
+        "    return {'ok': True}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "client.js").write_text(
+        "async function checkHealth() { return fetch('/health'); }\n",
+        encoding="utf-8",
+    )
+
+    graph = FeynMapEngine().analyze(str(tmp_path))
+    check = _node(graph, "checkHealth", "javascript")
+    health = _node(graph, "health", "python")
+
+    assert graph.metadata["framework"] == "fastapi"
+    assert _has_edge(graph, check, health, EdgeKind.REQUESTS)
+
+
+def test_django_urlpattern_is_resolved_from_javascript_client(tmp_path):
+    (tmp_path / "requirements.txt").write_text("django\n", encoding="utf-8")
+    (tmp_path / "manage.py").write_text("", encoding="utf-8")
+    (tmp_path / "views.py").write_text(
+        "def dashboard(request):\n"
+        "    return None\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "urls.py").write_text(
+        "from django.urls import path\n"
+        "from views import dashboard\n"
+        "urlpatterns = [path('dashboard/', dashboard)]\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "client.js").write_text(
+        "function openDashboard() { return fetch('/dashboard/'); }\n",
+        encoding="utf-8",
+    )
+
+    graph = FeynMapEngine().analyze(str(tmp_path))
+    client = _node(graph, "openDashboard", "javascript")
+    dashboard = _node(graph, "dashboard", "python")
+
+    assert graph.metadata["framework"] == "django"
+    assert _has_edge(graph, client, dashboard, EdgeKind.REQUESTS)
+
+
+def test_resolver_supports_dynamic_http_route_parameters():
+    client = SemanticNode("client", "client", NodeKind.FUNCTION, language="javascript")
+    server = SemanticNode("server", "server", NodeKind.HANDLER, language="python")
+    add_contract(client, "http_client", "/users/42", method="GET")
+    add_contract(server, "http_server", "/users/<int:user_id>", methods=["GET"])
+    graph = SemanticGraph(nodes=[client, server])
+
+    IntegrationResolver().resolve(graph)
+
+    assert _has_edge(graph, client, server, EdgeKind.REQUESTS)
+
+
 def test_resolver_supports_non_web_cross_language_channels():
     producer = SemanticNode("js", "desktop", NodeKind.FUNCTION, language="javascript")
     worker = SemanticNode("py", "worker", NodeKind.MODULE, language="python")
@@ -70,6 +132,8 @@ def test_resolver_supports_non_web_cross_language_channels():
     ffi_export = SemanticNode("cpp", "native_call", NodeKind.FUNCTION, language="cpp")
     writer = SemanticNode("writer", "writer", NodeKind.FUNCTION, language="python")
     reader = SemanticNode("reader", "reader", NodeKind.FUNCTION, language="javascript")
+    deep_link = SemanticNode("deeplink", "openApp", NodeKind.FUNCTION, language="javascript")
+    app_route = SemanticNode("route", "nativeRoute", NodeKind.HANDLER, language="kotlin")
 
     add_contract(producer, "process_spawn", "worker.py")
     add_contract(worker, "cli_entrypoint", "worker.py")
@@ -79,14 +143,17 @@ def test_resolver_supports_non_web_cross_language_channels():
     add_contract(ffi_export, "ffi_export", "native_call")
     add_contract(writer, "file_write", "shared/data.json")
     add_contract(reader, "file_read", "shared/data.json")
+    add_contract(deep_link, "deep_link", "myapp://orders/42")
+    add_contract(app_route, "app_route", "myapp://orders/42")
 
-    graph = SemanticGraph(nodes=[producer, worker, publisher, subscriber, ffi_user, ffi_export, writer, reader])
+    graph = SemanticGraph(nodes=[producer, worker, publisher, subscriber, ffi_user, ffi_export, writer, reader, deep_link, app_route])
     IntegrationResolver().resolve(graph)
 
     assert _has_edge(graph, producer, worker, EdgeKind.SPAWNS)
     assert _has_edge(graph, publisher, subscriber, EdgeKind.EMITS)
     assert _has_edge(graph, ffi_user, ffi_export, EdgeKind.INVOKES)
     assert _has_edge(graph, writer, reader, EdgeKind.FLOWS_TO)
+    assert _has_edge(graph, deep_link, app_route, EdgeKind.ROUTES_TO)
     assert all(edge.attributes.get("integration", {}).get("cross_language") for edge in graph.edges)
 
 
