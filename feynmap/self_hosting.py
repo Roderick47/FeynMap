@@ -190,7 +190,74 @@ class SelfAnalysisBenchmark:
             "relationships": relationship_results,
         }
 
+    def quality_gates(
+        self,
+        metrics: Optional[Dict[str, Any]] = None,
+        evaluation: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Evaluate invariant Phase 1.6 release gates without arbitrary thresholds."""
+        metrics = metrics or self.metrics()
+        evaluation = evaluation or self.evaluate()
+        critical_relationships = [
+            item
+            for item in evaluation.get("relationships", [])
+            if item.get("importance", "critical") == "critical"
+        ]
+        critical_without_evidence = []
+        for relationship in critical_relationships:
+            if not relationship.get("found"):
+                continue
+            matches = relationship.get("matches", [])
+            if not any(match.get("evidence") for match in matches if isinstance(match, dict)):
+                critical_without_evidence.append(
+                    {
+                        "source": relationship.get("source"),
+                        "target": relationship.get("target"),
+                        "kind": relationship.get("kind"),
+                    }
+                )
+
+        gates = [
+            {
+                "id": "golden-symbols-present",
+                "passed": evaluation.get("missing_symbol_count", 0) == 0,
+                "detail": "Every golden architecture symbol must be present.",
+            },
+            {
+                "id": "critical-relationships-present",
+                "passed": evaluation.get("missing_critical_relationship_count", 0) == 0,
+                "detail": "Every critical golden architecture relationship must be resolved.",
+            },
+            {
+                "id": "graph-valid",
+                "passed": metrics.get("graph_errors", 0) == 0,
+                "detail": "Semantic graph validation must report zero errors.",
+            },
+            {
+                "id": "critical-relationships-evidenced",
+                "passed": not critical_without_evidence,
+                "detail": "Every resolved critical golden relationship must carry evidence.",
+            },
+        ]
+        failed = [gate for gate in gates if not gate["passed"]]
+        return {
+            "status": "pass" if not failed else "fail",
+            "gate_count": len(gates),
+            "passed_gate_count": len(gates) - len(failed),
+            "failed_gate_count": len(failed),
+            "gates": gates,
+            "critical_relationships_without_evidence": critical_without_evidence,
+            "deferred_numeric_thresholds": [
+                "python_unresolved_call_count",
+                "evidence_coverage",
+                "orphan_node_count",
+                "integration_unresolved_contracts",
+            ],
+        }
+
     def report(self) -> Dict[str, Any]:
+        metrics = self.metrics()
+        evaluation = self.evaluate()
         return {
             "benchmark": {
                 "name": self.golden.get("name", "FeynMap self-analysis"),
@@ -199,8 +266,9 @@ class SelfAnalysisBenchmark:
                 "baseline_commit": self.golden.get("baseline_commit"),
                 "baseline_version": self.golden.get("baseline_version"),
             },
-            "metrics": self.metrics(),
-            "evaluation": self.evaluate(),
+            "metrics": metrics,
+            "evaluation": evaluation,
+            "quality_gates": self.quality_gates(metrics, evaluation),
             "known_blind_spots": self.golden.get("known_blind_spots", []),
         }
 
