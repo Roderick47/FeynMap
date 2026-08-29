@@ -14,6 +14,7 @@ from .repository import merge_language_graphs
 
 FRAMEWORK_AUTO_THRESHOLD = 0.35
 LANGUAGE_AUTO_THRESHOLD = 0.01
+ANALYSIS_CONTRACT_VERSION = "1.0.0"
 
 
 class FeynMapEngine:
@@ -74,6 +75,7 @@ class FeynMapEngine:
         merged = merge_language_graphs(root, analyzed)
         merged.metadata["language_selection"] = language
         merged.metadata["framework_selection"] = framework
+        merged.metadata["analysis_contract_version"] = ANALYSIS_CONTRACT_VERSION
 
         if len(analyzed) == 1:
             source_graph = analyzed[0][2]
