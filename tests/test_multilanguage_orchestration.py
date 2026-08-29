@@ -90,6 +90,27 @@ def test_resolver_supports_non_web_cross_language_channels():
     assert all(edge.attributes.get("integration", {}).get("cross_language") for edge in graph.edges)
 
 
+def test_javascript_can_spawn_python_cli_as_real_cross_language_app_flow(tmp_path):
+    (tmp_path / "launcher.js").write_text(
+        "const { spawn } = require('child_process');\n"
+        "function launch() { return spawn('worker.py'); }\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "worker.py").write_text(
+        "def run():\n"
+        "    return 1\n\n"
+        "if __name__ == '__main__':\n"
+        "    run()\n",
+        encoding="utf-8",
+    )
+
+    graph = FeynMapEngine().analyze(str(tmp_path), framework="none")
+    launch = _node(graph, "launch", "javascript")
+    worker_module = _node(graph, "worker", "python")
+
+    assert _has_edge(graph, launch, worker_module, EdgeKind.SPAWNS)
+
+
 def test_javascript_multiple_functions_and_local_calls_are_mapped(tmp_path):
     (tmp_path / "app.js").write_text(
         "function parseData() { return 1; }\n"
