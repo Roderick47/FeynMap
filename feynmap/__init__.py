@@ -1,7 +1,9 @@
 """FeynMap: grounded semantic infrastructure for AI-assisted software engineering."""
+from .context import ContextBudget, StoredSnapshotContext, estimate_tokens
 from .core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 from .diff import diff_file_inventories, diff_graphs, diff_snapshots, diff_store_snapshots
 from .engine import FeynMapEngine
+from .incremental import IncrementalPlan, analyze_incrementally, incremental_snapshot, plan_incremental_analysis
 from .integration import IntegrationResolver, add_contract, contracts
 from .migration import MigrationPlanner
 from .query import FeynMapQuery
@@ -22,10 +24,11 @@ def __getattr__(name):
 
 
 __all__ = [
-    "EdgeKind", "Evidence", "EvidenceKind", "FeynMapEngine", "FeynMapQuery",
-    "FileFingerprint", "IntegrationResolver", "MigrationPlanner", "NodeKind",
-    "RepositorySnapshot", "SemanticEdge", "SemanticGraph", "SemanticNode",
-    "SnapshotStore", "SourceLocation", "add_contract", "capture_and_store",
-    "capture_repository_snapshot", "contracts", "diff_file_inventories",
-    "diff_graphs", "diff_snapshots", "diff_store_snapshots",
+    "ContextBudget", "EdgeKind", "Evidence", "EvidenceKind", "FeynMapEngine", "FeynMapQuery",
+    "FileFingerprint", "IncrementalPlan", "IntegrationResolver", "MigrationPlanner", "NodeKind",
+    "RepositorySnapshot", "SemanticEdge", "SemanticGraph", "SemanticNode", "SnapshotStore",
+    "SourceLocation", "StoredSnapshotContext", "add_contract", "analyze_incrementally",
+    "capture_and_store", "capture_repository_snapshot", "contracts", "diff_file_inventories",
+    "diff_graphs", "diff_snapshots", "diff_store_snapshots", "estimate_tokens",
+    "incremental_snapshot", "plan_incremental_analysis",
 ]

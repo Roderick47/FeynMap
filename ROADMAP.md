@@ -126,10 +126,14 @@ Phase 2 starts with persistent repository identity so coding agents do not force
 - [x] File-inventory diff between repository snapshots
 - [x] Semantic graph diffing between repository snapshots
 - [x] Add `feynmap diff` stored-snapshot workflow without reparsing historical states
-- [ ] Incremental analysis driven by changed-file inventory
-- [ ] Token-budgeted context primitives over a stored snapshot
+- [x] Conservative incremental planning driven by changed-file inventory and dependency closure
+- [x] Zero-analysis reuse for unchanged repositories with repository/options/analysis-contract guards
+- [x] Full-rebuild fallback whenever changed-fragment equivalence cannot yet be proven
+- [x] Token-budgeted context primitives over a stored snapshot
+- [x] Add `feynmap incremental` and `feynmap stored-query` workflows
+- [ ] True changed-file semantic fragment reuse with adapter-level partial parse/merge conformance
 
-See `docs/SNAPSHOTS.md` for the snapshot identity and persistence contract.
+See `docs/SNAPSHOTS.md` for the snapshot identity/persistence contract and `docs/INCREMENTAL_CONTEXT.md` for incremental/context safety semantics.
 
 ### Phase 2B — MCP grounding service
 
@@ -139,6 +143,8 @@ See `docs/SNAPSHOTS.md` for the snapshot identity and persistence contract.
 - [ ] `validate_claim`, `change_impact`, `explain_evidence`, `unresolved`
 - [ ] `semantic_diff` and snapshot inspection tools
 - [ ] context bundles that do not reparse the repository per request
+
+The stored snapshot/context service is now the intended substrate for Phase 2B. MCP should wrap these transport-neutral operations rather than invoke repository analysis per tool call.
 
 ## Phase 3 — More language adapters
 
