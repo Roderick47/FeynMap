@@ -25,6 +25,7 @@ from feynmap.core import EdgeKind, Evidence, EvidenceKind, SemanticEdge, Semanti
 
 
 EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache"}
+ResolvedAlias = Tuple[str, List[str], float]
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,26 @@ class _ScopedCallCollector(ast.NodeVisitor):
         return
 
 
+def python_reexport_aliases(graph: SemanticGraph, project_path: Path) -> Dict[str, ResolvedAlias]:
+    """Return uniquely resolved package aliases for reuse by other Python passes.
+
+    The mapping key is the public/re-exported qualified name. The value is the
+    canonical target qualified name, the full alias chain, and confidence. This
+    function is intentionally read-only: it does not mutate the graph.
+    """
+    root = project_path.resolve()
+    nodes_by_qname: Dict[str, SemanticNode] = {
+        node.qualified_name: node
+        for node in graph.nodes
+        if node.language == "python" and node.qualified_name
+    }
+    if not nodes_by_qname:
+        return {}
+    parsed = _parse_python_files(root)
+    resolved, _ = _resolved_alias_index(parsed, nodes_by_qname)
+    return resolved
+
+
 def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> SemanticGraph:
     """Resolve statically provable package re-export aliases and calls through them."""
     root = project_path.resolve()
@@ -84,23 +105,8 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
         return graph
 
     parsed = _parse_python_files(root)
-    raw_aliases, explicit_exports = _package_aliases(parsed)
-
-    resolved_aliases: Dict[str, Tuple[str, List[str], float]] = {}
-    ambiguous_aliases: List[str] = []
-    for alias in sorted(raw_aliases):
-        candidates = _resolve_alias(alias, raw_aliases, nodes_by_qname)
-        canonical = {item[0] for item in candidates}
-        if len(canonical) != 1:
-            if candidates or len(raw_aliases.get(alias, set())) > 1:
-                ambiguous_aliases.append(alias)
-            continue
-        target = next(iter(canonical))
-        matching = [item for item in candidates if item[0] == target]
-        matching.sort(key=lambda item: (len(item[1]), item[1]))
-        chain = matching[0][1]
-        confidence = 1.0 if all(step in explicit_exports for step in chain[:-1]) else 0.96
-        resolved_aliases[alias] = (target, chain, confidence)
+    resolved_aliases, ambiguous_aliases = _resolved_alias_index(parsed, nodes_by_qname)
+    raw_aliases, _ = _package_aliases(parsed)
 
     call_edges_added = 0
     import_edges_added = 0
@@ -225,9 +231,32 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
     return graph
 
 
+def _resolved_alias_index(
+    parsed: Sequence[ParsedPythonFile],
+    nodes_by_qname: Dict[str, SemanticNode],
+) -> Tuple[Dict[str, ResolvedAlias], List[str]]:
+    raw_aliases, explicit_exports = _package_aliases(parsed)
+    resolved_aliases: Dict[str, ResolvedAlias] = {}
+    ambiguous_aliases: List[str] = []
+    for alias in sorted(raw_aliases):
+        candidates = _resolve_alias(alias, raw_aliases, nodes_by_qname)
+        canonical = {item[0] for item in candidates}
+        if len(canonical) != 1:
+            if candidates or len(raw_aliases.get(alias, set())) > 1:
+                ambiguous_aliases.append(alias)
+            continue
+        target = next(iter(canonical))
+        matching = [item for item in candidates if item[0] == target]
+        matching.sort(key=lambda item: (len(item[1]), item[1]))
+        chain = matching[0][1]
+        confidence = 1.0 if all(step in explicit_exports for step in chain[:-1]) else 0.96
+        resolved_aliases[alias] = (target, chain, confidence)
+    return resolved_aliases, ambiguous_aliases
+
+
 def _binding_resolution(
     qualified_name: str,
-    resolved_aliases: Dict[str, Tuple[str, List[str], float]],
+    resolved_aliases: Dict[str, ResolvedAlias],
     nodes_by_qname: Dict[str, SemanticNode],
 ) -> Optional[Tuple[str, List[str], float, str]]:
     direct = nodes_by_qname.get(qualified_name)
