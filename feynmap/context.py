@@ -9,11 +9,13 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .core import SemanticEdge, SemanticGraph, SemanticNode
 from .query import FeynMapQuery
 from .snapshots import RepositorySnapshot, SnapshotStore
+
+MIN_CONTEXT_TOKENS = 512
 
 
 def estimate_tokens(payload: Any) -> int:
@@ -85,8 +87,9 @@ class ContextBudget:
     max_edges: int = 120
 
     def normalized(self) -> "ContextBudget":
+        """Return effective bounds, enforcing the minimum evidence-bearing payload size."""
         return ContextBudget(
-            max_tokens=max(128, int(self.max_tokens)),
+            max_tokens=max(MIN_CONTEXT_TOKENS, int(self.max_tokens)),
             max_nodes=max(1, int(self.max_nodes)),
             max_edges=max(1, int(self.max_edges)),
         )
@@ -132,6 +135,7 @@ class StoredSnapshotContext:
                 "frameworks": self.graph.metadata.get("frameworks_applied", []),
                 "integration": integration,
                 "diagnostics": self.graph.diagnostics,
+                "analysis_contract_version": self.graph.metadata.get("analysis_contract_version"),
             },
             "grounding": {
                 "known": "Facts included below are backed by the stored semantic graph and its evidence.",
@@ -159,7 +163,8 @@ class StoredSnapshotContext:
         depth: int = 2,
         budget: Optional[ContextBudget] = None,
     ) -> Dict[str, Any]:
-        budget = (budget or ContextBudget()).normalized()
+        requested = budget or ContextBudget()
+        budget = requested.normalized()
         root = self.query.resolve(symbol)
         candidates = self._ranked_neighborhood(root.id, max(0, int(depth)))
 
@@ -177,7 +182,7 @@ class StoredSnapshotContext:
             "grounding": {
                 "known": "Included relationships are stored graph facts with provenance where available.",
                 "unknown": "Omitted or absent relationships must be treated as unknown, not false.",
-                "budgeting": "Context is deterministically truncated to the requested approximate-token budget.",
+                "budgeting": "Context is deterministically truncated to the effective approximate-token budget.",
             },
         }
 
@@ -205,9 +210,10 @@ class StoredSnapshotContext:
                 break
             payload["relationships"].append(compact)
 
-        payload["budget"] = {
+        budget_payload = {
+            "requested_max_tokens": int(requested.max_tokens),
             "max_tokens": budget.max_tokens,
-            "estimated_tokens": estimate_tokens(payload),
+            "minimum_supported_tokens": MIN_CONTEXT_TOKENS,
             "max_nodes": budget.max_nodes,
             "max_edges": budget.max_edges,
             "included_nodes": 1 + len(payload["nodes"]),
@@ -217,6 +223,21 @@ class StoredSnapshotContext:
                 or len(payload["relationships"]) < len(candidates["edges"])
             ),
         }
+        payload["budget"] = budget_payload
+
+        # Budget metadata itself has a cost. Trim lower-priority material until
+        # the final serialized payload fits the effective budget.
+        while estimate_tokens(payload) > budget.max_tokens and payload["relationships"]:
+            payload["relationships"].pop()
+            payload["budget"]["included_relationships"] = len(payload["relationships"])
+            payload["budget"]["truncated"] = True
+        while estimate_tokens(payload) > budget.max_tokens and payload["nodes"]:
+            payload["nodes"].pop()
+            payload["budget"]["included_nodes"] = 1 + len(payload["nodes"])
+            payload["budget"]["truncated"] = True
+
+        estimated = estimate_tokens(payload)
+        payload["budget"]["estimated_tokens"] = estimated
         return payload
 
     def unresolved(self, limit: int = 100) -> Dict[str, Any]:
