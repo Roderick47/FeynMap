@@ -13,7 +13,7 @@ from .query import FeynMapQuery
 
 COMMANDS = {
     "analyze", "query", "claim", "migrate-plan", "self-check", "snapshot",
-    "diff", "incremental", "stored-query", "legacy",
+    "diff", "incremental", "stored-query", "legacy", "evaluate",
 }
 
 
@@ -37,6 +37,10 @@ def _framework_help() -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="feynmap", description="Build a verifiable semantic model of software so humans and AI can reason about code without guessing.")
     sub = parser.add_subparsers(dest="command", required=True)
+    evaluation = sub.add_parser("evaluate", help="Evaluate a semantic graph against explicit language-neutral labels")
+    evaluation.add_argument("graph", help="Semantic graph JSON")
+    evaluation.add_argument("annotations", help="Relationship benchmark JSON")
+    evaluation.add_argument("--output", "-o")
 
     analyze = sub.add_parser("analyze", help="Build one unified repository semantic graph")
     analyze.add_argument("path", nargs="?", default=".")
@@ -123,6 +127,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     elif args_list[0] not in COMMANDS and not args_list[0].startswith("-"):
         args_list.insert(0, "analyze")
     args = build_parser().parse_args(args_list)
+
+    if args.command == "evaluate":
+        from .core import SemanticGraph
+        from .evaluation import evaluate_graph
+        graph = SemanticGraph.from_dict(json.loads(Path(args.graph).read_text(encoding="utf-8")))
+        labels = json.loads(Path(args.annotations).read_text(encoding="utf-8"))
+        report = evaluate_graph(graph, labels)
+        _write(report, args.output)
+        return 0 if report["status"] == "pass" else 1
 
     if args.command == "legacy":
         from pipeline import run_feynmap

@@ -255,6 +255,10 @@ Stored context now selects connected relationships and endpoints together, skips
 
 The grounding service contract is now **2.0.0**: callers follow calls/invokes only, and claim responses distinguish evidence existence from support. See [context selection, confidence policy, and compatibility notes](docs/CONTEXT_CONFIDENCE_V2.md).
 
+## Language-neutral evaluation
+
+Use `feynmap evaluate graph.json annotations.json` to measure explicitly labeled relationships in any canonical semantic graph. The evaluator reports missed and incorrect relationships, unjudged edges, language-pair results, and observations by confidence tier. It uses exact selectors and does not depend on a language adapter. See [evaluation format and mixed-language fixture](docs/LANGUAGE_NEUTRAL_EVALUATION.md). This benchmark foundation does not add new source-language parsers or establish production accuracy.
+
 ## Direction
 
 Phase 1 (framework-neutral Python) and Phase 1.5 (repository multi-language orchestration and cross-runtime resolution) are now implemented on the V3 refactor branch.
