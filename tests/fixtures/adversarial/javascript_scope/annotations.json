@@ -1,0 +1,79 @@
+{
+  "schema": "feynmap.relationship_benchmark.v1",
+  "name": "javascript_scope",
+  "symbols": {
+    "helper": {
+      "name": "helper",
+      "language": "javascript",
+      "path": "app.js"
+    },
+    "actual": {
+      "name": "actual",
+      "language": "javascript",
+      "path": "app.js"
+    },
+    "member": {
+      "name": "member",
+      "language": "javascript",
+      "path": "app.js"
+    },
+    "commentOnly": {
+      "name": "commentOnly",
+      "language": "javascript",
+      "path": "app.js"
+    },
+    "stringOnly": {
+      "name": "stringOnly",
+      "language": "javascript",
+      "path": "app.js"
+    },
+    "outer": {
+      "name": "outer",
+      "language": "javascript",
+      "path": "app.js"
+    },
+    "inner": {
+      "name": "inner",
+      "language": "javascript",
+      "path": "app.js"
+    }
+  },
+  "relationships": [
+    {
+      "source": "actual",
+      "target": "helper",
+      "kind": "calls",
+      "present": true
+    },
+    {
+      "source": "member",
+      "target": "helper",
+      "kind": "calls",
+      "present": false
+    },
+    {
+      "source": "commentOnly",
+      "target": "helper",
+      "kind": "calls",
+      "present": false
+    },
+    {
+      "source": "stringOnly",
+      "target": "helper",
+      "kind": "calls",
+      "present": false
+    },
+    {
+      "source": "outer",
+      "target": "helper",
+      "kind": "calls",
+      "present": false
+    },
+    {
+      "source": "inner",
+      "target": "helper",
+      "kind": "calls",
+      "present": true
+    }
+  ]
+}
