@@ -43,7 +43,7 @@ def test_stored_context_loads_without_repository_reparse(tmp_path: Path):
 
     assert summary["snapshot"]["snapshot_id"] == snapshot.snapshot_id
     assert summary["graph"]["node_count"] == len(graph.nodes)
-    assert summary["graph"]["analysis_contract_version"] == "1.1.0"
+    assert summary["graph"]["analysis_contract_version"] == "1.2.0"
     assert symbol["symbol"]["qualified_name"] == "app.run"
     assert any(edge["kind"] == "calls" for edge in symbol["outgoing"])
 

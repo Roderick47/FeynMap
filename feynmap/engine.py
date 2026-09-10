@@ -15,7 +15,7 @@ from .repository import merge_language_graphs
 
 FRAMEWORK_AUTO_THRESHOLD = 0.35
 LANGUAGE_AUTO_THRESHOLD = 0.01
-ANALYSIS_CONTRACT_VERSION = "1.1.0"
+ANALYSIS_CONTRACT_VERSION = "1.2.0"
 
 
 class FeynMapEngine:
