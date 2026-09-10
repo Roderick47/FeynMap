@@ -5,6 +5,8 @@ from collections import deque
 from typing import Any, Dict, List, Optional, Set
 
 from .core import EdgeKind, SemanticGraph, SemanticNode
+from .core.model import TIER_RANK
+from .core.ontology import ConfidenceTier, CONFIDENCE_POLICY_VERSION
 
 
 class FeynMapQuery:
@@ -33,10 +35,13 @@ class FeynMapQuery:
         return self._walk(self.resolve(symbol).id, outgoing=True, depth=depth)
 
     def callers(self, symbol: str, depth: int = 1) -> Dict[str, Any]:
-        return self._walk(self.resolve(symbol).id, outgoing=False, depth=depth)
+        return self._walk(self.resolve(symbol).id, outgoing=False, depth=depth,
+                          kinds={EdgeKind.CALLS, EdgeKind.INVOKES})
 
     def impact(self, symbol: str, depth: int = 4) -> Dict[str, Any]:
-        return self.callers(symbol, depth=depth)
+        # Impact remains a broad incoming relationship closure, distinct from
+        # the narrower invocation-only caller query.
+        return self._walk(self.resolve(symbol).id, outgoing=False, depth=depth)
 
     def context_bundle(self, symbol: str, depth: int = 2) -> Dict[str, Any]:
         node = self.resolve(symbol)
@@ -66,10 +71,12 @@ class FeynMapQuery:
 
         matches = [edge for edge in self.graph.outgoing(source_node.id) if edge.target == target_node.id and (requested_kind is None or edge.kind == requested_kind)]
         if matches:
-            strongest = max(matches, key=lambda edge: edge.confidence)
+            strongest = max(matches, key=lambda edge: TIER_RANK[edge.confidence_tier])
             return {
                 "status": strongest.confidence_tier.value,
-                "supported": True,
+                "supported": strongest.confidence_tier in {ConfidenceTier.SUPPORTED, ConfidenceTier.VERIFIED},
+                "evidence_found": True,
+                "confidence_policy": CONFIDENCE_POLICY_VERSION,
                 "claim": {"source": source_node.id, "relationship": requested_kind.value if requested_kind else None, "target": target_node.id},
                 "evidence": [edge.to_dict() for edge in matches],
             }
@@ -77,12 +84,15 @@ class FeynMapQuery:
         return {
             "status": "unsupported",
             "supported": False,
+            "evidence_found": False,
+            "confidence_policy": CONFIDENCE_POLICY_VERSION,
             "claim": {"source": source_node.id, "relationship": requested_kind.value if requested_kind else None, "target": target_node.id},
             "note": "No matching graph edge was found. This means FeynMap has no current evidence for the claim; it does not prove the relationship is impossible.",
             "nearby_relationships": [edge.to_dict() for edge in self.graph.outgoing(source_node.id)[:10]],
         }
 
-    def _walk(self, start_id: str, outgoing: bool, depth: int) -> Dict[str, Any]:
+    def _walk(self, start_id: str, outgoing: bool, depth: int,
+              kinds: Optional[Set[EdgeKind]] = None) -> Dict[str, Any]:
         depth = max(0, int(depth))
         queue = deque([(start_id, 0)])
         seen_nodes: Set[str] = {start_id}
@@ -95,6 +105,8 @@ class FeynMapQuery:
                 continue
             candidates = self.graph.outgoing(current) if outgoing else self.graph.incoming(current)
             for edge in candidates:
+                if kinds is not None and edge.kind not in kinds:
+                    continue
                 if edge.id not in seen_edges:
                     seen_edges.add(edge.id)
                     edges.append(edge.to_dict())
@@ -106,4 +118,6 @@ class FeynMapQuery:
                 if node:
                     nodes.append(node.to_dict())
                     queue.append((neighbor, current_depth + 1))
-        return {"root": start_id, "direction": "outgoing" if outgoing else "incoming", "depth": depth, "nodes": nodes, "edges": edges}
+        return {"root": start_id, "direction": "outgoing" if outgoing else "incoming", "depth": depth,
+                "relationship_filter": sorted(kind.value for kind in kinds) if kinds is not None else None,
+                "nodes": nodes, "edges": edges}

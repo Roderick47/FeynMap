@@ -9,12 +9,13 @@ from .adapters.python_boundaries import enrich_python_boundaries
 from .adapters.python_reexports import enrich_python_reexports
 from .adapters.python_resolution import enrich_python_attribute_calls
 from .core import SemanticGraph
+from .core.ontology import CONFIDENCE_POLICY_VERSION
 from .integration import IntegrationResolver
 from .repository import merge_language_graphs
 
 FRAMEWORK_AUTO_THRESHOLD = 0.35
 LANGUAGE_AUTO_THRESHOLD = 0.01
-ANALYSIS_CONTRACT_VERSION = "1.0.0"
+ANALYSIS_CONTRACT_VERSION = "1.1.0"
 
 
 class FeynMapEngine:
@@ -76,6 +77,7 @@ class FeynMapEngine:
         merged.metadata["language_selection"] = language
         merged.metadata["framework_selection"] = framework
         merged.metadata["analysis_contract_version"] = ANALYSIS_CONTRACT_VERSION
+        merged.metadata["confidence_policy_version"] = CONFIDENCE_POLICY_VERSION
 
         if len(analyzed) == 1:
             source_graph = analyzed[0][2]

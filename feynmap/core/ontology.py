@@ -1,5 +1,8 @@
 """Language-agnostic ontology used by FeynMap's semantic graph."""
 from enum import Enum
+import math
+
+CONFIDENCE_POLICY_VERSION = "2.0.0"
 
 
 class StringEnum(str, Enum):
@@ -80,11 +83,19 @@ class ConfidenceTier(StringEnum):
     UNKNOWN = "unknown"
 
 
-def confidence_tier(score: float, evidence_count: int = 0, has_ai_only_evidence: bool = False) -> ConfidenceTier:
-    """Translate a numeric confidence score into a human-facing evidence tier."""
-    if evidence_count <= 0:
+def confidence_tier(score: float, evidence_count: int = 0, has_ai_only_evidence: bool = False,
+                    observed: bool = False, inferred_only: bool = False) -> ConfidenceTier:
+    """Conservative evidence policy, not a calibrated probability of correctness.
+
+    Verified means observed in a runtime/test scope, never universal proof.
+    Static/framework/integration evidence can support a claim. AI and heuristic
+    evidence alone cannot promote it beyond inferred, regardless of score.
+    """
+    if evidence_count <= 0 or not math.isfinite(score) or not 0 <= score <= 1:
         return ConfidenceTier.UNKNOWN
-    if score >= 0.95 and not has_ai_only_evidence:
+    if has_ai_only_evidence or inferred_only:
+        return ConfidenceTier.INFERRED if score >= 0.40 else ConfidenceTier.UNKNOWN
+    if score >= 0.95 and observed:
         return ConfidenceTier.VERIFIED
     if score >= 0.75:
         return ConfidenceTier.SUPPORTED

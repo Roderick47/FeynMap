@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .core import EdgeKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode
+from .core.model import TIER_RANK, evidence_tier
+from .core.ontology import CONFIDENCE_POLICY_VERSION
 from .query import FeynMapQuery
 from .snapshots import RepositorySnapshot, SnapshotStore
 
@@ -60,7 +62,7 @@ def _compact_node(node: SemanticNode) -> Dict[str, Any]:
         payload["framework"] = node.framework
     if node.location:
         payload["location"] = node.location.to_dict()
-    evidence = [item.to_dict() for item in node.evidence]
+    evidence = [item.to_dict() for item in sorted(node.evidence, key=lambda item: (-TIER_RANK[evidence_tier(item)], json.dumps(item.to_dict(), sort_keys=True)))]
     if evidence:
         payload["evidence"] = _compact_evidence(evidence)
     return payload
@@ -74,7 +76,7 @@ def _compact_edge(edge: SemanticEdge) -> Dict[str, Any]:
         "confidence": round(float(edge.confidence), 4),
         "confidence_tier": edge.confidence_tier.value,
     }
-    evidence = [item.to_dict() for item in edge.evidence]
+    evidence = [item.to_dict() for item in sorted(edge.evidence, key=lambda item: (-TIER_RANK[evidence_tier(item, edge.confidence)], json.dumps(item.to_dict(), sort_keys=True)))]
     if evidence:
         payload["evidence"] = _compact_evidence(evidence)
     return payload
@@ -151,7 +153,8 @@ class StoredSnapshotContext:
                 "analysis_contract_version": self.graph.metadata.get("analysis_contract_version"),
             },
             "grounding": {
-                "known": "Facts included below are backed by the stored semantic graph and its evidence.",
+                "confidence_policy": CONFIDENCE_POLICY_VERSION,
+                "known": "Labels use the current evidence policy. Scores are detector estimates, not calibrated probabilities. Verified means runtime/test observation within its recorded scope; supported means static evidence; inferred means heuristic evidence.",
                 "unknown": "A missing relationship means FeynMap has no current evidence for it; absence is not proof of impossibility.",
             },
             "orientation": {
@@ -213,69 +216,82 @@ class StoredSnapshotContext:
         }
 
         included_nodes = {root.id}
-        for _, node in candidates["nodes"]:
-            if len(payload["nodes"]) >= budget.max_nodes:
-                break
-            compact = _compact_node(node)
-            trial = dict(payload)
-            trial["nodes"] = list(payload["nodes"]) + [compact]
-            if estimate_tokens(trial) > budget.max_tokens:
-                break
-            payload["nodes"].append(compact)
-            included_nodes.add(node.id)
-
-        for _, edge in candidates["edges"]:
-            if len(payload["relationships"]) >= budget.max_edges:
-                break
-            if edge.source not in included_nodes or edge.target not in included_nodes:
-                continue
-            compact = _compact_edge(edge)
-            trial = dict(payload)
-            trial["relationships"] = list(payload["relationships"]) + [compact]
-            if estimate_tokens(trial) > budget.max_tokens:
-                break
-            payload["relationships"].append(compact)
-
-        budget_payload = {
+        selected_edges = set()
+        distances = {root.id: 0}
+        payload["budget"] = {
             "requested_max_tokens": int(requested.max_tokens),
             "max_tokens": budget.max_tokens,
             "minimum_supported_tokens": MIN_CONTEXT_TOKENS,
             "max_nodes": budget.max_nodes,
             "max_edges": budget.max_edges,
-            "included_nodes": 1 + len(payload["nodes"]),
-            "included_relationships": len(payload["relationships"]),
-            "truncated": (
-                len(payload["nodes"]) < len(candidates["nodes"])
-                or len(payload["relationships"]) < len(candidates["edges"])
-            ),
+            "included_nodes": 1,
+            "included_relationships": 0,
+            "omitted_nodes": len(candidates["nodes"]),
+            "omitted_relationships": len(candidates["edges"]),
+            "truncated": bool(candidates["nodes"] or candidates["edges"]),
+            "estimated_tokens": 0,
         }
-        payload["budget"] = budget_payload
-        payload["budget"]["estimated_tokens"] = 0
+        payload["grounding"] = {
+            "unknown": "Absent or omitted relationships are unknown, not false.",
+            "selection": "Connected edges and endpoints; nearby behavioral edges before containment/imports.",
+            "confidence_policy": CONFIDENCE_POLICY_VERSION,
+            "budgeting": "Four-character token estimate; max_nodes excludes the root.",
+        }
 
-        def measured_size() -> int:
-            # Include the estimate field itself, reaching a stable digit count.
+        def measure(trial: Dict[str, Any]) -> int:
+            stats = trial["budget"]
+            stats["included_nodes"] = 1 + len(trial["nodes"])
+            stats["included_relationships"] = len(trial["relationships"])
+            stats["omitted_nodes"] = len(candidates["nodes"]) - len(trial["nodes"])
+            stats["omitted_relationships"] = len(candidates["edges"]) - len(trial["relationships"])
+            stats["truncated"] = bool(stats["omitted_nodes"] or stats["omitted_relationships"])
             while True:
-                size = estimate_tokens(payload)
-                if payload["budget"]["estimated_tokens"] == size:
+                size = estimate_tokens(trial)
+                if stats["estimated_tokens"] == size:
                     return size
-                payload["budget"]["estimated_tokens"] = size
+                stats["estimated_tokens"] = size
 
-        # Budget metadata itself has a cost. Trim lower-priority material until
-        # the final serialized payload fits the effective budget.
-        while measured_size() > budget.max_tokens and payload["relationships"]:
-            payload["relationships"].pop()
-            payload["budget"]["included_relationships"] = len(payload["relationships"])
-            payload["budget"]["truncated"] = True
-        while measured_size() > budget.max_tokens and payload["nodes"]:
-            payload["nodes"].pop()
-            payload["budget"]["included_nodes"] = 1 + len(payload["nodes"])
-            payload["budget"]["truncated"] = True
-
-        estimated = measured_size()
-        if estimated > budget.max_tokens:
+        size = measure(payload)
+        if size > budget.max_tokens:
             raise ValueError(
-                "root and snapshot metadata require approximately %s tokens; increase max_tokens" % estimated
+                "root and snapshot metadata require approximately %s tokens; increase max_tokens" % size
             )
+
+        # Admit each relationship together with any missing endpoint. Nothing is
+        # trimmed after selection, so no dangling or disconnected nodes survive.
+        # Revisit skipped edges when another selected path connects an endpoint.
+        while len(selected_edges) < budget.max_edges:
+            progress = False
+            for _, edge in candidates["edges"]:
+                if edge.id in selected_edges:
+                    continue
+                if edge.source not in included_nodes and edge.target not in included_nodes:
+                    continue
+                missing = sorted({edge.source, edge.target} - included_nodes)
+                if len(payload["nodes"]) + len(missing) > budget.max_nodes:
+                    continue
+                nodes = [self.graph.node(key) for key in missing]
+                if any(node is None for node in nodes):
+                    continue
+                next_distance = min(distances[key] for key in (edge.source, edge.target) if key in distances) + 1
+                if missing and next_distance > max(0, int(depth)):
+                    continue
+                trial = dict(payload)
+                trial["budget"] = dict(payload["budget"])
+                trial["nodes"] = payload["nodes"] + [_compact_node(node) for node in nodes]
+                trial["relationships"] = payload["relationships"] + [_compact_edge(edge)]
+                if measure(trial) > budget.max_tokens:
+                    continue
+                payload = trial
+                included_nodes.update(missing)
+                for key in missing:
+                    distances[key] = next_distance
+                selected_edges.add(edge.id)
+                progress = True
+                if len(selected_edges) >= budget.max_edges:
+                    break
+            if not progress:
+                break
         return payload
 
     def unresolved(self, limit: int = 100) -> Dict[str, Any]:
@@ -334,5 +350,5 @@ class StoredSnapshotContext:
         for edge in self.graph.edges:
             if edge.id in edge_distance:
                 edges.append((edge_distance[edge.id], edge))
-        edges.sort(key=lambda item: (item[0], -float(item[1].confidence), item[1].kind.value, item[1].source, item[1].target))
+        edges.sort(key=lambda item: (item[0], item[1].kind in {EdgeKind.CONTAINS, EdgeKind.OWNS, EdgeKind.IMPORTS}, -TIER_RANK[item[1].confidence_tier], item[1].kind.value, item[1].source, item[1].target, item[1].id))
         return {"nodes": nodes, "edges": edges}

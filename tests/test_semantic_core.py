@@ -15,7 +15,7 @@ def test_graph_serializes_with_evidence_and_schema():
     payload = sample_graph().to_dict()
     assert payload["schema"] == "feynmap.semantic_graph"
     assert payload["metadata"]["evidence_coverage"] == 1.0
-    assert payload["nodes"][0]["confidence_tier"] == "verified"
+    assert payload["nodes"][0]["confidence_tier"] == "supported"
     assert payload["edges"][0]["kind"] == "calls"
 
 

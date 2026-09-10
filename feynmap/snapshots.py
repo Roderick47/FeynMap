@@ -433,9 +433,11 @@ class SnapshotStore:
             created_at=row["created_at"],
         )
         graph_payload = json.loads(row["graph_json"])
-        graph = SemanticGraph.from_dict(graph_payload)
-        if _sha256_text(_canonical_json(graph.to_dict())) != snapshot.graph_hash:
+        # Verify immutable stored data before deriving current confidence labels.
+        # A policy upgrade must not make intact historical snapshots look corrupt.
+        if _sha256_text(_canonical_json(graph_payload)) != snapshot.graph_hash:
             raise ValueError("stored graph failed snapshot hash verification")
+        graph = SemanticGraph.from_dict(graph_payload)
         return snapshot, graph
 
     def current_snapshot_id(self, repository_key: str) -> Optional[str]:
