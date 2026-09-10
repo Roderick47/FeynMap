@@ -85,6 +85,7 @@ def python_reexport_aliases(graph: SemanticGraph, project_path: Path) -> Dict[st
         node.qualified_name: node
         for node in graph.nodes
         if node.language == "python" and node.qualified_name
+        and node.kind.value != "external_system"
     }
     if not nodes_by_qname:
         return {}
@@ -100,6 +101,7 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
         node.qualified_name: node
         for node in graph.nodes
         if node.language == "python" and node.qualified_name
+        and node.kind.value != "external_system"
     }
     if not nodes_by_qname:
         return graph

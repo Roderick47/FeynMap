@@ -64,6 +64,7 @@ def test_context_bundle_is_evidence_preserving_and_budgeted(tmp_path: Path):
     assert bundle["budget"]["requested_max_tokens"] == 700
     assert bundle["budget"]["max_tokens"] == 700
     assert bundle["budget"]["estimated_tokens"] <= 700
+    assert bundle["budget"]["estimated_tokens"] == estimate_tokens(bundle)
     assert bundle["budget"]["included_nodes"] >= 1
     assert any(item["relationship"] == "calls" for item in bundle["relationships"])
 
@@ -101,3 +102,24 @@ def test_token_estimator_is_transport_neutral_and_deterministic():
     payload = {"b": 2, "a": "hello"}
     assert estimate_tokens(payload) == estimate_tokens({"a": "hello", "b": 2})
     assert estimate_tokens(payload) > 0
+
+
+def test_summary_exposes_grounded_navigation(tmp_path):
+    snapshot, graph, _ = _stored_project(tmp_path)
+    summary = StoredSnapshotContext(snapshot, graph).repository_summary()
+    orientation = summary['orientation']
+    assert any(node['qualified_name'] == 'app' for node in orientation['modules'])
+    hub = orientation['call_hubs'][0]
+    assert hub['symbol']['qualified_name'] == 'app.helper'
+    assert hub['distinct_callers'] == 1
+
+
+def test_oversized_root_reports_budget_error(tmp_path):
+    import pytest
+    snapshot, graph, _ = _stored_project(tmp_path)
+    root = next(node for node in graph.nodes if node.qualified_name == 'app.run')
+    root.name = 'x' * 10000
+    with pytest.raises(ValueError, match='increase max_tokens'):
+        StoredSnapshotContext(snapshot, graph).context_bundle(
+            root.id, budget=ContextBudget(max_tokens=512)
+        )

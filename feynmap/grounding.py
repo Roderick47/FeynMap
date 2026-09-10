@@ -190,8 +190,9 @@ class GroundingService:
 
     def call(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Dispatch one versioned grounding tool using JSON-compatible arguments."""
-        self.tool(name)
+        tool = self.tool(name)
         args = dict(arguments or {})
+        self._validate_arguments(tool, args)
         if name == "repository_summary":
             return self.context.repository_summary()
         if name == "get_symbol":
@@ -357,6 +358,30 @@ class GroundingService:
         result = dict(payload)
         result["snapshot_id"] = self.snapshot.snapshot_id
         return result
+
+    @staticmethod
+    def _validate_arguments(tool: GroundingTool, arguments: Dict[str, Any]) -> None:
+        """Enforce the types and bounds exposed by the tool catalog."""
+        schema = tool.input_schema
+        properties = schema["properties"]
+        for key in arguments:
+            if key not in properties:
+                raise ValueError("unknown argument: %s" % key)
+        for key in schema["required"]:
+            if key not in arguments:
+                raise ValueError("%s is required" % key)
+        for key, value in arguments.items():
+            rule = properties[key]
+            if rule["type"] == "integer":
+                if type(value) is not int:
+                    raise ValueError("%s must be an integer" % key)
+                if value < rule.get("minimum", value) or value > rule.get("maximum", value):
+                    raise ValueError("%s is outside supported bounds" % key)
+            elif rule["type"] == "string":
+                if not isinstance(value, str) or len(value.strip()) < rule.get("minLength", 0):
+                    raise ValueError("%s must be a non-empty string" % key)
+            if "enum" in rule and value not in rule["enum"]:
+                raise ValueError("unsupported %s: %s" % (key, value))
 
     @staticmethod
     def _required(arguments: Dict[str, Any], key: str) -> str:
