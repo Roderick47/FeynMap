@@ -1,0 +1,24 @@
+{
+  "schema": "feynmap.relationship_benchmark.v1",
+  "name": "Hand-labeled Python, HTML, JavaScript flow",
+  "symbols": {
+    "home": {"name": "home", "language": "python", "path": "app.py"},
+    "items": {"name": "items", "language": "python", "path": "app.py"},
+    "backend_helper": {"name": "helper", "language": "python", "path": "app.py"},
+    "document": {"name": "index.html", "language": "html"},
+    "script": {"name": "app.js", "language": "javascript"},
+    "load": {"name": "loadItems", "language": "javascript"},
+    "frontend_helper": {"name": "helper", "language": "javascript"},
+    "idle": {"name": "idle", "language": "javascript"}
+  },
+  "relationships": [
+    {"source": "home", "target": "document", "kind": "renders", "present": true},
+    {"source": "document", "target": "script", "kind": "loads", "present": true},
+    {"source": "document", "target": "load", "kind": "invokes", "present": true},
+    {"source": "load", "target": "items", "kind": "requests", "present": true},
+    {"source": "load", "target": "frontend_helper", "kind": "calls", "present": true},
+    {"source": "items", "target": "backend_helper", "kind": "calls", "present": true},
+    {"source": "backend_helper", "target": "frontend_helper", "kind": "calls", "present": false},
+    {"source": "idle", "target": "frontend_helper", "kind": "calls", "present": false}
+  ]
+}
