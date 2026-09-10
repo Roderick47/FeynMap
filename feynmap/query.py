@@ -12,10 +12,20 @@ class FeynMapQuery:
         self.graph = graph
 
     def resolve(self, symbol: str) -> SemanticNode:
+        # Stable IDs take precedence over names, including case-folded matches.
+        exact_id = self.graph.node(symbol)
+        if exact_id is not None:
+            return exact_id
         matches = self.graph.find(symbol)
         if not matches:
             raise KeyError("symbol not found: %s" % symbol)
-        if len(matches) > 1 and matches[0].name.casefold() != symbol.casefold() and matches[0].id.casefold() != symbol.casefold():
+        exact = [node for node in matches if symbol in (node.name, node.qualified_name)]
+        if not exact:
+            exact = [node for node in matches if symbol.casefold() in (
+                node.name.casefold(), (node.qualified_name or "").casefold(), node.id.casefold()
+            )]
+        matches = exact or matches
+        if len(matches) > 1:
             raise KeyError("symbol is ambiguous: %s; matches=%s" % (symbol, ", ".join(node.id for node in matches[:8])))
         return matches[0]
 

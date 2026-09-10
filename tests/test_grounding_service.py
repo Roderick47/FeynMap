@@ -1,7 +1,22 @@
 from pathlib import Path
+import pytest
 
 from feynmap import FeynMapEngine, GROUNDING_TOOLS, GroundingService
 from feynmap.snapshots import SnapshotStore, capture_repository_snapshot
+
+
+@pytest.mark.parametrize("arguments", [
+    {"symbol": "app.run", "depth": 13},
+    {"symbol": "app.run", "depth": True},
+    {"symbol": "app.run", "depth": "2"},
+    {"symbol": "app.run", "extra": 1},
+    {"symbol": "   "},
+    {},
+])
+def test_tool_arguments_enforce_advertised_contract(tmp_path, arguments):
+    service, _, _ = _service(tmp_path)
+    with pytest.raises(ValueError):
+        service.call("find_callers", arguments)
 
 
 def _fake_git(root: Path) -> None:

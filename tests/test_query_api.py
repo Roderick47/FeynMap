@@ -1,5 +1,27 @@
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode
 from feynmap.query import FeynMapQuery
+import pytest
+
+
+def test_duplicate_names_require_qualified_name_or_id():
+    api = FeynMapQuery(SemanticGraph([
+        SemanticNode("a", "run", NodeKind.FUNCTION, qualified_name="first.run"),
+        SemanticNode("b", "run", NodeKind.FUNCTION, qualified_name="second.run"),
+        SemanticNode("c", "runner", NodeKind.FUNCTION, qualified_name="third.runner"),
+    ], []))
+    with pytest.raises(KeyError, match="ambiguous"):
+        api.resolve("run")
+    assert api.resolve("first.run").id == "a"
+    assert api.resolve("b").id == "b"
+    assert api.resolve("runner").id == "c"
+
+
+def test_exact_qualified_name_wins_over_partial_matches():
+    api = FeynMapQuery(SemanticGraph([
+        SemanticNode("a", "run", NodeKind.FUNCTION, qualified_name="app.run"),
+        SemanticNode("b", "run_more", NodeKind.FUNCTION, qualified_name="app.run_more"),
+    ], []))
+    assert api.resolve("app.run").id == "a"
 
 
 def graph():

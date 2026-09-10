@@ -11,7 +11,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from .core import SemanticEdge, SemanticGraph, SemanticNode
+from .core import EdgeKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode
 from .query import FeynMapQuery
 from .snapshots import RepositorySnapshot, SnapshotStore
 
@@ -21,8 +21,8 @@ MIN_CONTEXT_TOKENS = 512
 def estimate_tokens(payload: Any) -> int:
     """Deterministic tokenizer-independent estimate suitable for budget guards.
 
-    The reference implementation uses a conservative four UTF-8 characters per
-    token approximation. The budget contract is intentionally separate from any
+    The reference implementation uses a four-character-per-token heuristic,
+    not a hard bound for any vendor tokenizer. The contract is separate from any
     vendor tokenizer so a future Rust implementation can remain compatible.
     """
     if isinstance(payload, str):
@@ -123,6 +123,19 @@ class StoredSnapshotContext:
             if node.language:
                 by_language[node.language] = by_language.get(node.language, 0) + 1
         integration = self.graph.metadata.get("integration") or {}
+        modules = sorted(
+            (node for node in self.graph.nodes if node.kind in {NodeKind.MODULE, NodeKind.FILE}),
+            key=lambda node: node.id,
+        )
+        caller_counts: Dict[str, set] = {}
+        for edge in self.graph.edges:
+            if edge.kind == EdgeKind.CALLS and edge.source != edge.target:
+                caller_counts.setdefault(edge.target, set()).add(edge.source)
+        hubs = sorted(caller_counts, key=lambda key: (-len(caller_counts[key]), key))
+        handlers = sorted(
+            (node for node in self.graph.nodes if node.kind == NodeKind.HANDLER),
+            key=lambda node: node.id,
+        )
         return {
             "snapshot": self.snapshot.to_dict(include_files=False),
             "graph": {
@@ -140,6 +153,19 @@ class StoredSnapshotContext:
             "grounding": {
                 "known": "Facts included below are backed by the stored semantic graph and its evidence.",
                 "unknown": "A missing relationship means FeynMap has no current evidence for it; absence is not proof of impossibility.",
+            },
+            "orientation": {
+                "modules": [_compact_node(node) for node in modules[:20]],
+                "module_count": len(modules),
+                "modules_truncated": len(modules) > 20,
+                "handlers": [_compact_node(node) for node in handlers[:10]],
+                "handler_count": len(handlers),
+                "handlers_truncated": len(handlers) > 10,
+                "call_hubs": [
+                    {"symbol": _compact_node(self.graph.node(key)), "distinct_callers": len(caller_counts[key])}
+                    for key in hubs[:10] if self.graph.node(key) is not None
+                ],
+                "ranking": "Call hubs rank by distinct evidenced callers, not inferred business importance. Use symbol IDs to request focused context.",
             },
         }
 
@@ -224,20 +250,32 @@ class StoredSnapshotContext:
             ),
         }
         payload["budget"] = budget_payload
+        payload["budget"]["estimated_tokens"] = 0
+
+        def measured_size() -> int:
+            # Include the estimate field itself, reaching a stable digit count.
+            while True:
+                size = estimate_tokens(payload)
+                if payload["budget"]["estimated_tokens"] == size:
+                    return size
+                payload["budget"]["estimated_tokens"] = size
 
         # Budget metadata itself has a cost. Trim lower-priority material until
         # the final serialized payload fits the effective budget.
-        while estimate_tokens(payload) > budget.max_tokens and payload["relationships"]:
+        while measured_size() > budget.max_tokens and payload["relationships"]:
             payload["relationships"].pop()
             payload["budget"]["included_relationships"] = len(payload["relationships"])
             payload["budget"]["truncated"] = True
-        while estimate_tokens(payload) > budget.max_tokens and payload["nodes"]:
+        while measured_size() > budget.max_tokens and payload["nodes"]:
             payload["nodes"].pop()
             payload["budget"]["included_nodes"] = 1 + len(payload["nodes"])
             payload["budget"]["truncated"] = True
 
-        estimated = estimate_tokens(payload)
-        payload["budget"]["estimated_tokens"] = estimated
+        estimated = measured_size()
+        if estimated > budget.max_tokens:
+            raise ValueError(
+                "root and snapshot metadata require approximately %s tokens; increase max_tokens" % estimated
+            )
         return payload
 
     def unresolved(self, limit: int = 100) -> Dict[str, Any]:
