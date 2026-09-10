@@ -51,7 +51,16 @@ def test_claim_validation_is_conservative():
     api = FeynMapQuery(graph())
     supported = api.validate_claim("PaymentView", "PaymentService", "calls")
     assert supported["supported"] is True
-    assert supported["status"] == "verified"
+    assert supported["status"] == "supported"
     unsupported = api.validate_claim("PaymentView", "Payment", "calls")
     assert unsupported["supported"] is False
     assert "does not prove" in unsupported["note"]
+
+
+def test_callers_exclude_containment_but_impact_keeps_broad_closure():
+    g = graph()
+    g.add_edge(SemanticEdge('contains', 'model', 'service', EdgeKind.CONTAINS, 1))
+    api = FeynMapQuery(g)
+    assert {n['id'] for n in api.callers('service')['nodes']} == {'view'}
+    assert {n['id'] for n in api.impact('service', depth=1)['nodes']} == {'view', 'model'}
+    assert api.callers('service')['relationship_filter'] == ['calls', 'invokes']

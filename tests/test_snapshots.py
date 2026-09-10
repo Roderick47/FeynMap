@@ -178,3 +178,32 @@ def test_git_origin_locator_is_sanitized_and_transport_neutral(tmp_path: Path):
 
     assert locator == "git:example.com/owner/repo"
     assert "secret-token" not in locator
+
+
+def test_legacy_tier_snapshot_loads_and_still_checks_stored_hash(tmp_path):
+    import hashlib
+    import sqlite3
+    import pytest
+    graph = _graph()
+    store = SnapshotStore(tmp_path / 'legacy.sqlite')
+    snapshot = capture_repository_snapshot(tmp_path, graph)
+    store.save(snapshot, graph)
+    legacy = graph.to_dict()
+    for item in legacy['nodes'] + legacy['edges']:
+        if item['evidence']:
+            item['confidence_tier'] = 'verified'
+    raw = json.dumps(legacy, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    # Simulate an intact snapshot written under the previous tier policy.
+    digest = hashlib.sha256(raw.encode('utf-8')).hexdigest()
+    with sqlite3.connect(str(tmp_path / 'legacy.sqlite')) as connection:
+        connection.execute('UPDATE snapshots SET graph_json=?, graph_hash=? WHERE snapshot_id=?',
+                           (raw, digest, snapshot.snapshot_id))
+    loaded, restored = store.load(snapshot.snapshot_id)
+    assert loaded.graph_hash == digest
+    assert all(n.confidence_tier.value != 'verified' for n in restored.nodes)
+    legacy['nodes'][0]['name'] = 'tampered'
+    with sqlite3.connect(str(tmp_path / 'legacy.sqlite')) as connection:
+        connection.execute('UPDATE snapshots SET graph_json=? WHERE snapshot_id=?',
+                           (json.dumps(legacy), snapshot.snapshot_id))
+    with pytest.raises(ValueError, match='hash verification'):
+        store.load(snapshot.snapshot_id)

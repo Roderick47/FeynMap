@@ -14,6 +14,29 @@ from .ontology import ConfidenceTier, EdgeKind, EvidenceKind, NodeKind, confiden
 SEMANTIC_SCHEMA = "feynmap.semantic_graph"
 SEMANTIC_SCHEMA_VERSION = "1.0.0"
 
+TIER_RANK = {tier: rank for rank, tier in enumerate((
+    ConfidenceTier.UNKNOWN, ConfidenceTier.INFERRED, ConfidenceTier.SUPPORTED, ConfidenceTier.VERIFIED
+))}
+
+
+def evidence_tier(evidence: "Evidence", score: Optional[float] = None) -> ConfidenceTier:
+    # Evaluate each item independently: weak observations must not borrow a
+    # heuristic's high score to become verified.
+    tier = confidence_tier(
+        evidence.confidence, 1,
+        observed=evidence.kind in {EvidenceKind.RUNTIME, EvidenceKind.TEST},
+        inferred_only=(evidence.kind in {EvidenceKind.AI_INFERENCE, EvidenceKind.HEURISTIC, EvidenceKind.HISTORY}
+                       or (evidence.kind == EvidenceKind.STATIC and evidence.detector.startswith("javascript.source."))),
+    )
+    if score is not None:
+        cap = confidence_tier(score, 1, observed=True)
+        return min((tier, cap), key=TIER_RANK.get)
+    return tier
+
+
+def _evidence_tier(items: List["Evidence"], score: Optional[float] = None) -> ConfidenceTier:
+    return max((evidence_tier(item, score) for item in items), key=TIER_RANK.get, default=ConfidenceTier.UNKNOWN)
+
 
 def _diagnostic_merge(left: List[str], right: List[str]) -> List[str]:
     result: List[str] = []
@@ -99,8 +122,7 @@ class SemanticNode:
 
     @property
     def confidence_tier(self) -> ConfidenceTier:
-        ai_only = bool(self.evidence) and all(item.kind == EvidenceKind.AI_INFERENCE for item in self.evidence)
-        return confidence_tier(self.confidence, len(self.evidence), ai_only)
+        return _evidence_tier(self.evidence)
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -148,8 +170,7 @@ class SemanticEdge:
 
     @property
     def confidence_tier(self) -> ConfidenceTier:
-        ai_only = bool(self.evidence) and all(item.kind == EvidenceKind.AI_INFERENCE for item in self.evidence)
-        return confidence_tier(self.confidence, len(self.evidence), ai_only)
+        return _evidence_tier(self.evidence, self.confidence)
 
     def to_dict(self) -> Dict[str, Any]:
         return {

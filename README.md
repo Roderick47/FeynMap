@@ -249,11 +249,17 @@ The old API remains lazily available:
 from feynmap import FeynExtractor, FeynNotator
 ```
 
+## LLM context and evidence policy
+
+Stored context now selects connected relationships and endpoints together, skips oversized candidates, and reports omissions within the requested neighborhood. Static evidence is labeled supported; heuristic evidence is inferred; verified is reserved for runtime/test observations within their recorded scope. Numeric scores are detector estimates, not calibrated probabilities.
+
+The grounding service contract is now **2.0.0**: callers follow calls/invokes only, and claim responses distinguish evidence existence from support. See [context selection, confidence policy, and compatibility notes](docs/CONTEXT_CONFIDENCE_V2.md).
+
 ## Direction
 
 Phase 1 (framework-neutral Python) and Phase 1.5 (repository multi-language orchestration and cross-runtime resolution) are now implemented on the V3 refactor branch.
 
-The next major phase is the AI grounding service: persistent graph snapshots, incremental updates, repository identity, MCP tools and token-budgeted context retrieval.
+Persistent graph snapshots, conservative incremental updates, repository identity, a transport-neutral grounding service, and approximate-token-budgeted context retrieval are implemented. A complete MCP transport remains outstanding on main.
 
 Before broad production use, the integration layer still needs hardening for embedded languages, richer JavaScript/TypeScript parsing, composed/nested routes, protocol schemas, build/container topology and additional native/mobile adapters. See [`ROADMAP.md`](ROADMAP.md).
 

@@ -84,7 +84,7 @@ class JavaScriptAdapter(LanguageAdapter):
                 language="javascript",
                 location=SourceLocation(relative, 1),
                 attributes={"javascript": {"module": True}},
-                evidence=[Evidence(EvidenceKind.STATIC, "javascript.source.module", "JavaScript module parsed from source", SourceLocation(relative, 1), 0.98)],
+                evidence=[Evidence(EvidenceKind.HEURISTIC, "javascript.source.module", "JavaScript module scanned from source", SourceLocation(relative, 1), 0.98)],
             )
             graph.add_node(module)
             module_nodes[relative] = module
@@ -107,7 +107,7 @@ class JavaScriptAdapter(LanguageAdapter):
                     language="javascript",
                     location=SourceLocation(relative, definition.line, definition.end_line),
                     attributes={"javascript": {"parent": definition.parent, "extends": definition.extends}},
-                    evidence=[Evidence(EvidenceKind.STATIC, "javascript.source.definition", "JavaScript %s definition" % definition.kind.value, SourceLocation(relative, definition.line), 0.96)],
+                    evidence=[Evidence(EvidenceKind.HEURISTIC, "javascript.source.definition", "JavaScript %s definition" % definition.kind.value, SourceLocation(relative, definition.line), 0.96)],
                 )
                 graph.add_node(node)
                 parent_id = module.id
@@ -155,7 +155,7 @@ class JavaScriptAdapter(LanguageAdapter):
                                 kind=NodeKind.EXTERNAL_SYSTEM,
                                 language="javascript",
                                 attributes={"javascript": {"external": True}},
-                                evidence=[Evidence(EvidenceKind.STATIC, "javascript.source.import", "Imported JavaScript dependency", SourceLocation(relative, 1), 0.96)],
+                                evidence=[Evidence(EvidenceKind.HEURISTIC, "javascript.source.import", "Imported JavaScript dependency", SourceLocation(relative, 1), 0.96)],
                             )
                         )
                     target = graph.node(external_id)
@@ -355,5 +355,5 @@ class JavaScriptAdapter(LanguageAdapter):
             return
         keys.add(key)
         raw = "%s|%s|%s|%s" % (source, target, kind.value, line)
-        evidence = Evidence(EvidenceKind.STATIC, detector, "JavaScript %s relationship" % kind.value, SourceLocation(path, line), confidence)
+        evidence = Evidence(EvidenceKind.HEURISTIC, detector, "JavaScript %s relationship" % kind.value, SourceLocation(path, line), confidence)
         graph.add_edge(SemanticEdge("edge:%s" % hashlib.sha1(raw.encode("utf-8")).hexdigest()[:14], source, target, kind, confidence, [evidence]))

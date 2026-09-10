@@ -18,7 +18,7 @@ from .diff import diff_store_snapshots
 from .snapshots import SnapshotStore
 
 
-GROUNDING_TOOL_CONTRACT_VERSION = "1.0.0"
+GROUNDING_TOOL_CONTRACT_VERSION = "2.0.0"
 JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
 
 
@@ -70,7 +70,7 @@ GROUNDING_TOOLS: Tuple[GroundingTool, ...] = (
     ),
     GroundingTool(
         "find_callers",
-        "Walk callers/incoming semantic relationships from a symbol in the stored graph.",
+        "Walk incoming calls/invokes relationships only; excludes containment and imports.",
         _object_schema({"symbol": _SYMBOL, "depth": _DEPTH}, ["symbol"]),
     ),
     GroundingTool(
@@ -80,7 +80,7 @@ GROUNDING_TOOLS: Tuple[GroundingTool, ...] = (
     ),
     GroundingTool(
         "change_impact",
-        "Return the stored caller/impact closure for a symbol. This reports evidenced impact, not hypothetical unseen relationships.",
+        "Return the broad incoming relationship closure, including imports and containment; potential impact, not proof of behavioral change.",
         _object_schema({"symbol": _SYMBOL, "depth": {"type": "integer", "minimum": 0, "maximum": 20, "default": 4}}, ["symbol"]),
     ),
     GroundingTool(

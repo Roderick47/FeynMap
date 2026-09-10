@@ -53,7 +53,7 @@ def test_tool_catalog_is_deterministic_json_schema_contract():
     catalog = GroundingService.tool_catalog()
 
     assert [item["name"] for item in catalog] == [tool.name for tool in GROUNDING_TOOLS]
-    assert catalog[0]["contract_version"] == "1.0.0"
+    assert catalog[0]["contract_version"] == "2.0.0"
     assert all(item["read_only"] is True for item in catalog)
     assert all(item["input_schema"]["$schema"].endswith("2020-12/schema") for item in catalog)
     assert "context_bundle" in {item["name"] for item in catalog}
