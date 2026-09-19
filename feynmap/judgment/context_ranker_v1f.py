@@ -113,6 +113,23 @@ def _git_archive(repo_path: Path, revision: str, destination: Path) -> None:
         archive.extractall(destination)
 
 
+def _seed_snapshot_git_metadata(
+    destination: Path,
+    repository_name: str,
+    revision: str,
+) -> None:
+    """Give an archived revision deterministic repository identity metadata."""
+    git_dir = destination / ".git"
+    git_dir.mkdir(parents=True, exist_ok=True)
+    (git_dir / "HEAD").write_text(str(revision).strip() + "\n", encoding="utf-8")
+    origin = "https://github.com/%s.git" % str(repository_name).strip().strip("/")
+    (git_dir / "config").write_text(
+        '[core]\n\trepositoryformatversion = 0\n'
+        '[remote "origin"]\n\turl = %s\n' % origin,
+        encoding="utf-8",
+    )
+
+
 def _gold_files(
     context: StoredSnapshotContext,
     task: Mapping[str, Any],
@@ -372,8 +389,7 @@ def run_graph_task(
     )
     direct_row["false_complete"] = bool(
         direct_row["declared_complete"]
-        and direct_row["baseline"]["recall@10"] is not None
-        and direct_row["baseline"]["recall@10"] < 1.0
+        and bool(direct_row["baseline"]["missing_gold_files"])
     )
     return {
         "id": task["id"],
@@ -431,11 +447,14 @@ def run_historical_experiment(
 
     retrieval_spec = spec["retrieval"]
     adaptive_spec = spec["adaptive"]
+    repository_name = str((spec.get("repository") or {}).get("name") or repo.name)
     rows: List[Dict[str, Any]] = []
     for task in spec["tasks"]:
         with tempfile.TemporaryDirectory(prefix="feynmap-v1f-") as temp:
             extracted = Path(temp)
-            _git_archive(repo, str(task["pre_fix_revision"]), extracted)
+            revision = str(task["pre_fix_revision"])
+            _git_archive(repo, revision, extracted)
+            _seed_snapshot_git_metadata(extracted, repository_name, revision)
             graph = FeynMapEngine().analyze(str(extracted))
             snapshot = capture_repository_snapshot(
                 extracted,
