@@ -47,6 +47,78 @@ def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _sort_json_items(items: List[Any]) -> List[Any]:
+    return sorted(items, key=_canonical_json)
+
+
+def _canonical_graph_identity_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a stable graph representation for identity hashing.
+
+    SemanticGraph preserves analysis/traversal order because that order can be
+    useful to callers. Snapshot identity, however, must not depend on filesystem
+    enumeration or set iteration order. Only collections that are semantically
+    unordered are normalized here.
+    """
+    canonical = dict(payload)
+
+    nodes: List[Dict[str, Any]] = []
+    for raw in payload.get("nodes", []) or []:
+        if not isinstance(raw, dict):
+            continue
+        node = dict(raw)
+        if isinstance(node.get("evidence"), list):
+            node["evidence"] = _sort_json_items(list(node["evidence"]))
+        attributes = node.get("attributes")
+        if isinstance(attributes, dict):
+            attrs = dict(attributes)
+            contracts = attrs.get("integration_contracts")
+            if isinstance(contracts, list):
+                attrs["integration_contracts"] = _sort_json_items(list(contracts))
+            node["attributes"] = attrs
+        nodes.append(node)
+    canonical["nodes"] = sorted(nodes, key=lambda item: str(item.get("id", "")))
+
+    edges: List[Dict[str, Any]] = []
+    for raw in payload.get("edges", []) or []:
+        if not isinstance(raw, dict):
+            continue
+        edge = dict(raw)
+        if isinstance(edge.get("evidence"), list):
+            edge["evidence"] = _sort_json_items(list(edge["evidence"]))
+        edges.append(edge)
+    canonical["edges"] = sorted(
+        edges,
+        key=lambda item: (
+            str(item.get("source", "")),
+            str(item.get("kind", "")),
+            str(item.get("target", "")),
+            str(item.get("id", "")),
+        ),
+    )
+
+    metadata = dict(payload.get("metadata") or {})
+    if isinstance(metadata.get("languages"), list):
+        metadata["languages"] = sorted(
+            list(metadata["languages"]),
+            key=lambda item: str(item.get("name", "")) if isinstance(item, dict) else _canonical_json(item),
+        )
+    for key in ("language_names", "frameworks_applied"):
+        if isinstance(metadata.get(key), list):
+            metadata[key] = sorted(str(item) for item in metadata[key])
+    canonical["metadata"] = metadata
+
+    diagnostics = dict(payload.get("diagnostics") or {})
+    for key in ("errors", "warnings"):
+        if isinstance(diagnostics.get(key), list):
+            diagnostics[key] = sorted(str(item) for item in diagnostics[key])
+    canonical["diagnostics"] = diagnostics
+    return canonical
+
+
+def _graph_identity_hash(payload: Dict[str, Any]) -> str:
+    return _sha256_text(_canonical_json(_canonical_graph_identity_payload(payload)))
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -284,7 +356,7 @@ def capture_repository_snapshot(
     inventory_payload = [item.to_dict() for item in files]
     content_hash = _sha256_text(_canonical_json(inventory_payload))
     graph_payload = graph.to_dict()
-    graph_hash = _sha256_text(_canonical_json(graph_payload))
+    graph_hash = _graph_identity_hash(graph_payload)
     options = dict(analysis_options or {})
     if not options:
         for key in ("language_selection", "framework_selection"):
@@ -359,8 +431,9 @@ class SnapshotStore:
             )
 
     def save(self, snapshot: RepositorySnapshot, graph: SemanticGraph, set_current: bool = True) -> None:
-        graph_json = _canonical_json(graph.to_dict())
-        if _sha256_text(graph_json) != snapshot.graph_hash:
+        graph_payload = graph.to_dict()
+        graph_json = _canonical_json(graph_payload)
+        if _graph_identity_hash(graph_payload) != snapshot.graph_hash:
             raise ValueError("graph does not match snapshot graph_hash")
         inventory_json = _canonical_json([item.to_dict() for item in snapshot.files])
         if _sha256_text(inventory_json) != snapshot.content_hash:
@@ -435,7 +508,9 @@ class SnapshotStore:
         graph_payload = json.loads(row["graph_json"])
         # Verify immutable stored data before deriving current confidence labels.
         # A policy upgrade must not make intact historical snapshots look corrupt.
-        if _sha256_text(_canonical_json(graph_payload)) != snapshot.graph_hash:
+        raw_hash = _sha256_text(_canonical_json(graph_payload))
+        identity_hash = _graph_identity_hash(graph_payload)
+        if snapshot.graph_hash not in {raw_hash, identity_hash}:
             raise ValueError("stored graph failed snapshot hash verification")
         graph = SemanticGraph.from_dict(graph_payload)
         return snapshot, graph
