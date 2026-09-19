@@ -7,7 +7,7 @@ import time
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
 from .jev import JevJudgmentProvider
-from .ranking import RankedCandidate, baseline_rank, rerank_with_judgments
+from .ranking import RankedCandidate, baseline_rank, rerank_with_judgments_result
 
 BENCHMARK_SCHEMA = "feynmap.context_ranker_benchmark.v1"
 
@@ -32,13 +32,8 @@ def _metrics(
         payload["precision@%d" % k] = hits / len(top) if top else None
         payload["relevant_recall@%d" % k] = hits / len(relevant_set) if relevant_set else None
         essential_hits = sum(1 for candidate_id in top if candidate_id in essential_set)
-        payload["essential_recall@%d" % k] = (
-            essential_hits / len(essential_set) if essential_set else None
-        )
-    first_relevant = next(
-        (index for index, candidate_id in enumerate(order, 1) if candidate_id in relevant_set),
-        None,
-    )
+        payload["essential_recall@%d" % k] = essential_hits / len(essential_set) if essential_set else None
+    first_relevant = next((index for index, candidate_id in enumerate(order, 1) if candidate_id in relevant_set), None)
     payload["reciprocal_rank"] = (1.0 / first_relevant) if first_relevant else 0.0
     return payload
 
@@ -74,18 +69,14 @@ def validate_dataset(dataset: Mapping[str, Any]) -> None:
             raise ValueError("essential must be a subset of relevant, and labels must name candidates")
 
 
-def run_benchmark(
-    dataset: Mapping[str, Any],
-    provider=None,
-    *,
-    ks: Sequence[int] = (1, 3, 5),
-) -> Dict[str, Any]:
+def run_benchmark(dataset: Mapping[str, Any], provider=None, *, ks: Sequence[int] = (1, 3, 5)) -> Dict[str, Any]:
     validate_dataset(dataset)
     task_rows: List[Dict[str, Any]] = []
     baseline_metrics = []
     reranked_metrics = []
     total_usage = {"input_tokens": 0, "output_tokens": 0}
     provider_seconds = 0.0
+    request_ids = []
 
     for task in dataset["tasks"]:
         baseline = baseline_rank(task["candidates"])
@@ -100,7 +91,7 @@ def run_benchmark(
 
         if provider is not None:
             started = time.perf_counter()
-            reranked = rerank_with_judgments(
+            reranked, judgment = rerank_with_judgments_result(
                 {"description": task["description"]},
                 task["candidates"],
                 provider,
@@ -111,9 +102,18 @@ def run_benchmark(
             reranked_metrics.append(judged)
             row["reranked_order"] = _ids(reranked)
             row["reranked"] = judged
-            row["probabilities"] = {
-                item.candidate_id: item.judgment_probability for item in reranked
-            }
+            row["probabilities"] = {item.candidate_id: item.judgment_probability for item in reranked}
+            if judgment is not None:
+                row["provider"] = judgment.provider
+                row["model"] = judgment.model
+                row["usage"] = dict(judgment.usage)
+                if judgment.request_id:
+                    row["request_id"] = judgment.request_id
+                    request_ids.append(judgment.request_id)
+                for key in total_usage:
+                    value = judgment.usage.get(key)
+                    if isinstance(value, (int, float)):
+                        total_usage[key] += value
         task_rows.append(row)
 
     result: Dict[str, Any] = {
@@ -127,9 +127,8 @@ def run_benchmark(
         result["reranked"] = _average(reranked_metrics)
         result["provider"] = getattr(provider, "name", provider.__class__.__name__)
         result["provider_elapsed_seconds"] = round(provider_seconds, 6)
-        # Usage is provider-specific and intentionally not required by the
-        # neutral contract. Individual provider calls may expose it externally.
         result["usage"] = total_usage
+        result["request_ids"] = request_ids
     return result
 
 
@@ -139,7 +138,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--jev", action="store_true", help="Enable live Jev reranking")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
     args = parser.parse_args(argv)
-
     with open(args.dataset, "r", encoding="utf-8") as handle:
         dataset = json.load(handle)
     provider = JevJudgmentProvider() if args.jev else None
