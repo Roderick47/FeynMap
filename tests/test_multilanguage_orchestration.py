@@ -111,6 +111,32 @@ def test_django_urlpattern_is_resolved_from_javascript_client(tmp_path):
     assert _has_edge(graph, client, dashboard, EdgeKind.REQUESTS)
 
 
+def test_django_handler_depends_on_nearest_app_config(tmp_path):
+    (tmp_path / "requirements.txt").write_text("django\n", encoding="utf-8")
+    (tmp_path / "manage.py").write_text("", encoding="utf-8")
+    (tmp_path / "core").mkdir()
+    (tmp_path / "core" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "core" / "apps.py").write_text(
+        "from django.apps import AppConfig\n\n"
+        "class CoreConfig(AppConfig):\n"
+        "    name = 'core'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "core" / "views.py").write_text(
+        "def toggle_price_like(request):\n"
+        "    return None\n",
+        encoding="utf-8",
+    )
+
+    graph = FeynMapEngine().analyze(str(tmp_path))
+    handler = _node(graph, "toggle_price_like", "python")
+    config = _node(graph, "CoreConfig", "python")
+
+    assert config.kind == NodeKind.SERVICE
+    assert config.framework == "django"
+    assert _has_edge(graph, handler, config, EdgeKind.DEPENDS_ON)
+
+
 def test_django_template_composition_and_custom_filters_form_cross_runtime_paths(tmp_path):
     (tmp_path / "requirements.txt").write_text("django\n", encoding="utf-8")
     (tmp_path / "manage.py").write_text("", encoding="utf-8")
