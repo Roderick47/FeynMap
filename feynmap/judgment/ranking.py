@@ -6,9 +6,9 @@ reorders candidates that deterministic FeynMap retrieval has already selected.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from .contracts import JudgmentProvider, JudgmentQuestion
+from .contracts import JudgmentProvider, JudgmentQuestion, JudgmentResult
 
 
 @dataclass(frozen=True)
@@ -22,17 +22,13 @@ class RankedCandidate:
         return str(self.candidate["id"])
 
     def to_dict(self) -> Dict[str, Any]:
-        payload = {
-            "candidate": dict(self.candidate),
-            "baseline_rank": self.baseline_rank,
-        }
+        payload = {"candidate": dict(self.candidate), "baseline_rank": self.baseline_rank}
         if self.judgment_probability is not None:
             payload["judgment_probability"] = float(self.judgment_probability)
         return payload
 
 
 def baseline_rank(candidates: Sequence[Mapping[str, Any]]) -> List[RankedCandidate]:
-    """Preserve deterministic FeynMap candidate order as the benchmark baseline."""
     ranked: List[RankedCandidate] = []
     seen = set()
     for index, candidate in enumerate(candidates, 1):
@@ -46,21 +42,16 @@ def baseline_rank(candidates: Sequence[Mapping[str, Any]]) -> List[RankedCandida
     return ranked
 
 
-def rerank_with_judgments(
+def rerank_with_judgments_result(
     task: Any,
     candidates: Sequence[Mapping[str, Any]],
     provider: JudgmentProvider,
     *,
     shared_state: Optional[Mapping[str, Any]] = None,
-) -> List[RankedCandidate]:
-    """Rerank deterministic candidates by independent relevance judgments.
-
-    The provider receives all candidates as shared context, while each question
-    asks about one candidate. Ties preserve deterministic baseline order.
-    """
+) -> Tuple[List[RankedCandidate], Optional[JudgmentResult]]:
     baseline = baseline_rank(candidates)
     if not baseline:
-        return []
+        return [], None
 
     state: Dict[str, Any] = {
         "task": task if isinstance(task, Mapping) else {"description": str(task)},
@@ -82,23 +73,23 @@ def rerank_with_judgments(
     result = provider.evaluate(state, questions)
     probabilities: Dict[str, float] = {}
     for key, candidate_id in key_to_id.items():
-        answer = result.answers[key]
-        probability = float(answer.value)
+        probability = float(result.answers[key].value)
         probabilities[candidate_id] = max(0.0, min(1.0, probability))
 
     ranked = [
-        RankedCandidate(
-            item.candidate,
-            item.baseline_rank,
-            probabilities[item.candidate_id],
-        )
+        RankedCandidate(item.candidate, item.baseline_rank, probabilities[item.candidate_id])
         for item in baseline
     ]
-    ranked.sort(
-        key=lambda item: (
-            -float(item.judgment_probability or 0.0),
-            item.baseline_rank,
-            item.candidate_id,
-        )
-    )
+    ranked.sort(key=lambda item: (-float(item.judgment_probability or 0.0), item.baseline_rank, item.candidate_id))
+    return ranked, result
+
+
+def rerank_with_judgments(
+    task: Any,
+    candidates: Sequence[Mapping[str, Any]],
+    provider: JudgmentProvider,
+    *,
+    shared_state: Optional[Mapping[str, Any]] = None,
+) -> List[RankedCandidate]:
+    ranked, _ = rerank_with_judgments_result(task, candidates, provider, shared_state=shared_state)
     return ranked
