@@ -437,15 +437,17 @@ def _best_path_match(nodes: Iterable[SemanticNode], target: str, prefer_modules:
     normalized = _normalize_resource(target)
     if not normalized:
         return None
-    candidates: List[SemanticNode] = []
+    strong: List[SemanticNode] = []
+    basename: List[SemanticNode] = []
     for node in nodes:
         if not node.location:
             continue
         path = _normalize_resource(node.location.path)
         if path == normalized or path.endswith("/" + normalized) or normalized.endswith("/" + path):
-            candidates.append(node)
+            strong.append(node)
         elif PurePosixPath(path).name == PurePosixPath(normalized).name:
-            candidates.append(node)
+            basename.append(node)
+    candidates = strong if strong else basename
     if prefer_modules:
         module_candidates = [node for node in candidates if node.kind.value == "module"]
         if module_candidates:
