@@ -98,13 +98,30 @@ def _canonical_graph_identity_payload(payload: Dict[str, Any]) -> Dict[str, Any]
 
     metadata = dict(payload.get("metadata") or {})
     if isinstance(metadata.get("languages"), list):
+        languages: List[Any] = []
+        for raw in metadata["languages"]:
+            if not isinstance(raw, dict):
+                languages.append(raw)
+                continue
+            item = dict(raw)
+            if isinstance(item.get("frameworks"), list):
+                item["frameworks"] = sorted(str(value) for value in item["frameworks"])
+            languages.append(item)
         metadata["languages"] = sorted(
-            list(metadata["languages"]),
+            languages,
             key=lambda item: str(item.get("name", "")) if isinstance(item, dict) else _canonical_json(item),
         )
     for key in ("language_names", "frameworks_applied"):
         if isinstance(metadata.get(key), list):
             metadata[key] = sorted(str(item) for item in metadata[key])
+    integration = metadata.get("integration")
+    if isinstance(integration, dict):
+        integration = dict(integration)
+        if isinstance(integration.get("unresolved_sample"), list):
+            integration["unresolved_sample"] = _sort_json_items(
+                list(integration["unresolved_sample"])
+            )
+        metadata["integration"] = integration
     canonical["metadata"] = metadata
 
     diagnostics = dict(payload.get("diagnostics") or {})
