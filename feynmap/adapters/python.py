@@ -238,7 +238,7 @@ class PythonAdapter(LanguageAdapter):
     def _parse_modules(self, root: Path) -> Tuple[List[ParsedModule], List[str]]:
         modules: List[ParsedModule] = []
         warnings: List[str] = []
-        for path in self._iter_files(root):
+        for path in sorted(self._iter_files(root), key=lambda item: self._relative(root, item)):
             if path.suffix != ".py":
                 continue
             relative = self._relative(root, path)
@@ -253,7 +253,42 @@ class PythonAdapter(LanguageAdapter):
             parsed.imports = self._collect_imports(tree, module_name)
             parsed.definitions = self._collect_definitions(path, module_name, tree)
             modules.append(parsed)
-        return modules, warnings
+
+        # A repository-root __init__.py is assigned root.name for compatibility
+        # when the analyzed path itself is a Python package. In a repository that
+        # also contains a real package directory with that same name, however,
+        # root/__init__.py and root/<name>/__init__.py collapse to the same
+        # canonical module identity. Prefer the explicit nested package and
+        # report the root file as shadowed rather than emitting duplicate nodes.
+        by_name: Dict[str, List[ParsedModule]] = {}
+        for parsed in modules:
+            by_name.setdefault(parsed.module, []).append(parsed)
+        deduplicated: List[ParsedModule] = []
+        root_init = (root / "__init__.py").resolve()
+        for module_name in sorted(by_name):
+            group = by_name[module_name]
+            if len(group) == 1:
+                deduplicated.append(group[0])
+                continue
+            non_root = [parsed for parsed in group if parsed.path.resolve() != root_init]
+            if len(non_root) == 1:
+                chosen = non_root[0]
+            else:
+                chosen = sorted(group, key=lambda parsed: self._relative(root, parsed.path))[0]
+            deduplicated.append(chosen)
+            for shadowed in group:
+                if shadowed is chosen:
+                    continue
+                warnings.append(
+                    "shadowed duplicate Python module %s at %s; using %s"
+                    % (
+                        module_name,
+                        self._relative(root, shadowed.path),
+                        self._relative(root, chosen.path),
+                    )
+                )
+        deduplicated.sort(key=lambda parsed: self._relative(root, parsed.path))
+        return deduplicated, warnings
 
     def _collect_definitions(self, path: Path, module: str, tree: ast.Module) -> Dict[str, Definition]:
         definitions: Dict[str, Definition] = {}
