@@ -74,12 +74,43 @@ Do not send the whole repository to Jev and ask it to reconstruct graph structur
 
 Jev questions sharing a state should normally be batched into one provider call. The TypeSafe API evaluates them independently, which makes speculative fan-out suitable for FeynMap dimensions such as relevance, likely fault-path membership, sufficiency of evidence, and whether more context is needed.
 
-## Next benchmark
+## Context Ranker experiments
 
-The next step is a labeled context-ranking benchmark comparing:
+The benchmark ladder now separates retrieval, ranking, transitive necessity, and external-repository generalization.
 
-1. FeynMap's deterministic ranking alone.
-2. Deterministic retrieval plus Jev judgments.
-3. Deterministic retrieval plus a frontier-LLM judge.
+- v1A is the synthetic ranking sanity check.
+- v1B uses real FeynMap graph retrieval.
+- v1E freezes the direct, naive, and adaptive semantic-frontier strategies and tests transitive necessities.
+- v1F keeps the v1E frontier and Jev prompt frozen, then evaluates historical change localization on Wikonomi V2.
 
-Measure top-k relevant-node recall, essential-node recall, calibration, latency, input tokens/cost, final context size, and downstream coding-agent task success.
+### v1F: historical Wikonomi V2 generalization
+
+v1F uses five real merged Wikonomi V2 changes (PRs 147-151). Each task is analyzed at a pinned revision from before the fix. The task text contains only the user-visible problem; implementation details from the eventual patch are excluded.
+
+Production files changed by the later patch are the hidden file-level ground truth. If a changed file did not exist in the pre-fix snapshot, v1F records it as a novel target rather than a retrieval failure. Candidate symbols are deduplicated to file-level context for scoring, while the underlying semantic-node provenance is retained.
+
+The archived revisions are given deterministic synthetic Git metadata before snapshot capture, so repository identity and snapshot IDs do not depend on the machine's temporary directory.
+
+Run against a local Wikonomi V2 checkout:
+
+~~~bash
+python -m feynmap.judgment.context_ranker_v1f /path/to/wikonomi-v2 --pretty
+python -m feynmap.judgment.context_ranker_v1f /path/to/wikonomi-v2 --jev --pretty
+~~~
+
+A single historical task can be isolated with:
+
+~~~bash
+python -m feynmap.judgment.context_ranker_v1f /path/to/wikonomi-v2 --task wikonomi-price-accuracy --pretty
+~~~
+
+Primary v1F measures include file precision/recall and NDCG at k, average precision, full-recall minimum k, context-file ratio, noise at k, path-backed recall, candidate count, compact path-state tokens, Jev latency, and provider token use.
+
+The comparison remains:
+
+1. direct behavioral context,
+2. naive bounded behavioral expansion,
+3. frozen adaptive semantic-frontier expansion,
+4. frozen adaptive frontier plus Jev reranking.
+
+A later benchmark can add a frontier-LLM judge and downstream coding-agent completion, but v1F should be interpreted before tuning the frontier or Jev prompt to Wikonomi.
