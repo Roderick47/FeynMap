@@ -119,7 +119,7 @@ class PythonAdapter(LanguageAdapter):
             graph.add_node(
                 SemanticNode(
                     id=module_id,
-                    name=parsed.module or parsed.path.stem,
+                    name=(parsed.module.rsplit(".", 1)[-1] if parsed.module else parsed.path.stem),
                     qualified_name=parsed.module,
                     kind=NodeKind.MODULE,
                     language="python",
