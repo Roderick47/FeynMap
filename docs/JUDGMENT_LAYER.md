@@ -114,3 +114,44 @@ The comparison remains:
 4. frozen adaptive frontier plus Jev reranking.
 
 A later benchmark can add a frontier-LLM judge and downstream coding-agent completion, but v1F should be interpreted before tuning the frontier or Jev prompt to Wikonomi.
+
+
+### v1G: framework composition and deterministic graph identity
+
+v1G does not change the frozen v1F task descriptions, pinned revisions, candidate
+budgets, adaptive frontier policy, or Jev prompt. It changes FeynMap itself in
+response to the structural misses exposed by v1F.
+
+The phase adds:
+
+- order-independent snapshot graph identity for semantically unordered node,
+  edge, evidence, diagnostic, framework, and unresolved-integration collections;
+- Django-template composition edges for static `{% extends %}` and
+  `{% include %}` references;
+- Django template-tag library and custom-filter dependencies from templates
+  into Python `templatetags/` modules and filter functions;
+- Django handler-to-`AppConfig` lifecycle dependencies based on the nearest
+  application package boundary; and
+- per-candidate judgment probabilities in v1F output, without changing the
+  frozen relevance question or reranking policy.
+
+Historical snapshots remain load-compatible: stored graphs written with the
+legacy raw-JSON hash are accepted during verification, while newly captured
+snapshots use the order-independent graph identity hash.
+
+The primary v1G validation is a strict before/after rerun of the unchanged v1F
+spec. Improvements should come from newly available semantic paths rather than
+benchmark retuning. In particular, the expected newly representable Wikonomi
+paths include:
+
+~~~text
+view -> rendered template -> extended base -> loaded JavaScript
+view -> rendered template -> included partial
+view -> rendered template -> template-tag library / custom filter
+Django handler -> app AppConfig
+~~~
+
+The changed-file ground truth remains intentionally conservative. A changed
+supporting file may not be structurally necessary for the task root, so raw
+changed-file recall should be reported alongside path-backed recall rather than
+treated as exhaustive semantic relevance.
