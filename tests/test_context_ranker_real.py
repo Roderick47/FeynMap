@@ -28,14 +28,14 @@ def _context():
     evidence = [Evidence(EvidenceKind.STATIC, "fixture", confidence=0.9)]
     nodes = [
         SemanticNode("root", "root", qualified_name="root", evidence=evidence),
-        SemanticNode("noise", "noise", qualified_name="noise", evidence=evidence),
-        SemanticNode("target", "target", qualified_name="target", evidence=evidence),
-        SemanticNode("helper", "helper", qualified_name="helper", evidence=evidence),
+        SemanticNode("a-noise", "noise", qualified_name="noise", evidence=evidence),
+        SemanticNode("c-target", "target", qualified_name="target", evidence=evidence),
+        SemanticNode("b-helper", "helper", qualified_name="helper", evidence=evidence),
     ]
     edges = [
-        SemanticEdge("e1", "root", "noise", EdgeKind.CALLS, 0.9, evidence),
-        SemanticEdge("e2", "root", "target", EdgeKind.CALLS, 0.9, evidence),
-        SemanticEdge("e3", "root", "helper", EdgeKind.CALLS, 0.9, evidence),
+        SemanticEdge("e1", "root", "a-noise", EdgeKind.CALLS, 0.9, evidence),
+        SemanticEdge("e2", "root", "c-target", EdgeKind.CALLS, 0.9, evidence),
+        SemanticEdge("e3", "root", "b-helper", EdgeKind.CALLS, 0.9, evidence),
     ]
     graph = SemanticGraph(nodes, edges)
     snapshot = RepositorySnapshot(
