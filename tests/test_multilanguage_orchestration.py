@@ -156,7 +156,11 @@ def test_django_template_composition_and_custom_filters_form_cross_runtime_paths
     )
     (tmp_path / "templates" / "includes").mkdir()
     (tmp_path / "templates" / "includes" / "_card.html").write_text(
-        "<article>card</article>\n", encoding="utf-8"
+        "<article>included card</article>\n", encoding="utf-8"
+    )
+    (tmp_path / "templates" / "partials").mkdir()
+    (tmp_path / "templates" / "partials" / "_card.html").write_text(
+        "<article>decoy card with same basename</article>\n", encoding="utf-8"
     )
     (tmp_path / "templates" / "base.html").write_text(
         "{% load static %}\n"
@@ -183,7 +187,20 @@ def test_django_template_composition_and_custom_filters_form_cross_runtime_paths
     detail_view = _node(graph, "detail", "python")
     detail_template = _node(graph, "detail.html", "html")
     base_template = _node(graph, "base.html", "html")
-    card_template = _node(graph, "_card.html", "html")
+    card_template = next(
+        node
+        for node in graph.nodes
+        if node.language == "html"
+        and node.location
+        and node.location.path.endswith("templates/includes/_card.html")
+    )
+    decoy_card = next(
+        node
+        for node in graph.nodes
+        if node.language == "html"
+        and node.location
+        and node.location.path.endswith("templates/partials/_card.html")
+    )
     js_module = _node(graph, "app.js", "javascript")
     tag_module = _node(graph, "guide_markup", "python")
     filter_function = _node(graph, "guide_markdown", "python")
@@ -191,6 +208,7 @@ def test_django_template_composition_and_custom_filters_form_cross_runtime_paths
     assert _has_edge(graph, detail_view, detail_template, EdgeKind.RENDERS)
     assert _has_edge(graph, detail_template, base_template, EdgeKind.EXTENDS)
     assert _has_edge(graph, detail_template, card_template, EdgeKind.RENDERS)
+    assert not _has_edge(graph, detail_template, decoy_card, EdgeKind.RENDERS)
     assert _has_edge(graph, base_template, js_module, EdgeKind.LOADS)
     assert tag_module.qualified_name == "templatetags.guide_markup"
     assert _has_edge(graph, detail_template, tag_module, EdgeKind.DEPENDS_ON)
