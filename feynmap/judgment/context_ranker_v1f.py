@@ -358,6 +358,7 @@ def run_graph_task(
     provider=None,
     *,
     ks: Sequence[int] = (1, 3, 5, 10),
+    adaptive_selector=None,
 ) -> Dict[str, Any]:
     root = context.query.resolve(str(task["root"]))
     gold_existing, gold_novel = _gold_files(context, task)
@@ -377,7 +378,8 @@ def run_graph_task(
         max_depth=max_depth,
         max_candidates=int(retrieval_spec["naive_max_candidates"]),
     )
-    adaptive = _adaptive_selection(
+    selector = adaptive_selector or _adaptive_selection
+    adaptive = selector(
         context,
         root,
         str(task["description"]),
@@ -458,6 +460,8 @@ def run_historical_experiment(
     repository_path: str,
     spec: Mapping[str, Any],
     provider=None,
+    *,
+    adaptive_selector=None,
 ) -> Dict[str, Any]:
     _validate_spec(spec)
     repo = Path(repository_path).resolve()
@@ -491,6 +495,7 @@ def run_historical_experiment(
                     retrieval_spec,
                     adaptive_spec,
                     provider,
+                    adaptive_selector=adaptive_selector,
                 )
             )
 
