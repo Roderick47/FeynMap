@@ -20,6 +20,10 @@ HTML_EXTENSIONS = {".html", ".htm"}
 EVENT_ATTR_RE = re.compile(r"^on[a-z]+$", re.IGNORECASE)
 HANDLER_RE = re.compile(r"^\s*([A-Za-z_$][\w$]*)\s*(?:\(|$)")
 DJANGO_STATIC_RE = re.compile(r"\{\%\s*static\s+['\"]([^'\"]+)['\"]\s*\%\}")
+DJANGO_EXTENDS_RE = re.compile(r"\{\%\s*extends\s+['\"]([^'\"]+)['\"]\s*\%\}")
+DJANGO_INCLUDE_RE = re.compile(r"\{\%\s*include\s+['\"]([^'\"]+)['\"][^%]*\%\}")
+DJANGO_LOAD_RE = re.compile(r"\{\%\s*load\s+([^%]+?)\s*\%\}")
+DJANGO_FILTER_RE = re.compile(r"\|\s*([A-Za-z_][A-Za-z0-9_]*)")
 
 
 class _HTMLCollector(HTMLParser):
@@ -104,6 +108,7 @@ class HTMLAdapter(LanguageAdapter):
             for method, target, line, source in collector.http:
                 add_contract(node, "http_client", target, 0.92 if source != "navigation" else 0.78, method=method, source=source, line=line)
 
+            self._attach_template_contracts(node, text)
             graph.add_node(node)
 
         graph.metadata.update({"document_count": len(graph.nodes), "parse_warnings": len(warnings), "source_model": "framework-neutral-html"})
@@ -111,6 +116,66 @@ class HTMLAdapter(LanguageAdapter):
         if warnings:
             graph.diagnostics["warnings"] = warnings + graph.diagnostics.get("warnings", [])
         return graph
+
+    @staticmethod
+    def _line_for_match(text: str, offset: int) -> int:
+        return text.count("\n", 0, max(0, offset)) + 1
+
+    @classmethod
+    def _attach_template_contracts(cls, node: SemanticNode, text: str) -> None:
+        """Extract framework-neutral template composition and tag dependencies."""
+        for match in DJANGO_EXTENDS_RE.finditer(text):
+            add_contract(
+                node,
+                "template_extends",
+                match.group(1),
+                0.99,
+                syntax="django",
+                line=cls._line_for_match(text, match.start()),
+            )
+        for match in DJANGO_INCLUDE_RE.finditer(text):
+            add_contract(
+                node,
+                "template_include",
+                match.group(1),
+                0.99,
+                syntax="django",
+                line=cls._line_for_match(text, match.start()),
+            )
+
+        loaded_libraries: List[str] = []
+        for match in DJANGO_LOAD_RE.finditer(text):
+            parts = [part for part in match.group(1).split() if part]
+            if not parts:
+                continue
+            if "from" in parts:
+                index = parts.index("from")
+                libraries = parts[index + 1:index + 2]
+            else:
+                libraries = parts
+            for library in libraries:
+                if library in loaded_libraries:
+                    continue
+                loaded_libraries.append(library)
+                add_contract(
+                    node,
+                    "template_tag_library",
+                    library,
+                    0.96,
+                    syntax="django",
+                    line=cls._line_for_match(text, match.start()),
+                )
+
+        for match in DJANGO_FILTER_RE.finditer(text):
+            add_contract(
+                node,
+                "template_filter",
+                match.group(1),
+                0.92,
+                syntax="django",
+                loaded_libraries=list(loaded_libraries),
+                line=cls._line_for_match(text, match.start()),
+            )
 
     @staticmethod
     def _normalize_template_asset(value: str) -> str:
