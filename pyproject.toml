@@ -8,13 +8,12 @@ version = "3.0.0a1"
 description = "Evidence-backed semantic infrastructure for AI-assisted software engineering"
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "MIT"}
 authors = [{name = "FeynMap Team"}]
 keywords = ["static-analysis", "code-analysis", "ai", "semantic-graph", "developer-tools", "rust-migration"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
+  "License :: Other/Proprietary License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.8",
