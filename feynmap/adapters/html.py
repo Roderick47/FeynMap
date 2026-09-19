@@ -23,6 +23,7 @@ DJANGO_STATIC_RE = re.compile(r"\{\%\s*static\s+['\"]([^'\"]+)['\"]\s*\%\}")
 DJANGO_EXTENDS_RE = re.compile(r"\{\%\s*extends\s+['\"]([^'\"]+)['\"]\s*\%\}")
 DJANGO_INCLUDE_RE = re.compile(r"\{\%\s*include\s+['\"]([^'\"]+)['\"][^%]*\%\}")
 DJANGO_LOAD_RE = re.compile(r"\{\%\s*load\s+([^%]+?)\s*\%\}")
+DJANGO_VARIABLE_RE = re.compile(r"\{\{(.*?)\}\}", re.DOTALL)
 DJANGO_FILTER_RE = re.compile(r"\|\s*([A-Za-z_][A-Za-z0-9_]*)")
 
 
@@ -166,16 +167,19 @@ class HTMLAdapter(LanguageAdapter):
                     line=cls._line_for_match(text, match.start()),
                 )
 
-        for match in DJANGO_FILTER_RE.finditer(text):
-            add_contract(
-                node,
-                "template_filter",
-                match.group(1),
-                0.92,
-                syntax="django",
-                loaded_libraries=list(loaded_libraries),
-                line=cls._line_for_match(text, match.start()),
-            )
+        for expression in DJANGO_VARIABLE_RE.finditer(text):
+            body = expression.group(1)
+            for match in DJANGO_FILTER_RE.finditer(body):
+                offset = expression.start(1) + match.start()
+                add_contract(
+                    node,
+                    "template_filter",
+                    match.group(1),
+                    0.92,
+                    syntax="django",
+                    loaded_libraries=list(loaded_libraries),
+                    line=cls._line_for_match(text, offset),
+                )
 
     @staticmethod
     def _normalize_template_asset(value: str) -> str:
