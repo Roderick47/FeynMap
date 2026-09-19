@@ -192,6 +192,7 @@ def test_django_template_composition_and_custom_filters_form_cross_runtime_paths
     assert _has_edge(graph, detail_template, base_template, EdgeKind.EXTENDS)
     assert _has_edge(graph, detail_template, card_template, EdgeKind.RENDERS)
     assert _has_edge(graph, base_template, js_module, EdgeKind.LOADS)
+    assert tag_module.qualified_name == "templatetags.guide_markup"
     assert _has_edge(graph, detail_template, tag_module, EdgeKind.DEPENDS_ON)
     assert _has_edge(graph, detail_template, filter_function, EdgeKind.INVOKES)
 
