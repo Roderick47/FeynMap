@@ -323,6 +323,25 @@ def _row(
         row["reranked"] = _file_metrics(
             reranked_files, gold_existing, ks=ks, path_backed_files=path_backed
         )
+        row["judgment_scores"] = [
+            {
+                "candidate_id": item.candidate_id,
+                "candidate": str(
+                    item.candidate.get("qualified_name")
+                    or item.candidate.get("name")
+                    or item.candidate_id
+                ),
+                "path": _candidate_path(item.candidate),
+                "baseline_rank": item.baseline_rank,
+                "reranked_rank": index,
+                "probability": (
+                    float(item.judgment_probability)
+                    if item.judgment_probability is not None
+                    else None
+                ),
+            }
+            for index, item in enumerate(reranked, 1)
+        ]
         row["provider_state_tokens"] = estimate_tokens(state)
         if judgment is not None:
             row["usage"] = dict(judgment.usage)
