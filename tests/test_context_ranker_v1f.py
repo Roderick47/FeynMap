@@ -106,6 +106,10 @@ def test_v1f_frozen_jev_reranker_improves_file_localization():
     assert adaptive["usage"] == {"input_tokens": 80, "output_tokens": 8}
     assert adaptive["reranked_file_order"][:2] == ["entry.py", "changed.py"]
     assert adaptive["reranked"]["full_recall_min_k"] < adaptive["baseline"]["full_recall_min_k"]
+    assert adaptive["judgment_scores"][0]["candidate"] == "changed_handler"
+    assert adaptive["judgment_scores"][0]["path"] == "changed.py"
+    assert adaptive["judgment_scores"][0]["probability"] == 0.99
+    assert adaptive["judgment_scores"][0]["reranked_rank"] == 1
 
 
 def test_file_metrics_deduplicate_and_measure_noise():
