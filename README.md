@@ -273,4 +273,4 @@ Before broad production use, the integration layer still needs hardening for emb
 
 ## License
 
-MIT.
+FeynMap is not currently distributed under an open-source license. All rights are reserved.

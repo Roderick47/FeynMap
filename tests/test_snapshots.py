@@ -75,6 +75,57 @@ def test_semantic_graph_roundtrips_from_serialized_form():
     assert restored.edges[0].evidence[0].kind == EvidenceKind.STATIC
 
 
+def test_snapshot_identity_ignores_semantic_node_edge_and_metadata_order(tmp_path: Path):
+    (tmp_path / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+    graph = _graph()
+    graph.metadata.update(
+        {
+            "languages": [
+                {"name": "python", "frameworks": ["django", "drf"]},
+                {"name": "html", "frameworks": []},
+            ],
+            "language_names": ["python", "html"],
+            "frameworks_applied": ["django", "drf"],
+            "integration": {
+                "unresolved_sample": [
+                    {"node": "python:symbol:b", "kind": "template_filter", "target": "b"},
+                    {"node": "python:symbol:a", "kind": "template_filter", "target": "a"},
+                ]
+            },
+        }
+    )
+    reordered_metadata = dict(graph.metadata)
+    reordered_metadata["languages"] = [
+        {"name": "html", "frameworks": []},
+        {"name": "python", "frameworks": ["drf", "django"]},
+    ]
+    reordered_metadata["language_names"] = ["html", "python"]
+    reordered_metadata["frameworks_applied"] = ["drf", "django"]
+    reordered_metadata["integration"] = {
+        "unresolved_sample": list(
+            reversed(graph.metadata["integration"]["unresolved_sample"])
+        )
+    }
+    reordered = SemanticGraph(
+        nodes=list(reversed(graph.nodes)),
+        edges=list(reversed(graph.edges)),
+        metadata=reordered_metadata,
+        diagnostics={
+            "errors": list(reversed(graph.diagnostics.get("errors", []))),
+            "warnings": list(reversed(graph.diagnostics.get("warnings", []))),
+        },
+    )
+
+    assert graph.to_dict() != reordered.to_dict()
+
+    first = capture_repository_snapshot(tmp_path, graph)
+    second = capture_repository_snapshot(tmp_path, reordered)
+
+    assert first.content_hash == second.content_hash
+    assert first.graph_hash == second.graph_hash
+    assert first.snapshot_id == second.snapshot_id
+
+
 def test_snapshot_identity_is_stable_and_changes_with_repository_content(tmp_path: Path):
     (tmp_path / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
     graph = _graph()

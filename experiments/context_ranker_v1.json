@@ -1,0 +1,45 @@
+{
+  "schema": "feynmap.context_ranker_benchmark.v1",
+  "name": "Context Ranker v1 seed tasks",
+  "tasks": [
+    {
+      "id": "stale-price-confirmation",
+      "description": "Fix a bug where confirming a product price does not remove its stale status.",
+      "candidates": [
+        {"id": "Price.is_stale", "kind": "method", "summary": "Determines whether a price is stale."},
+        {"id": "Price.confirm_accuracy", "kind": "method", "summary": "Records a user confirmation that a price is accurate."},
+        {"id": "Business.get_absolute_url", "kind": "method", "summary": "Builds a business detail URL."},
+        {"id": "Guide.publish", "kind": "method", "summary": "Publishes a guide."},
+        {"id": "PriceConfirmation.create", "kind": "method", "summary": "Persists a price confirmation event."}
+      ],
+      "relevant": ["Price.is_stale", "Price.confirm_accuracy", "PriceConfirmation.create"],
+      "essential": ["Price.is_stale", "Price.confirm_accuracy"]
+    },
+    {
+      "id": "guide-formatting",
+      "description": "Improve guide and guide-step rendering so structured content is visually styled rather than plain text.",
+      "candidates": [
+        {"id": "GuideDetailView", "kind": "view", "summary": "Builds guide detail context."},
+        {"id": "guide_detail.html", "kind": "template", "summary": "Renders guide detail and steps."},
+        {"id": "GuideStep", "kind": "model", "summary": "Stores a step belonging to a guide."},
+        {"id": "PriceMapView", "kind": "view", "summary": "Renders price map data."},
+        {"id": "Business.hours", "kind": "field", "summary": "Stores business opening hours."}
+      ],
+      "relevant": ["GuideDetailView", "guide_detail.html", "GuideStep"],
+      "essential": ["guide_detail.html"]
+    },
+    {
+      "id": "location-prioritization",
+      "description": "Prioritize home-page price listings for the user's current city before falling back to available prices elsewhere.",
+      "candidates": [
+        {"id": "home_price_queryset", "kind": "function", "summary": "Builds the home page price queryset."},
+        {"id": "user_location", "kind": "service", "summary": "Resolves the user's approximate city."},
+        {"id": "Price.business", "kind": "relationship", "summary": "Associates a price with a business location."},
+        {"id": "Guide.tip_count", "kind": "property", "summary": "Counts guide tips."},
+        {"id": "email_verification", "kind": "service", "summary": "Handles account email verification."}
+      ],
+      "relevant": ["home_price_queryset", "user_location", "Price.business"],
+      "essential": ["home_price_queryset", "user_location"]
+    }
+  ]
+}
