@@ -307,3 +307,32 @@ separate joint accuracy for ambiguous and singleton candidates, unchanged
 implementation-target ranking metrics, and full records for predictions outside
 every predeclared acceptable label. Strict scores remain visible; acceptable
 sets add an annotation-quality lens rather than replacing the original gold.
+
+### v1M: offline joint-coherence analysis
+
+The first live v1L result achieved perfect implementation-target ranking,
+95% strict role accuracy, and 100% acceptance on each axis considered
+separately. Its sole unacceptable joint prediction combined `supporting_context`
+with semantic relevance below 0.5. Those answers are individually defensible
+but jointly violate the existing taxonomy, where every non-incidental role is
+semantically relevant.
+
+v1M is an offline analysis of that failure mode. It does not call Jev, change
+prompts, modify provider answers, or rewrite fixture labels. For each role it
+multiplies the provider's role probability by the probability of the relevance
+value implied by that role, then normalizes across the four taxonomy-consistent
+labels. There are no learned weights or benchmark-tuned thresholds.
+
+Analyze an existing v1L result:
+
+~~~bash
+python -m feynmap.judgment.repair_role_v1m path/to/v1l-result.json --pretty
+~~~
+
+The report compares raw and coherent strict/acceptable joint accuracy, counts
+cross-axis disagreements, role and relevance changes, repaired predictions,
+introduced regressions, and the probability mass on taxonomy-consistent labels.
+It also recomputes implementation-target ranking from the coherent role
+distribution. The input loader accepts UTF-8 and BOM-marked UTF-16 JSON, which
+covers files written by both modern PowerShell and Windows PowerShell
+`Tee-Object` defaults.
