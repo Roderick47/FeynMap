@@ -202,3 +202,50 @@ confusion matrix; and implementation-target MRR and recall at 1 and 3. The
 target ranking uses implementation-target probability first and relevance only
 as a tie-breaker, so a highly relevant bridge cannot outrank a likely edit
 target merely because both are useful context.
+
+### v1K: adversarial repair-role generalization
+
+The first live v1J run correctly classified all implementation targets,
+structural bridges, and supporting context. Its only role error narrowly called
+an incidental persistence operation supporting context, while the independent
+relevance probability still correctly remained below 0.5. v1K turns that
+observation into generic evaluation improvements without changing the frozen
+v1J questions or using the Wikonomi tasks.
+
+The v1K corpus adds:
+
+- opaque `region_*` candidate identifiers;
+- identical candidates whose roles change under two different task requests;
+- a repair requiring two implementation regions in the same file;
+- a suspicious-looking structural bridge that must remain unchanged;
+- forward and reversed candidate-order controls;
+- full-relationship and relationship-ablated controls; and
+- optional repeated provider runs for stability measurement.
+
+In addition to v1J's calibration, classification, and target-ranking metrics,
+v1K reports role-probability margin and entropy, low-margin decisions,
+relevance/role disagreement, error confidence, task-conditioning accuracy,
+order invariance, relationship-ablation sensitivity, and repeated-run
+stability. Comparison metadata and gold labels are never included in provider
+state.
+
+Validate the adversarial fixture corpus without a provider call:
+
+~~~bash
+python -m feynmap.judgment.repair_role_v1k --pretty
+~~~
+
+Run one live evaluation with the unchanged v1J prompt:
+
+~~~bash
+python -m feynmap.judgment.repair_role_v1k --jev --pretty
+~~~
+
+Measure live judgment stability across three complete runs:
+
+~~~bash
+python -m feynmap.judgment.repair_role_v1k --jev --repetitions 3 --pretty
+~~~
+
+The repeated form costs three times as many provider calls and should be used
+after a single run confirms that the fixture and credentials are working.
