@@ -2,7 +2,7 @@
 
 Phase 2B exposes FeynMap's immutable, evidence-backed semantic snapshots to AI clients through the Model Context Protocol (MCP).
 
-The first rule of this phase is architectural:
+The architectural rule is:
 
 ```text
 MCP transport
@@ -14,11 +14,43 @@ StoredSnapshotContext / FeynMapQuery / semantic diff
 immutable SnapshotStore
 ```
 
-The MCP layer must not become a second analysis engine. Tool calls should query already-grounded semantic state and preserve the same known / inferred / unknown semantics used everywhere else in FeynMap.
+The MCP layer is not a second analysis engine. Tool calls query already-grounded semantic state and preserve the same known / inferred / unknown semantics used everywhere else in FeynMap.
 
-## Current groundwork
+## Runtime split
 
-`feynmap.grounding` defines a transport-neutral, read-only application layer before any MCP SDK is introduced.
+FeynMap deliberately has two Python runtime floors:
+
+```text
+FeynMap semantic core      Python >= 3.8
+optional MCP component     Python >= 3.10
+```
+
+The core package keeps `requires-python = ">=3.8"`.
+
+The optional extra is:
+
+```bash
+pip install "feynmap[mcp]"
+```
+
+and installs the official MCP Python SDK v2 only when the interpreter is Python 3.10+.
+
+The MCP entry point is separate:
+
+```text
+feynmap       -> core analysis/query/snapshot CLI
+feynmap-mcp   -> optional local MCP server
+```
+
+`feynmap.mcp_server` imports the MCP SDK lazily. Importing or using the FeynMap semantic core on Python 3.8/3.9 therefore does not import MCP.
+
+If `feynmap-mcp` is launched on an unsupported runtime, it exits with an explicit message rather than changing the core runtime requirement.
+
+This split also preserves a clean boundary for the future Rust-native MCP/API implementation.
+
+## Grounding service
+
+`feynmap.grounding` defines the transport-neutral read-only application layer.
 
 It contains:
 
@@ -27,19 +59,19 @@ It contains:
 - `GROUNDING_TOOL_CONTRACT_VERSION`
 - `GroundingService`
 
-Each tool has a deterministic JSON Schema 2020-12 input contract. The service returns normal JSON-compatible dictionaries and has no dependency on an MCP transport, web framework, LLM vendor, or authentication provider.
+Each grounding operation has a deterministic JSON Schema 2020-12 contract. The service returns JSON-compatible dictionaries and has no dependency on an MCP transport, web framework, LLM vendor, or authentication provider.
 
-This boundary is intentional because the same contracts should later be callable through:
+The same application contracts can therefore be called through:
 
 - local MCP over stdio,
-- remote MCP over HTTP,
+- future remote MCP over Streamable HTTP,
 - a normal HTTP API,
 - Python library calls,
 - a future Rust-native FeynMap implementation.
 
-## Initial grounding tool surface
+## MCP tool surface
 
-The current service-level tools are:
+The local MCP server exposes:
 
 | Tool | Purpose |
 | --- | --- |
@@ -56,108 +88,176 @@ The current service-level tools are:
 | `context_bundle` | Deterministic token-budgeted grounding context |
 | `semantic_diff` | Compare two stored snapshots without reparsing historical source |
 
-These are application contracts, not yet registered MCP tools.
+All tools are declared read-only to MCP clients and operate on a closed stored semantic graph. Tool annotations are advisory metadata, not a security boundary; the implementation itself is read-only.
+
+## Local stdio workflow
+
+The first actual transport is stdio.
+
+In stdio mode the MCP host launches `feynmap-mcp` as a child process. JSON-RPC flows through stdin/stdout. No TCP port, public server, domain, TLS certificate, or hosting account is required.
+
+### 1. Create a snapshot
+
+From the repository you want FeynMap to serve:
+
+```bash
+feynmap snapshot /absolute/path/to/repository
+```
+
+This creates or updates:
+
+```text
+/absolute/path/to/repository/.feynmap/snapshots.sqlite
+```
+
+and marks the new semantic snapshot as current.
+
+### 2. Install the optional MCP component
+
+Use Python 3.10+:
+
+```bash
+pip install "feynmap[mcp]"
+```
+
+For a local editable checkout:
+
+```bash
+pip install -e ".[mcp]"
+```
+
+### 3. Launch the server
+
+Serve the repository's current snapshot:
+
+```bash
+feynmap-mcp --project /absolute/path/to/repository
+```
+
+The process intentionally prints nothing to stdout because stdout is the MCP protocol wire.
+
+Pin an immutable historical snapshot instead:
+
+```bash
+feynmap-mcp \
+  --project /absolute/path/to/repository \
+  --snapshot <snapshot-id>
+```
+
+Use an explicit store when it is not under the repository:
+
+```bash
+feynmap-mcp \
+  --project /absolute/path/to/repository \
+  --store /absolute/path/to/snapshots.sqlite
+```
+
+You can also select the current snapshot for an explicit repository key:
+
+```bash
+feynmap-mcp --store /path/to/snapshots.sqlite --repository-key <repository-key>
+```
+
+## Important snapshot behavior
+
+The MCP server binds to one selected semantic snapshot when the process starts.
+
+It does **not**:
+
+- run `FeynMapEngine.analyze()` during a tool call,
+- silently change snapshots halfway through a session,
+- edit source code,
+- execute arbitrary repository commands.
+
+This makes one MCP process reproducible. To move to a newly created current snapshot, restart the local MCP process.
+
+`semantic_diff` may read two other immutable snapshots from the same configured store, but it still never reparses historical source.
 
 ## MCP protocol target
 
-The initial transport implementation should target the current MCP protocol revision:
+The implementation uses the official MCP Python SDK v2, which targets the current MCP protocol line and supports modern `2026-07-28` connections while negotiating compatibility where supported by the SDK.
+
+For the local server, stdio is the transport. The official SDK owns protocol framing and lifecycle behavior; FeynMap owns only the grounding operations behind it.
+
+Protocol-level tests use the SDK's in-memory `Client(server)` transport. That tests real MCP tool discovery, schema generation, dispatch, structured output, and error handling without needing a network server or subprocess.
+
+## Host configuration shape
+
+Exact configuration files differ between MCP hosts, but the local launch contract is intentionally simple:
 
 ```text
-2026-07-28
+command: feynmap-mcp
+args:    --project /absolute/path/to/repository
 ```
 
-The modern protocol is stateless at the core. For a FeynMap remote grounding service this is a useful fit because a request can identify the repository/snapshot it wants and any service replica can answer from shared persisted state.
+A generic host configuration therefore looks conceptually like:
 
-The official transports relevant to FeynMap are:
-
-### 1. stdio — local/private deployment
-
-The MCP client launches the FeynMap MCP server as a local child process and communicates over standard input/output.
-
-This is the best first transport because:
-
-- no public server is required,
-- no domain is required,
-- no TLS certificate is required,
-- no hosting bill is required,
-- repository source and SQLite snapshots can remain on the developer's machine,
-- it is ideal for testing the tool contracts with coding agents before remote deployment.
-
-### 2. Streamable HTTP — remote deployment
-
-A remote FeynMap MCP service can later expose an `/mcp` endpoint through ordinary web infrastructure.
-
-This is when hosting, authentication and shared storage decisions matter.
-
-There is no special piece of hardware called an "MCP server" that must be purchased. A remote MCP server is an application deployed to normal compute such as a container/PaaS/VM/serverless environment that supports the selected MCP SDK/runtime.
-
-## Python runtime decision before transport work
-
-FeynMap currently declares:
-
-```text
-Python >= 3.8
+```json
+{
+  "mcpServers": {
+    "feynmap": {
+      "command": "feynmap-mcp",
+      "args": ["--project", "/absolute/path/to/repository"]
+    }
+  }
+}
 ```
 
-The current official MCP Python SDK v2 requires:
+Use the host's current documented configuration format when connecting a real client; do not assume every host uses the same JSON keys.
 
-```text
-Python >= 3.10
-```
+## Local security model
 
-Therefore this groundwork deliberately does **not** add the `mcp` dependency yet.
+The initial MCP surface is read-only.
 
-Before the actual MCP transport is implemented we should choose one of these packaging strategies:
+The stdio process can read the configured SQLite snapshot store. It does not need repository write permissions for grounding queries, although `--project` may read local Git metadata to identify the repository's current snapshot pointer.
 
-### Option A — raise FeynMap's Python floor to 3.10+
+For maximum reproducibility/minimum filesystem dependency, launch it with both an explicit `--store` and `--snapshot`.
 
-Simplest package/runtime structure, but drops Python 3.8/3.9 support for the whole project.
+A local MCP host should launch the executable directly rather than through a shell string when possible.
 
-### Option B — keep FeynMap core on Python 3.8+ and make MCP an optional 3.10+ component
+## Testing strategy
 
-For example, the semantic core remains broadly compatible while a `feynmap-mcp` executable/extra runs under a newer interpreter.
+The normal test matrix requests `.[dev,mcp]` on Python 3.8 and 3.12.
 
-This is the preferred near-term design unless maintaining two runtime floors creates excessive packaging complexity.
+- On Python 3.8, the environment marker does not install the MCP SDK. Core compatibility and MCP-boundary tests still run.
+- On Python 3.12, the SDK is installed and protocol tests use the official in-memory MCP client.
 
-### Option C — defer the production MCP transport to the future Rust-native service
+The protocol test verifies that the server lists the expected grounding tools and that real MCP calls reach stored snapshot operations such as repository summary, symbol lookup, claim validation, and context bundles.
 
-This best matches the long-term performance target, but delays a working MCP integration unnecessarily. The Python reference implementation is useful for freezing and testing the protocol/tool contracts first.
+This does not replace testing against real MCP hosts. Host interoperability remains the next local validation step.
+
+## Remote Streamable HTTP — deliberately deferred
+
+Remote MCP is not implemented in this stage.
+
+A future remote FeynMap MCP service can expose a Streamable HTTP endpoint through ordinary application hosting. That is when hosting, authentication, authorization, shared persistence and multi-user isolation become required design decisions.
+
+There is no special piece of hardware called an "MCP server" that must be purchased. A remote MCP server is an application deployed to normal compute such as a container/PaaS/VM environment.
 
 ## What is needed from the project owner before remote deployment
 
 Nothing needs to be purchased for the local stdio MCP stage.
 
-Before a **remote** MCP deployment, decisions/input will be needed on:
+Before remote deployment, decisions/input will be needed on:
 
 1. **Audience** — private use only, selected developers/partners, or public SaaS/API.
-2. **Repository ingestion model** — analyze repositories locally and upload snapshots, let the server clone repositories, connect directly to GitHub, or support more than one mode.
-3. **Authentication** — who may call the remote service and which repositories/snapshots each identity may access.
-4. **Hosting** — preferred provider and monthly budget. Ordinary application hosting is sufficient; no MCP-specific server purchase is required.
-5. **Domain** — whether the service should live under a dedicated hostname such as an API/MCP subdomain.
-6. **Persistence** — whether SQLite is sufficient for the first single-instance deployment or whether shared Postgres/object storage is needed immediately.
-7. **Python packaging decision** — whole-project Python 3.10+, optional MCP component, or another deployment split.
-8. **Usage/privacy policy** — especially whether source code is allowed to leave a developer machine when remote analysis is enabled.
+2. **Repository ingestion model** — local analysis + uploaded snapshots, server-side Git cloning, direct GitHub integration, or multiple modes.
+3. **Authentication** — who may call the service and which repositories/snapshots each identity may access.
+4. **Hosting** — preferred provider and monthly budget.
+5. **Domain** — whether the service should have a dedicated API/MCP hostname.
+6. **Persistence** — SQLite for a single-instance experiment versus shared Postgres/object storage for multiple replicas/users.
+7. **Usage/privacy policy** — especially whether source code or semantic snapshots may leave a developer machine.
+8. **Operational targets** — expected repositories, repository sizes, users, concurrency, latency and availability.
 
-Those choices should be made before implementing authentication and remote Streamable HTTP, not before the local groundwork.
+Those choices should be made before implementing remote authentication and Streamable HTTP, not before local stdio testing.
 
-## Security boundary
+## Next Phase 2B step
 
-The initial grounding surface is intentionally read-only.
+The next step is not to buy hosting. It is to connect `feynmap-mcp` to one or more real MCP hosts/clients and verify interoperability using a real FeynMap snapshot.
 
-A grounding MCP server should not edit repositories, execute arbitrary commands, or infer relationships that are absent from the semantic graph. Future mutation tools, if any, should be a separate capability with separate authorization.
+After local interoperability is proven, we can decide whether to:
 
-For a remote deployment, repository/snapshot identifiers must also be authorization-scoped. Knowing a snapshot ID must never be sufficient by itself to read another tenant's code model.
-
-## Next implementation step — deliberately deferred
-
-After this groundwork is reviewed, the first actual MCP transport should be a small local stdio adapter that:
-
-1. uses the official MCP SDK,
-2. registers the versioned `GROUNDING_TOOLS` catalog,
-3. validates tool arguments using the corresponding schemas/types,
-4. dispatches directly to `GroundingService.call()`,
-5. returns structured tool results without reparsing source,
-6. has protocol-level conformance tests,
-7. does not add remote hosting/auth complexity yet.
-
-Only after local MCP behavior is correct should Phase 2B proceed to Streamable HTTP, authentication, multi-user repository access and production hosting.
+1. deepen the local MCP experience first,
+2. build the remote Streamable HTTP adapter,
+3. improve semantic coverage/language adapters before remote deployment,
+4. or begin planning the Rust-native implementation boundary.
