@@ -69,7 +69,7 @@ class JavaScriptAdapter(LanguageAdapter):
             except (OSError, UnicodeDecodeError) as exc:
                 warnings.append("could not parse %s: %s" % (self._relative(root, path), exc))
                 continue
-            parsed.append((path, text, self._definitions(path, text)))
+            parsed.append((path, text, self._definitions(root, path, text)))
 
         module_nodes: Dict[str, SemanticNode] = {}
         definitions_by_name: Dict[str, List[JSDefinition]] = {}
@@ -174,22 +174,23 @@ class JavaScriptAdapter(LanguageAdapter):
             graph.diagnostics["warnings"] = warnings + graph.diagnostics.get("warnings", [])
         return graph
 
-    def _definitions(self, path: Path, text: str) -> List[JSDefinition]:
+    def _definitions(self, root: Path, path: Path, text: str) -> List[JSDefinition]:
         definitions: List[JSDefinition] = []
         class_spans: List[Tuple[str, int, int]] = []
+        relative = self._relative(root, path)
 
         for match in CLASS_RE.finditer(text):
             body_start, end = self._brace_span(text, match.end())
             line = self._line(text, match.start())
             name = match.group(1)
-            definitions.append(JSDefinition(self._id(path, name, line), name, NodeKind.CLASS, path, match.start(), end, line, self._line(text, end), extends=match.group(2)))
+            definitions.append(JSDefinition(self._id(relative, name, line), name, NodeKind.CLASS, path, match.start(), end, line, self._line(text, end), extends=match.group(2)))
             class_spans.append((name, body_start, end))
 
         for match in FUNCTION_RE.finditer(text):
             name = match.group(1)
             _, end = self._brace_span(text, match.end())
             line = self._line(text, match.start())
-            definitions.append(JSDefinition(self._id(path, name, line), name, NodeKind.FUNCTION, path, match.start(), end, line, self._line(text, end)))
+            definitions.append(JSDefinition(self._id(relative, name, line), name, NodeKind.FUNCTION, path, match.start(), end, line, self._line(text, end)))
 
         for match in ARROW_RE.finditer(text):
             name = match.group(1)
@@ -200,7 +201,7 @@ class JavaScriptAdapter(LanguageAdapter):
                 newline = text.find("\n", match.end())
                 end = len(text) if newline < 0 else newline
             line = self._line(text, match.start())
-            definitions.append(JSDefinition(self._id(path, name, line), name, NodeKind.FUNCTION, path, match.start(), end, line, self._line(text, end)))
+            definitions.append(JSDefinition(self._id(relative, name, line), name, NodeKind.FUNCTION, path, match.start(), end, line, self._line(text, end)))
 
         for class_name, body_start, body_end in class_spans:
             class_body = text[body_start:body_end]
@@ -214,7 +215,7 @@ class JavaScriptAdapter(LanguageAdapter):
                 if end > body_end:
                     continue
                 line = self._line(text, absolute)
-                definitions.append(JSDefinition(self._id(path, "%s.%s" % (class_name, name), line), name, NodeKind.METHOD, path, absolute, end, line, self._line(text, end), parent=class_name))
+                definitions.append(JSDefinition(self._id(relative, "%s.%s" % (class_name, name), line), name, NodeKind.METHOD, path, absolute, end, line, self._line(text, end), parent=class_name))
 
         return sorted(definitions, key=lambda item: (item.start, item.kind.value, item.name))
 
@@ -319,8 +320,8 @@ class JavaScriptAdapter(LanguageAdapter):
         return text.count("\n", 0, max(0, position)) + 1
 
     @staticmethod
-    def _id(path: Path, name: str, line: int) -> str:
-        raw = "%s|%s|%s" % (path.as_posix(), name, line)
+    def _id(relative_path: str, name: str, line: int) -> str:
+        raw = "%s|%s|%s" % (relative_path, name, line)
         return "javascript:symbol:%s" % hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
     @staticmethod
