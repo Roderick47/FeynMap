@@ -249,3 +249,16 @@ python -m feynmap.judgment.repair_role_v1k --jev --repetitions 3 --pretty
 
 The repeated form costs three times as many provider calls and should be used
 after a single run confirms that the fixture and credentials are working.
+
+Control tasks intentionally repeat the same semantic case with one variable
+changed. v1K therefore reports both raw metrics over every provider call and a
+`control_adjusted` summary that retains one representative from each order and
+relationship control pair. Task-conditioning pairs remain separate because the
+task request legitimately changes their gold roles. This prevents duplicated
+controls from silently overweighting aggregate classification scores.
+
+Diagnostics include task-qualified role and relevance error records with source
+regions, predicted and gold roles, relevance probability, and role margin. For
+multi-target tasks, `implementation_target_task_hit_rate@1` answers whether the
+first result is any valid edit target, while fractional recall at 1 continues to
+measure how much of the complete edit set fits in the first slot.

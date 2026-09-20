@@ -169,7 +169,7 @@ def _decorate_rows(rows: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
             value * math.log(value) for value in probabilities if value > 0.0
         )
         row["repair_role_margin"] = ordered[0] - ordered[1]
-        row["repair_role_entropy"] = entropy / math.log(len(REPAIR_ROLES))
+        row["repair_role_entropy"] = max(0.0, entropy / math.log(len(REPAIR_ROLES)))
         relevance = float(row["semantic_relevance_probability"])
         role_is_relevant = row["predicted_repair_role"] != "incidental_context"
         row["cross_axis_disagreement"] = (relevance >= 0.5) != role_is_relevant
@@ -184,6 +184,27 @@ def _diagnostics(rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
     errors = [
         row for row in rows if row["predicted_repair_role"] != row["gold_repair_role"]
     ]
+    relevance_errors = [
+        row
+        for row in rows
+        if (float(row["semantic_relevance_probability"]) >= 0.5)
+        != bool(row["gold_semantic_relevance"])
+    ]
+
+    def case(row: Mapping[str, Any]) -> Dict[str, Any]:
+        return {
+            "task_id": str(row.get("task_id") or ""),
+            "candidate_id": str(row["candidate_id"]),
+            "region": dict(row["region"]),
+            "gold_repair_role": str(row["gold_repair_role"]),
+            "predicted_repair_role": str(row["predicted_repair_role"]),
+            "repair_role_margin": float(row["repair_role_margin"]),
+            "gold_semantic_relevance": bool(row["gold_semantic_relevance"]),
+            "semantic_relevance_probability": float(
+                row["semantic_relevance_probability"]
+            ),
+        }
+
     return {
         "mean_repair_role_margin": sum(margins) / len(margins) if margins else None,
         "mean_repair_role_entropy": (
@@ -194,13 +215,73 @@ def _diagnostics(rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
         "cross_axis_disagreement_candidates": [
             str(row["candidate_id"]) for row in disagreements
         ],
+        "cross_axis_disagreement_cases": [case(row) for row in disagreements],
         "repair_role_error_count": len(errors),
+        "repair_role_errors": [case(row) for row in errors],
+        "semantic_relevance_error_count": len(relevance_errors),
+        "semantic_relevance_errors": [case(row) for row in relevance_errors],
         "error_mean_margin": (
             sum(float(row["repair_role_margin"]) for row in errors) / len(errors)
             if errors
             else None
         ),
     }
+
+
+def _control_adjusted_tasks(
+    spec: Mapping[str, Any], task_results: Sequence[Mapping[str, Any]]
+) -> Tuple[List[Mapping[str, Any]], List[str]]:
+    """Remove duplicate control replicas from primary classification summaries."""
+    excluded = set()
+    for group_key in ("order_invariance_group", "relationship_ablation_group"):
+        groups: Dict[str, List[str]] = defaultdict(list)
+        for task in spec["tasks"]:
+            if task.get(group_key):
+                groups[str(task[group_key])].append(str(task["id"]))
+        for task_ids in groups.values():
+            excluded.update(task_ids[1:])
+    adjusted = [task for task in task_results if str(task["id"]) not in excluded]
+    return adjusted, sorted(excluded)
+
+
+def _target_ranking_v1k(
+    task_rows: Sequence[Tuple[str, Sequence[Mapping[str, Any]]]],
+) -> Dict[str, Any]:
+    result = _target_ranking(task_rows)
+    hits_at_1 = []
+    full_recall_minimums = []
+    for _, rows in task_rows:
+        ranked = sorted(
+            rows,
+            key=lambda row: (
+                -float(row["repair_role_probabilities"]["implementation_target"]),
+                -float(row["semantic_relevance_probability"]),
+                str(row["candidate_id"]),
+            ),
+        )
+        targets = {
+            str(row["candidate_id"])
+            for row in rows
+            if row["gold_repair_role"] == "implementation_target"
+        }
+        order = [str(row["candidate_id"]) for row in ranked]
+        hits_at_1.append(bool(order and order[0] in targets))
+        full_recall_minimums.append(
+            max(
+                index
+                for index, candidate_id in enumerate(order, 1)
+                if candidate_id in targets
+            )
+        )
+    result["implementation_target_task_hit_rate@1"] = (
+        sum(hits_at_1) / len(hits_at_1) if hits_at_1 else None
+    )
+    result["mean_full_target_recall_min_k"] = (
+        sum(full_recall_minimums) / len(full_recall_minimums)
+        if full_recall_minimums
+        else None
+    )
+    return result
 
 
 def _rows_by_task(
@@ -360,6 +441,8 @@ def run_experiment(
             provider_task["id"] = str(task.get("provider_task_id") or task["id"])
             raw_rows, judgment, _ = judge_task(provider_task, provider)
             rows = _decorate_rows(raw_rows)
+            for row in rows:
+                row["task_id"] = str(task["id"])
             for key, value in judgment.usage.items():
                 if isinstance(value, (int, float)):
                     usage[key] += value
@@ -379,13 +462,26 @@ def run_experiment(
     first = repeated_results[0]
     all_rows = [row for task in first for row in task["candidates"]]
     task_rows = [(str(task["id"]), task["candidates"]) for task in first]
+    adjusted_tasks, excluded_controls = _control_adjusted_tasks(spec, first)
+    adjusted_rows = [row for task in adjusted_tasks for row in task["candidates"]]
+    adjusted_task_rows = [
+        (str(task["id"]), task["candidates"]) for task in adjusted_tasks
+    ]
     output.update(
         {
             "status": "judged",
             "provider_elapsed_seconds": round(time.perf_counter() - started, 6),
             "metrics": _classification_metrics(all_rows),
             "diagnostics": _diagnostics(all_rows),
-            "target_ranking": _target_ranking(task_rows),
+            "target_ranking": _target_ranking_v1k(task_rows),
+            "control_adjusted": {
+                "task_count": len(adjusted_tasks),
+                "candidate_count": len(adjusted_rows),
+                "excluded_control_tasks": excluded_controls,
+                "metrics": _classification_metrics(adjusted_rows),
+                "diagnostics": _diagnostics(adjusted_rows),
+                "target_ranking": _target_ranking_v1k(adjusted_task_rows),
+            },
             "comparisons": _comparison_metrics(spec, first),
             "stability": _repetition_stability(repeated_results),
             "usage": dict(usage),

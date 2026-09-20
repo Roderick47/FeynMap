@@ -57,6 +57,37 @@ class TaskAwareOracleProvider:
         )
 
 
+class OneErrorProvider(TaskAwareOracleProvider):
+    def evaluate(self, state, questions):
+        result = super().evaluate(state, questions)
+        if state["task"]["description"].startswith("Increase the default"):
+            candidates = state["grounded_context"]["candidates"]
+            index = next(
+                index
+                for index, candidate in enumerate(candidates)
+                if candidate["id"] == "region_03"
+            )
+            answers = dict(result.answers)
+            answers["relevance_%d" % index] = JudgmentAnswer(JudgmentKind.NOUL, 0.68)
+            answers["role_%d" % index] = JudgmentAnswer(
+                JudgmentKind.CHOICE,
+                "structural_bridge",
+                probabilities={
+                    "implementation_target": 0.0,
+                    "incidental_context": 0.05,
+                    "structural_bridge": 0.85,
+                    "supporting_context": 0.1,
+                },
+            )
+            return JudgmentResult(
+                provider=result.provider,
+                model=result.model,
+                answers=answers,
+                usage=result.usage,
+            )
+        return result
+
+
 def test_v1k_fixture_covers_adversarial_challenges_without_wikonomi():
     spec = _spec()
     validate_spec(spec)
@@ -101,6 +132,7 @@ def test_v1k_scores_comparisons_uncertainty_and_multiple_targets():
     assert result["metrics"]["repair_role_accuracy"] == 1.0
     assert result["diagnostics"]["repair_role_error_count"] == 0
     assert result["diagnostics"]["cross_axis_disagreement_count"] == 0
+    assert result["diagnostics"]["semantic_relevance_error_count"] == 0
     assert (
         result["comparisons"]["task_conditioning"]["retry-limit-role-swap"][
             "changed_candidate_accuracy"
@@ -122,6 +154,15 @@ def test_v1k_scores_comparisons_uncertainty_and_multiple_targets():
     assert result["target_ranking"]["implementation_target_mrr"] == 1.0
     assert result["target_ranking"]["implementation_target_recall@1"] < 1.0
     assert result["target_ranking"]["implementation_target_recall@3"] == 1.0
+    assert result["target_ranking"]["implementation_target_task_hit_rate@1"] == 1.0
+    assert result["target_ranking"]["mean_full_target_recall_min_k"] == 1.125
+    assert result["control_adjusted"]["task_count"] == 6
+    assert result["control_adjusted"]["candidate_count"] == 27
+    assert result["control_adjusted"]["excluded_control_tasks"] == [
+        "order-control-reversed",
+        "relationship-control-ablated",
+    ]
+    assert result["control_adjusted"]["metrics"]["repair_role_accuracy"] == 1.0
     assert result["stability"] == {"repetition_count": 1, "measured": False}
     control_ids = [
         state["task"]["id"]
@@ -129,6 +170,20 @@ def test_v1k_scores_comparisons_uncertainty_and_multiple_targets():
         if state["task"]["description"].startswith("Public export")
     ]
     assert control_ids == ["projection-order-control", "projection-order-control"]
+
+
+def test_v1k_error_diagnostics_identify_task_candidate_and_confidence():
+    spec = _spec()
+    result = run_experiment(spec, OneErrorProvider(spec))
+    assert result["diagnostics"]["repair_role_error_count"] == 1
+    assert result["diagnostics"]["semantic_relevance_error_count"] == 1
+    error = result["diagnostics"]["repair_role_errors"][0]
+    assert error["task_id"] == "limit-default-change"
+    assert error["candidate_id"] == "region_03"
+    assert error["gold_repair_role"] == "incidental_context"
+    assert error["predicted_repair_role"] == "structural_bridge"
+    assert error["repair_role_margin"] == pytest.approx(0.75)
+    assert error["semantic_relevance_probability"] == 0.68
 
 
 def test_v1k_repeated_runs_report_stability_and_aggregate_usage():
