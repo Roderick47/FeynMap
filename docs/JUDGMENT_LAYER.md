@@ -155,3 +155,50 @@ The changed-file ground truth remains intentionally conservative. A changed
 supporting file may not be structurally necessary for the task root, so raw
 changed-file recall should be reported alongside path-backed recall rather than
 treated as exhaustive semantic relevance.
+
+### v1J: repair-role judgment
+
+v1J is a new experiment, not a revision of v1I. It leaves v1I's historical
+Wikonomi retrieval, prompt, and metrics unchanged. Its fixture corpus is
+independent of the five frozen historical tasks, so the role vocabulary and
+questions are not tuned against their outcomes.
+
+The experiment separates two questions that a single relevance probability
+conflates:
+
+1. Does this symbol or region materially help understand, implement, or validate
+   the repair?
+2. What role does it play: `implementation_target`, `structural_bridge`,
+   `supporting_context`, or `incidental_context`?
+
+An implementation target is a region whose behavior or data definition must
+change. A structural bridge connects the task entry point to relevant behavior
+but is not itself an edit target. Supporting context supplies constraints or
+validation. Incidental context is retrieval noise. Structural bridges and
+supporting context are therefore semantically relevant without being repair
+targets.
+
+The checked-in corpus contains four synthetic tasks and sixteen labeled source
+regions. Every task contains all four roles. Candidate state includes compact
+summaries, excerpts, region spans, and generic relationship names; it contains
+no gold labels, language rules, framework rules, or Wikonomi examples.
+
+Validate the fixtures without making a provider call:
+
+~~~bash
+python -m feynmap.judgment.repair_role_v1j --pretty
+~~~
+
+Run the live Jev experiment:
+
+~~~bash
+python -m feynmap.judgment.repair_role_v1j --jev --pretty
+~~~
+
+Use `--task TASK_ID` to isolate one fixture or `--spec PATH` to evaluate another
+corpus with the same schema. v1J reports semantic-relevance accuracy, Brier
+score, and log loss; repair-role accuracy, macro F1, per-role scores, and a
+confusion matrix; and implementation-target MRR and recall at 1 and 3. The
+target ranking uses implementation-target probability first and relevance only
+as a tie-breaker, so a highly relevant bridge cannot outrank a likely edit
+target merely because both are useful context.
