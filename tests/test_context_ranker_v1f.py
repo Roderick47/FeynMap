@@ -93,6 +93,9 @@ def test_v1f_separates_novel_files_from_retrieval_ground_truth():
     result = run_graph_task(_context(), _task(), _retrieval(), _adaptive())
     assert result["gold_existing_files"] == ["changed.py"]
     assert result["gold_novel_files"] == ["new_signal.py"]
+    assert result["snapshot_content_hash"] == "content"
+    assert result["snapshot_graph_hash"] == "graph"
+    assert result["snapshot_revision"] == "before"
     assert result["direct"]["baseline"]["recall@10"] == 0.0
     assert result["adaptive"]["baseline"]["recall@10"] == 1.0
     assert result["adaptive"]["baseline"]["path_recall@10"] == 1.0
