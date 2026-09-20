@@ -262,3 +262,48 @@ regions, predicted and gold roles, relevance probability, and role margin. For
 multi-target tasks, `implementation_target_task_hit_rate@1` answers whether the
 first result is any valid edit target, while fractional recall at 1 continues to
 measure how much of the complete edit set fits in the first slot.
+
+### v1L: ambiguity-aware repair-role adjudication
+
+The control-adjusted live v1K run classified 25 of 27 primary role labels
+correctly and placed a valid implementation target first for every task. Both
+remaining misses were non-target boundary cases: unchanged behavior explicitly
+mentioned by the task was judged useful context even though its strict fixture
+label was incidental. This is evidence to improve evaluation, not evidence to
+rewrite v1K labels or tune its prompt after seeing the result.
+
+v1L is therefore a new experiment with a new synthetic corpus. It keeps the
+v1J relevance and role questions unchanged and predeclares, before any provider
+run:
+
+- one primary relevance/role label for strict comparability;
+- a bounded set of acceptable joint relevance/role labels;
+- a rationale for every label; and
+- a named taxonomy boundary for every multi-label candidate.
+
+The corpus contains five framework-agnostic tasks and twenty source regions,
+with five primary labels for each repair role. Five non-target regions exercise
+predeclared boundary cases such as a connector that also states a constraint or
+unchanged behavior explicitly protected by the task. Implementation targets
+are always singleton labels, so ambiguity cannot excuse a missed edit location.
+Adjudication metadata and rationales are removed before provider state is built.
+
+Validate the fixture and its leakage guards without a provider call:
+
+~~~bash
+python -m feynmap.judgment.repair_role_v1l --pretty
+~~~
+
+Run the live Jev evaluation:
+
+~~~bash
+python -m feynmap.judgment.repair_role_v1l --jev --pretty
+~~~
+
+v1L reports the original strict primary-label metrics alongside role,
+relevance, and joint acceptable-label accuracy. It also reports mean probability
+mass assigned to the acceptable role set and acceptable joint-label set,
+separate joint accuracy for ambiguous and singleton candidates, unchanged
+implementation-target ranking metrics, and full records for predictions outside
+every predeclared acceptable label. Strict scores remain visible; acceptable
+sets add an annotation-quality lens rather than replacing the original gold.
