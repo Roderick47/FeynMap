@@ -169,7 +169,9 @@ checkpoint definitions, safety boundaries, measurements, and rollback rules.
 
 - [x] R0 manual read-only grounding trials are possible with current CLI/snapshot outputs
 - [x] Freeze non-destructive dual-channel context/repair guidance through v1R
-- [ ] Build a provider-neutral held-out repair benchmark harness and immutable run manifests
+- [x] Build a provider-neutral held-out-capable repair benchmark harness and immutable run manifests
+- [x] Add independent failing development fixtures and oracle-leakage guards for harness validation
+- [x] Add outcome scoring and four-arm comparison with completeness diagnostics
 - [ ] Compare unassisted, deterministic-context, relevance-context, and dual-channel AI repair arms
 - [ ] Record patch correctness, tests, changed files, unsupported claims, searches, time, and token cost
 - [ ] R1 controlled AI repair trial on disposable worktrees with new non-Wikonomi tasks
@@ -181,6 +183,9 @@ checkpoint definitions, safety boundaries, measurements, and rollback rules.
 
 The first normal integrated AI usage begins at **R2 local MCP alpha**. R0 can be
 tested manually now; R1 is the first controlled AI repair checkpoint.
+
+See `docs/AI_REPAIR_BENCHMARK.md` for the R1 schemas, commands, development
+fixtures, and remaining execution-adapter/held-out-corpus gates.
 
 ## Phase 3 — More language adapters
 

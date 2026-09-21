@@ -75,6 +75,11 @@ anecdotally.
 R1 exits only after the harness can reproduce baseline and FeynMap-assisted
 runs without leaking gold labels into model state.
 
+The provider-neutral schemas, immutable manifest identity, scoring, comparison,
+leakage guards, and intentionally failing development fixtures are documented
+in `AI_REPAIR_BENCHMARK.md`. An isolated execution adapter and sealed held-out
+corpus remain required before controlled R1 testing opens.
+
 ## R2: local MCP alpha — first normal real-world use
 
 Expose the existing `GroundingService` through a local read-only stdio MCP

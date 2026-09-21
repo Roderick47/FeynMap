@@ -1,0 +1,82 @@
+{
+  "schema": "feynmap.ai_repair_benchmark.v1",
+  "name": "R1 provider-neutral repair benchmark development fixtures",
+  "evaluation_tier": "development_fixture",
+  "arms": [
+    "unassisted",
+    "deterministic_context",
+    "relevance_context",
+    "dual_channel"
+  ],
+  "tasks": [
+    {
+      "id": "bounded-retry-delay",
+      "description": "Retry delays grow without bound and can stall recovery for several minutes. Cap every computed retry delay at 30 seconds while preserving the existing exponential sequence below the cap.",
+      "repository": {
+        "locator": "fixture:tests/fixtures/ai_repair_r1/bounded_retry_delay",
+        "revision": "r1-fixture-v1"
+      },
+      "oracle": {
+        "required_tests": [
+          {
+            "id": "bounded-retry-delay-check",
+            "command": "python verify.py"
+          }
+        ],
+        "acceptable_change_sets": [
+          {
+            "required_files": ["backoff.py"],
+            "allowed_files": ["backoff.py"]
+          }
+        ],
+        "forbidden_files": ["verify.py"]
+      }
+    },
+    {
+      "id": "case-insensitive-header-override",
+      "description": "Caller-supplied request headers must override defaults even when the two mappings use different capitalization for the same header name. Preserve the caller's spelling and value in the returned mapping.",
+      "repository": {
+        "locator": "fixture:tests/fixtures/ai_repair_r1/header_override",
+        "revision": "r1-fixture-v1"
+      },
+      "oracle": {
+        "required_tests": [
+          {
+            "id": "header-override-check",
+            "command": "python verify.py"
+          }
+        ],
+        "acceptable_change_sets": [
+          {
+            "required_files": ["headers.py"],
+            "allowed_files": ["headers.py"]
+          }
+        ],
+        "forbidden_files": ["verify.py"]
+      }
+    },
+    {
+      "id": "idempotent-reservation-release",
+      "description": "Replaying the same reservation-release event currently restores inventory more than once. Make release processing idempotent per reservation identifier without changing successful first-release behavior.",
+      "repository": {
+        "locator": "fixture:tests/fixtures/ai_repair_r1/reservation_release",
+        "revision": "r1-fixture-v1"
+      },
+      "oracle": {
+        "required_tests": [
+          {
+            "id": "reservation-release-check",
+            "command": "python verify.py"
+          }
+        ],
+        "acceptable_change_sets": [
+          {
+            "required_files": ["inventory.py"],
+            "allowed_files": ["inventory.py"]
+          }
+        ],
+        "forbidden_files": ["verify.py"]
+      }
+    }
+  ]
+}
