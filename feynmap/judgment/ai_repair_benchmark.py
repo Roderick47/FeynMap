@@ -19,6 +19,7 @@ BENCHMARK_SCHEMA = "feynmap.ai_repair_benchmark.v1"
 AGENT_INPUT_SCHEMA = "feynmap.ai_repair_agent_input.v1"
 RUN_SCHEMA = "feynmap.ai_repair_run.v1"
 COMPARISON_SCHEMA = "feynmap.ai_repair_comparison.v1"
+REPOSITORY_CONTENT_HASH_POLICY = "canonical_text_lf_v1"
 
 ARMS = (
     "unassisted",
@@ -100,9 +101,13 @@ def validate_spec(spec: Mapping[str, Any]) -> None:
         repository = task.get("repository")
         if not isinstance(repository, Mapping):
             raise ValueError("task %s requires repository identity" % task_id)
-        for key in ("locator", "revision", "content_hash"):
+        for key in ("locator", "revision", "content_hash", "content_hash_policy"):
             if not str(repository.get(key) or ""):
                 raise ValueError("task %s repository requires %s" % (task_id, key))
+        if repository["content_hash_policy"] != REPOSITORY_CONTENT_HASH_POLICY:
+            raise ValueError(
+                "task %s repository content hash policy is unsupported" % task_id
+            )
         repository_hash = str(repository["content_hash"])
         if len(repository_hash) != 64:
             raise ValueError("task %s repository content hash is invalid" % task_id)

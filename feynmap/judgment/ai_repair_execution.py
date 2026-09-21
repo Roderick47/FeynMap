@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 from .ai_repair_benchmark import (
     AGENT_INPUT_SCHEMA,
+    REPOSITORY_CONTENT_HASH_POLICY,
     content_hash,
     create_run_manifest,
     load_json,
@@ -196,14 +197,30 @@ def _files(root: Path) -> Dict[str, bytes]:
     return result
 
 
-def repository_content_hash(root: Path) -> str:
+def _canonical_identity_bytes(value: bytes) -> bytes:
+    """Ignore only cross-platform text checkout line-ending differences."""
+    if b"\x00" in value:
+        return value
+    try:
+        text = value.decode("utf-8")
+    except UnicodeDecodeError:
+        return value
+    return text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+
+
+def repository_content_hash(
+    root: Path, *, policy: str = REPOSITORY_CONTENT_HASH_POLICY
+) -> str:
+    if policy != REPOSITORY_CONTENT_HASH_POLICY:
+        raise ValueError("unsupported repository content hash policy: %s" % policy)
     inventory = [
         {
             "path": path,
-            "sha256": hashlib.sha256(value).hexdigest(),
-            "size": len(value),
+            "sha256": hashlib.sha256(canonical).hexdigest(),
+            "size": len(canonical),
         }
         for path, value in sorted(_files(root).items())
+        for canonical in [_canonical_identity_bytes(value)]
     ]
     return content_hash(inventory)
 
@@ -354,7 +371,9 @@ def execute_run(
     task = _task(spec, task_id)
     oracle = task["oracle"]
     source = resolve_source_repository(project_root, str(task["repository"]["locator"]))
-    actual_content_hash = repository_content_hash(source)
+    actual_content_hash = repository_content_hash(
+        source, policy=str(task["repository"]["content_hash_policy"])
+    )
     if actual_content_hash != str(task["repository"]["content_hash"]):
         raise ValueError("repair benchmark repository content hash mismatch")
     parent = str(workspace_parent.resolve()) if workspace_parent else None

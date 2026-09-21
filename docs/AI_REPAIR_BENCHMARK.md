@@ -62,9 +62,12 @@ python -m feynmap.judgment.ai_repair_benchmark validate \
 
 Validation checks task and repository identities, the exact arm order, unique
 test IDs, alternative acceptable change sets, and required/allowed-file
-consistency. Each repository identity includes a deterministic content hash;
-the executor refuses to run if local fixture/source bytes drift from the frozen
-specification.
+consistency. Each repository identity includes a deterministic content hash and
+an explicit `content_hash_policy`. The `canonical_text_lf_v1` policy normalizes
+CRLF and CR to LF for UTF-8 text identity, so ordinary Git checkout conversion
+does not change a benchmark. Files containing NUL bytes or invalid UTF-8 remain
+byte-exact. The executor refuses to run if source content drifts from the frozen
+specification under that policy.
 
 ## Create agent-visible input
 

@@ -188,6 +188,33 @@ def test_fixture_repository_hash_is_deterministic():
     assert repository_content_hash(source) == expected
 
 
+def test_repository_hash_ignores_text_checkout_line_endings(tmp_path):
+    lf = tmp_path / "lf"
+    crlf = tmp_path / "crlf"
+    lf.mkdir()
+    crlf.mkdir()
+    (lf / "module.py").write_bytes(b"first\nsecond\n")
+    (crlf / "module.py").write_bytes(b"first\r\nsecond\r\n")
+
+    assert repository_content_hash(lf) == repository_content_hash(crlf)
+
+
+def test_repository_hash_preserves_binary_line_ending_bytes(tmp_path):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / "payload.bin").write_bytes(b"\x00first\n")
+    (second / "payload.bin").write_bytes(b"\x00first\r\n")
+
+    assert repository_content_hash(first) != repository_content_hash(second)
+
+
+def test_repository_hash_rejects_unknown_policy(tmp_path):
+    with pytest.raises(ValueError, match="unsupported repository content hash policy"):
+        repository_content_hash(tmp_path, policy="raw_bytes_v1")
+
+
 def test_capture_patch_handles_added_deleted_and_binary_files(tmp_path):
     baseline = tmp_path / "baseline"
     workspace = tmp_path / "workspace"

@@ -9,6 +9,7 @@ from feynmap.judgment.ai_repair_benchmark import (
     ARMS,
     BENCHMARK_SCHEMA,
     COMPARISON_SCHEMA,
+    REPOSITORY_CONTENT_HASH_POLICY,
     build_agent_input,
     compare_manifests,
     content_hash,
@@ -84,6 +85,9 @@ def test_fixture_spec_is_valid_and_independent_from_wikonomi():
     for task in spec["tasks"]:
         locator = task["repository"]["locator"]
         fixture = ROOT / locator.split("fixture:", 1)[1]
+        assert (
+            task["repository"]["content_hash_policy"] == REPOSITORY_CONTENT_HASH_POLICY
+        )
         assert fixture.is_dir()
         assert (fixture / "verify.py").is_file()
 
@@ -100,6 +104,14 @@ def test_agent_input_excludes_oracle_and_requires_context_by_arm():
         build_agent_input(spec, "bounded-retry-delay", "dual_channel")
     with pytest.raises(ValueError, match="unassisted arm"):
         build_agent_input(spec, "bounded-retry-delay", "unassisted", _context())
+
+
+def test_spec_rejects_unknown_repository_content_hash_policy():
+    spec = copy.deepcopy(_spec())
+    spec["tasks"][0]["repository"]["content_hash_policy"] = "raw_bytes_v1"
+
+    with pytest.raises(ValueError, match="content hash policy is unsupported"):
+        validate_spec(spec)
 
 
 def test_agent_context_rejects_structural_oracle_leakage():

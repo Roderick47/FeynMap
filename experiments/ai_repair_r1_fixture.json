@@ -15,6 +15,7 @@
       "repository": {
         "locator": "fixture:tests/fixtures/ai_repair_r1/bounded_retry_delay",
         "revision": "r1-fixture-v1",
+        "content_hash_policy": "canonical_text_lf_v1",
         "content_hash": "0e47e895bc6865819bc6d3317313b1789907c02097699a927dbf7f92c9b524bd"
       },
       "oracle": {
@@ -41,6 +42,7 @@
       "repository": {
         "locator": "fixture:tests/fixtures/ai_repair_r1/header_override",
         "revision": "r1-fixture-v1",
+        "content_hash_policy": "canonical_text_lf_v1",
         "content_hash": "9c700364430c8821191a6157713c8c1c4f915f2846041ed10abc6b00b8d3da22"
       },
       "oracle": {
@@ -67,6 +69,7 @@
       "repository": {
         "locator": "fixture:tests/fixtures/ai_repair_r1/reservation_release",
         "revision": "r1-fixture-v1",
+        "content_hash_policy": "canonical_text_lf_v1",
         "content_hash": "bc24255f7580a231e9c0dce3554f2d8461442020732b7bb7f0648a6bb5d7ea96"
       },
       "oracle": {
