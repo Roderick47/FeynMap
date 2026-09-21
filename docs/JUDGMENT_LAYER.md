@@ -464,3 +464,27 @@ python -m feynmap.judgment.repair_role_v1q path/to/v1l-result.json --pretty
 The report includes candidate retention, target MRR and recall, top-target task
 hit rate, role lanes, source-region annotations, and explicit policy metadata.
 It remains an offline experiment and never changes production behavior.
+
+### v1R: historical dual-channel validation
+
+v1R applies the frozen v1Q separation to an existing judged v1O historical
+report without another provider call. The original v1I relevance file order is
+copied as the context channel and its file metrics are independently recomputed.
+Every numeric delta must be zero, every role-judged candidate is retained, and
+role output cannot filter or reorder context.
+
+The second channel contains a deterministic edit-target candidate/file order,
+four explanatory role lanes, and role annotations. It is evaluated against
+historical changed files only as a deliberately weak proxy: a changed support,
+configuration, test, or presentation file is not necessarily an implementation
+target. Historical labels never participate in either order.
+
+Analyze an existing v1O result:
+
+~~~bash
+python -m feynmap.judgment.context_ranker_v1r path/to/v1o-result.json --pretty
+~~~
+
+The report fails validation if the source is not a judged v1O result and
+explicitly records context-order equality, metric equality, full candidate
+retention, order invariance, and `production_policy_changed: false`.

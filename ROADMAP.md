@@ -61,7 +61,9 @@ FeynMap now treats a repository as a heterogeneous software system rather than c
 ### Integration hardening backlog
 
 - [ ] embedded-language regions (inline `<script>`, Vue/Svelte single-file components, templated JS/CSS)
-- [ ] richer JavaScript parsing via Tree-sitter/TypeScript compiler APIs
+- [ ] shared Tree-sitter parsing/source-region foundation with explicit parser provenance and deterministic node identities
+- [ ] parser-backed JavaScript and TypeScript via Tree-sitter, with conformance comparisons against the dependency-free JavaScript adapter
+- [ ] optional TypeScript compiler enrichment for type/module facts that Tree-sitter syntax alone cannot prove
 - [ ] route-prefix composition (`include_router`, nested routers, mounted apps, reverse routing)
 - [ ] CSS/assets and bundler-generated dependency graphs
 - [ ] protocol schemas (OpenAPI, protobuf/gRPC, GraphQL schemas)
