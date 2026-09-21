@@ -412,3 +412,26 @@ probabilities per candidate, changed-file role predictions, predicted
 incidental exclusions, separate usage and elapsed time for each judgment pass,
 and combined token usage. `production_policy_changed` remains false regardless
 of the result; promotion requires an explicit later decision.
+
+### v1P: offline historical promotion gate
+
+v1P turns a judged v1O report into a reproducible promote/reject decision. It
+makes no provider calls, changes no ranking, and learns no weights or thresholds
+from the five historical tasks. The gate requires both aggregate and per-task
+non-regression in average precision, reciprocal rank, and recall at 1, 3, 5,
+and 10. It also rejects a policy that makes any previously retrieved existing
+changed file newly missing.
+
+Analyze a v1O result, including UTF-8 or BOM-marked UTF-16 files:
+
+~~~bash
+python -m feynmap.judgment.context_ranker_v1p path/to/v1o-result.json --pretty
+~~~
+
+The report records metric deltas, newly missing and recovered changed files,
+excluded candidates backed by changed files, and the separate and combined
+judgment costs. Cost ratios are descriptive rather than tuned promotion
+thresholds. A failed gate explicitly recommends retaining repair-role output as
+shadow evidence and rejecting hard incidental-role filtering. Passing the gate
+only makes a policy eligible for explicit review; it never changes production
+behavior automatically.
