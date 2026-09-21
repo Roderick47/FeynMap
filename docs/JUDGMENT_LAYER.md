@@ -435,3 +435,32 @@ thresholds. A failed gate explicitly recommends retaining repair-role output as
 shadow evidence and rejecting hard incidental-role filtering. Passing the gate
 only makes a policy eligible for explicit review; it never changes production
 behavior automatically.
+
+### v1Q: non-destructive dual-channel guidance
+
+The v1O holdout and v1P gate show that a repair-role prediction is not a safe
+eligibility decision: files changed for configuration, presentation, or
+supporting behavior can still look incidental when judged one region at a
+time. v1Q tests a different architecture on the independent v1L fixture corpus
+without revising its labels or using the Wikonomi tasks.
+
+The two output channels have deliberately separate authority:
+
+- semantic relevance exclusively orders and retains context candidates; and
+- coherent repair roles provide a separate edit-target order and explanatory
+  implementation, support, bridge, and incidental lanes.
+
+Every candidate remains in the context channel. Role predictions cannot filter
+or reorder it, and evaluation labels are absent from the emitted annotations.
+Both channels use deterministic candidate-id tie breaking and are checked for
+input-order invariance.
+
+Analyze an existing judged v1L result without another provider call:
+
+~~~bash
+python -m feynmap.judgment.repair_role_v1q path/to/v1l-result.json --pretty
+~~~
+
+The report includes candidate retention, target MRR and recall, top-target task
+hit rate, role lanes, source-region annotations, and explicit policy metadata.
+It remains an offline experiment and never changes production behavior.
