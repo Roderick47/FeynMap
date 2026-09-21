@@ -376,3 +376,39 @@ and order-invariance checks. Ambiguity-aware metrics ensure that a predeclared
 supporting/incidental boundary is not counted as definite retrieval noise. The
 output explicitly records `production_policy_changed: false`; promotion beyond
 shadow mode requires evidence outside these synthetic fixtures.
+
+### v1O: frozen-policy historical holdout
+
+v1O moves the already frozen role pipeline onto v1I's five historical
+Wikonomi tasks as a holdout evaluation. It does not revise those tasks, their
+changed-file ground truth, v1I retrieval, the relevance prompt, the v1J role
+prompt, v1M coherence, or v1N assembly policy. No historical label participates
+in selection or ordering.
+
+Each task makes two deliberately separate provider requests over the same
+compact grounded state:
+
+1. the unchanged v1I relevance-only request, whose result remains the reported
+   relevance baseline; and
+2. a role-only request using the frozen v1J role question and criteria.
+
+Keeping the requests separate prevents the added role questions from changing
+the original relevance judgment. v1O then applies v1M coherence and v1N
+role-aware ordering in shadow mode, filters predicted incidental candidates
+from context backfill, and evaluates the resulting file order against the
+unchanged historical changed files. The normal v1I reranked order remains in
+the output and is not mutated.
+
+Run the live holdout evaluation:
+
+~~~bash
+python -m feynmap.judgment.context_ranker_v1o /path/to/wikonomi-v2 --jev --pretty
+~~~
+
+Use `--task TASK_ID` for a bounded diagnostic run. A complete run makes ten
+provider requests: five unchanged relevance calls and five role-only calls.
+The report includes relevance-only and role-shadow file metrics, coherent role
+probabilities per candidate, changed-file role predictions, predicted
+incidental exclusions, separate usage and elapsed time for each judgment pass,
+and combined token usage. `production_policy_changed` remains false regardless
+of the result; promotion requires an explicit later decision.
