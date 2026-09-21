@@ -100,9 +100,16 @@ def validate_spec(spec: Mapping[str, Any]) -> None:
         repository = task.get("repository")
         if not isinstance(repository, Mapping):
             raise ValueError("task %s requires repository identity" % task_id)
-        for key in ("locator", "revision"):
+        for key in ("locator", "revision", "content_hash"):
             if not str(repository.get(key) or ""):
                 raise ValueError("task %s repository requires %s" % (task_id, key))
+        repository_hash = str(repository["content_hash"])
+        if len(repository_hash) != 64:
+            raise ValueError("task %s repository content hash is invalid" % task_id)
+        try:
+            int(repository_hash, 16)
+        except ValueError:
+            raise ValueError("task %s repository content hash is invalid" % task_id)
         oracle = task.get("oracle")
         if not isinstance(oracle, Mapping):
             raise ValueError("task %s requires a hidden oracle" % task_id)
@@ -114,10 +121,15 @@ def validate_spec(spec: Mapping[str, Any]) -> None:
             if not isinstance(test, Mapping):
                 raise ValueError("task %s has an invalid test oracle" % task_id)
             test_id = str(test.get("id") or "")
-            command = str(test.get("command") or "")
-            if not test_id or not command:
+            command = test.get("command")
+            if (
+                not test_id
+                or not isinstance(command, list)
+                or not command
+                or any(not isinstance(value, str) or not value for value in command)
+            ):
                 raise ValueError(
-                    "task %s oracle tests require id and command" % task_id
+                    "task %s oracle tests require id and command argv" % task_id
                 )
             test_ids.append(test_id)
         if len(test_ids) != len(set(test_ids)):
@@ -149,6 +161,15 @@ def validate_spec(spec: Mapping[str, Any]) -> None:
             oracle.get("forbidden_files") or [],
             "task %s forbidden files" % task_id,
         )
+        _strings(
+            oracle.get("sealed_files") or [],
+            "task %s sealed files" % task_id,
+        )
+        if str(oracle.get("baseline_expectation") or "") not in {
+            "at_least_one_failure",
+            "all_pass",
+        }:
+            raise ValueError("task %s requires a baseline expectation" % task_id)
 
 
 def _contains_leakage_key(value: Any) -> Optional[str]:
@@ -245,6 +266,21 @@ def _validate_outcome(outcome: Mapping[str, Any]) -> Dict[str, Any]:
         seen_tests.add(test_id)
         normalized_tests.append({"id": test_id, "status": status})
     normalized_tests.sort(key=lambda item: item["id"])
+    baseline_tests = outcome.get("baseline_tests") or []
+    if not isinstance(baseline_tests, list):
+        raise ValueError("baseline_tests must be a list")
+    normalized_baseline_tests = []
+    seen_baseline_tests = set()
+    for test in baseline_tests:
+        if not isinstance(test, Mapping):
+            raise ValueError("baseline tests must be objects")
+        test_id = str(test.get("id") or "")
+        status = str(test.get("status") or "")
+        if not test_id or test_id in seen_baseline_tests or status not in TEST_STATUSES:
+            raise ValueError("baseline tests require unique ids and valid statuses")
+        seen_baseline_tests.add(test_id)
+        normalized_baseline_tests.append({"id": test_id, "status": status})
+    normalized_baseline_tests.sort(key=lambda item: item["id"])
 
     patch_produced = outcome.get("patch_produced")
     if not isinstance(patch_produced, bool):
@@ -286,6 +322,7 @@ def _validate_outcome(outcome: Mapping[str, Any]) -> Dict[str, Any]:
         "patch_produced": patch_produced,
         "patch_sha256": patch_sha256,
         "changed_files": changed_files,
+        "baseline_tests": normalized_baseline_tests,
         "tests": normalized_tests,
         "first_proposed_edit": first_edit,
         "unsupported_claims": unsupported,

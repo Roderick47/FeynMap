@@ -4,11 +4,12 @@ The R1 harness measures whether an AI agent produces a better repair with
 FeynMap, not merely whether a ranking metric improves. It is provider-neutral
 and deliberately separates benchmark execution from scoring.
 
-The initial implementation does **not** launch an AI, execute arbitrary test
-commands, apply patches, or modify repositories. Execution adapters will create
-isolated worktrees and record outcomes later. This module freezes the data
-contracts, leakage boundary, immutable run identity, and comparison metrics
-first.
+The benchmark layer does not choose or embed an AI provider. Its execution
+adapter can invoke an explicitly configured argv command, but never through a
+shell. It copies a local fixture/repository into a disposable workspace, keeps
+oracle files sealed outside that workspace, applies timeouts, captures a patch,
+and removes the workspace after recording the immutable result. The original
+repository remains read-only from the adapter's perspective.
 
 ## Schemas
 
@@ -61,7 +62,9 @@ python -m feynmap.judgment.ai_repair_benchmark validate \
 
 Validation checks task and repository identities, the exact arm order, unique
 test IDs, alternative acceptable change sets, and required/allowed-file
-consistency.
+consistency. Each repository identity includes a deterministic content hash;
+the executor refuses to run if local fixture/source bytes drift from the frozen
+specification.
 
 ## Create agent-visible input
 
@@ -140,18 +143,65 @@ Comparison rejects duplicate task/arm/attempt records, reports whether the full
 task-by-arm matrix is present, aggregates each arm, and computes assisted-arm
 deltas from the unassisted baseline.
 
+## Execute in a disposable workspace
+
+`ai_repair_execution` supports only explicit local `fixture:` and `path:`
+repository locators. It never clones a repository implicitly. The initial test
+runner accepts Python argv commands only, replaces a declared verifier with its
+sealed copy, sets the disposable workspace on `PYTHONPATH`, does not invoke a
+shell, captures bounded output tails, and records timeout as an error.
+
+An external agent command receives three exact placeholder paths:
+
+- `{workspace}`: disposable repository copy that it may edit;
+- `{input}`: oracle-free agent-input JSON; and
+- `{output}`: JSON path the command must create with run observations.
+
+All adapter options must appear before `--`, followed by the agent argv. For
+example:
+
+~~~bash
+python -m feynmap.judgment.ai_repair_execution \
+  experiments/ai_repair_r1_fixture.json run-input.json \
+  --project-root . \
+  --provider PROVIDER \
+  --model MODEL \
+  --test-timeout 60 \
+  --agent-timeout 900 \
+  --pretty \
+  -- agent-cli --workspace {workspace} --input {input} --output {output}
+~~~
+
+The agent subprocess receives only a minimal system environment. Credentials or
+other values must be named explicitly with repeated `--pass-env NAME`; FeynMap
+does not forward the parent environment wholesale.
+
+The adapter verifies that sealed oracle files remain byte-identical after the
+agent returns. The disposable directory and minimal environment are safety
+boundaries against accidental contamination, **not** an operating-system
+security sandbox. At this checkpoint, run only explicitly trusted agent
+commands. Container/OS isolation is required before executing untrusted code or
+agents that are not expected to remain within the supplied workspace.
+
+The agent output object may contain `first_proposed_edit`,
+`unsupported_claims`, `repository_searches`, `extra_context_requests`, and
+`usage`. The adapter supplies patch identity, changed files, baseline/final test
+statuses, elapsed time, provider/model identity, and manifest identity.
+
+The execution report also includes diagnostic output tails and the patch text.
+Those diagnostics are not model input and are not used to select or order
+context.
+
 ## Remaining work before R1 testing opens
 
-The contracts and dry-run fixtures are now available. Controlled R1 AI testing
-still requires:
+The contracts, dry-run fixtures, and isolated command execution adapter are now
+available. Controlled R1 AI testing still requires:
 
-1. an isolated worktree execution adapter;
-2. patch capture and hashing;
-3. bounded test-command execution with timeouts;
-4. deterministic context generation for the three assisted arms;
-5. a sealed set of new `held_out` tasks; and
-6. explicit agent/tool versions in every execution environment.
+1. deterministic context generation for the three assisted arms;
+2. a sealed set of new `held_out` tasks;
+3. selection/configuration of the first real AI command adapter; and
+4. explicit agent/tool versions in every execution environment.
 
 No execution adapter should broaden FeynMap's own read-only authority. The
-adapter owns the disposable worktree and process sandbox; FeynMap continues to
+adapter owns the disposable workspace and process boundary; FeynMap continues to
 produce grounding data only.

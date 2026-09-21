@@ -172,6 +172,8 @@ checkpoint definitions, safety boundaries, measurements, and rollback rules.
 - [x] Build a provider-neutral held-out-capable repair benchmark harness and immutable run manifests
 - [x] Add independent failing development fixtures and oracle-leakage guards for harness validation
 - [x] Add outcome scoring and four-arm comparison with completeness diagnostics
+- [x] Add disposable local execution, sealed verifier files, bounded test commands, and deterministic patch hashing
+- [x] Add an explicit argv/JSON command-agent protocol with opt-in environment forwarding
 - [ ] Compare unassisted, deterministic-context, relevance-context, and dual-channel AI repair arms
 - [ ] Record patch correctness, tests, changed files, unsupported claims, searches, time, and token cost
 - [ ] R1 controlled AI repair trial on disposable worktrees with new non-Wikonomi tasks

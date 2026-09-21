@@ -75,10 +75,16 @@ anecdotally.
 R1 exits only after the harness can reproduce baseline and FeynMap-assisted
 runs without leaking gold labels into model state.
 
+The current disposable executor is suitable for trusted local agent commands;
+it is not an OS security sandbox. Untrusted execution requires a later
+container/OS isolation layer in addition to temporary-workspace cleanup and
+sealed-oracle integrity checks.
+
 The provider-neutral schemas, immutable manifest identity, scoring, comparison,
-leakage guards, and intentionally failing development fixtures are documented
-in `AI_REPAIR_BENCHMARK.md`. An isolated execution adapter and sealed held-out
-corpus remain required before controlled R1 testing opens.
+leakage guards, intentionally failing development fixtures, disposable
+execution adapter, sealed verifier boundary, and command-agent protocol are
+documented in `AI_REPAIR_BENCHMARK.md`. Deterministic assisted-arm context and a
+sealed held-out corpus remain required before controlled R1 testing opens.
 
 ## R2: local MCP alpha — first normal real-world use
 
