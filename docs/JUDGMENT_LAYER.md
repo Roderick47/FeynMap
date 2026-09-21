@@ -336,3 +336,43 @@ It also recomputes implementation-target ranking from the coherent role
 distribution. The input loader accepts UTF-8 and BOM-marked UTF-16 JSON, which
 covers files written by both modern PowerShell and Windows PowerShell
 `Tee-Object` defaults.
+
+### v1N: token-budgeted shadow context assembly
+
+v1J-v1L consistently placed every implementation target first, and v1M made
+the independent relevance and role axes coherent. v1N tests how those outputs
+could guide bounded context assembly without changing v1I or any production
+policy. It is an offline shadow experiment over the independent v1L corpus and
+makes no provider calls.
+
+The role-aware order is deterministic and uses no gold labels:
+
+1. anchor the candidate with the highest coherent implementation-target
+   probability;
+2. retain any additional predicted implementation targets;
+3. reserve early positions for one supporting-context candidate and one
+   structural bridge; and
+4. order remaining eligible candidates by coherent non-incidental probability.
+
+Candidate costs use FeynMap's tokenizer-independent estimator over the exact
+provider-facing candidate payload. The experiment compares role-aware and
+relevance-only assembly at 25%, 50%, 75%, and 100% of total candidate cost,
+with every budget raised when necessary to fit the strongest target anchor.
+Predicted incidental candidates are ineligible for budget backfill: a small
+noise candidate is not selected merely because a larger useful candidate did
+not fit. The first shadow run exposed and corrected that failure mode before
+the policy was committed.
+
+Run the shadow analysis on an existing v1L result:
+
+~~~bash
+python -m feynmap.judgment.repair_role_v1n path/to/v1l-result.json --pretty
+~~~
+
+v1N reports target recall and task hit rate, strict and acceptable relevance
+recall, strict and acceptable context-role coverage, incidental and
+unambiguously unacceptable selection rates, utilization, selected candidates,
+and order-invariance checks. Ambiguity-aware metrics ensure that a predeclared
+supporting/incidental boundary is not counted as definite retrieval noise. The
+output explicitly records `production_policy_changed: false`; promotion beyond
+shadow mode requires evidence outside these synthetic fixtures.
