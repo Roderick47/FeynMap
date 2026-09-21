@@ -177,12 +177,25 @@ def resolve_source_repository(project_root: Path, locator: str) -> Path:
     return resolved
 
 
-def _copy_repository(source: Path, destination: Path) -> None:
+def _safe_relative(path: str) -> Path:
+    value = Path(path)
+    if value.is_absolute() or ".." in value.parts:
+        raise ValueError("benchmark command path must stay repository-relative")
+    return value
+
+
+def _copy_repository(
+    source: Path, destination: Path, *, excluded_files: Sequence[str] = ()
+) -> None:
     shutil.copytree(
         str(source),
         str(destination),
         ignore=shutil.ignore_patterns(*sorted(EXCLUDED_PARTS)),
     )
+    for raw in excluded_files:
+        target = destination / _safe_relative(raw)
+        if target.is_file():
+            target.unlink()
 
 
 def _files(root: Path) -> Dict[str, bytes]:
@@ -259,13 +272,6 @@ def capture_patch(baseline: Path, workspace: Path) -> Tuple[List[str], str, str]
     patch = "".join(chunks)
     digest = hashlib.sha256(patch.encode("utf-8")).hexdigest()
     return changed, patch, digest
-
-
-def _safe_relative(path: str) -> Path:
-    value = Path(path)
-    if value.is_absolute() or ".." in value.parts:
-        raise ValueError("benchmark command path must stay repository-relative")
-    return value
 
 
 def _seal_files(source: Path, sealed: Path, paths: Sequence[str]) -> None:
@@ -376,6 +382,8 @@ def execute_run(
     )
     if actual_content_hash != str(task["repository"]["content_hash"]):
         raise ValueError("repair benchmark repository content hash mismatch")
+    source_identity = _files(source)
+    sealed_files = tuple(str(path) for path in oracle.get("sealed_files") or [])
     parent = str(workspace_parent.resolve()) if workspace_parent else None
     started_at = _utc_now()
     with tempfile.TemporaryDirectory(prefix="feynmap-r1-", dir=parent) as raw:
@@ -386,9 +394,9 @@ def execute_run(
         control = execution_root / "control"
         sealed.mkdir()
         control.mkdir()
-        _copy_repository(source, baseline)
-        _copy_repository(source, workspace)
-        _seal_files(source, sealed, oracle.get("sealed_files") or [])
+        _copy_repository(source, baseline, excluded_files=sealed_files)
+        _copy_repository(source, workspace, excluded_files=sealed_files)
+        _seal_files(source, sealed, sealed_files)
         sealed_identity = _files(sealed)
 
         baseline_tests, baseline_diagnostics = run_oracle_tests(
@@ -446,7 +454,7 @@ def execute_run(
             "baseline_test_diagnostics": baseline_diagnostics,
             "final_test_diagnostics": final_diagnostics,
             "source_repository": str(source),
-            "source_repository_modified": _files(source) != _files(baseline),
+            "source_repository_modified": _files(source) != source_identity,
         }
 
 

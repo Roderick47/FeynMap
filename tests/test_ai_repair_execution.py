@@ -56,6 +56,12 @@ class NoOpAgent:
         return AgentRunResult(provider="no-op", model="fixture-v1")
 
 
+class AssertOracleHiddenAgent(RetryCapAgent):
+    def run(self, workspace, agent_input, control_directory):
+        assert not (workspace / "verify.py").exists()
+        return super().run(workspace, agent_input, control_directory)
+
+
 class SealedFileEditingAgent:
     def run(self, workspace, agent_input, control_directory):
         sealed = control_directory.parent / "sealed" / "verify.py"
@@ -105,6 +111,21 @@ def test_execute_run_repairs_disposable_copy_and_scores_success(tmp_path):
     score = score_manifest(_spec(), result["manifest"])
     assert score["oracle_passed"] is True
     assert score["strict_success"] is True
+
+
+def test_sealed_oracle_is_not_visible_in_agent_workspace(tmp_path):
+    result = execute_run(
+        _spec(),
+        _input(),
+        AssertOracleHiddenAgent(),
+        project_root=ROOT,
+        workspace_parent=tmp_path,
+    )
+
+    assert result["manifest"]["outcome"]["tests"] == [
+        {"id": "bounded-retry-delay-check", "status": "passed"}
+    ]
+    assert result["source_repository_modified"] is False
 
 
 def test_sealed_oracle_is_used_and_verifier_edit_is_forbidden(tmp_path):

@@ -153,6 +153,9 @@ repository locators. It never clones a repository implicitly. The initial test
 runner accepts Python argv commands only, replaces a declared verifier with its
 sealed copy, sets the disposable workspace on `PYTHONPATH`, does not invoke a
 shell, captures bounded output tails, and records timeout as an error.
+Declared sealed files are omitted from both the baseline and agent workspaces;
+only the executor-owned sealed directory contains them. This prevents hidden
+verification logic from becoming agent-visible repair context.
 
 An external agent command receives three exact placeholder paths:
 
