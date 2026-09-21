@@ -267,6 +267,13 @@ Persistent graph snapshots, conservative incremental updates, repository identit
 
 Before broad production use, the integration layer still needs hardening for embedded languages, richer JavaScript/TypeScript parsing, composed/nested routes, protocol schemas, build/container topology and additional native/mobile adapters. See [`ROADMAP.md`](ROADMAP.md).
 
+Real-world AI testing follows milestone-based checkpoints: manual read-only
+trials are available now, controlled held-out repair trials come next, and the
+first normal integrated use begins with the local read-only MCP alpha. The
+subsequent Tree-sitter JavaScript/TypeScript checkpoint expands testing to
+mixed-language repositories. See
+[`docs/AI_REAL_WORLD_VALIDATION.md`](docs/AI_REAL_WORLD_VALIDATION.md).
+
 ## Mission
 
 > **FeynMap builds a verifiable machine-readable model of a software system so humans and AI can reason about code without guessing.**

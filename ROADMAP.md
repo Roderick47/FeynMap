@@ -161,6 +161,27 @@ Groundwork has started, but no MCP SDK/transport or remote hosting dependency ha
 
 See `docs/MCP_GROUNDING.md` for the tool boundary, transport plan, hosting choices and the project-owner decisions required before remote deployment.
 
+### Phase 2C — AI-assisted real-world validation 🚧
+
+Real-world testing expands through explicit evidence gates rather than a single
+"production ready" switch. See `docs/AI_REAL_WORLD_VALIDATION.md` for the full
+checkpoint definitions, safety boundaries, measurements, and rollback rules.
+
+- [x] R0 manual read-only grounding trials are possible with current CLI/snapshot outputs
+- [x] Freeze non-destructive dual-channel context/repair guidance through v1R
+- [ ] Build a provider-neutral held-out repair benchmark harness and immutable run manifests
+- [ ] Compare unassisted, deterministic-context, relevance-context, and dual-channel AI repair arms
+- [ ] Record patch correctness, tests, changed files, unsupported claims, searches, time, and token cost
+- [ ] R1 controlled AI repair trial on disposable worktrees with new non-Wikonomi tasks
+- [ ] R2 local read-only stdio MCP alpha for real feature-branch usage
+- [ ] Capture privacy-preserving local MCP usefulness and outcome feedback
+- [ ] R3 Tree-sitter JavaScript/TypeScript mixed-language alpha after conformance gates
+- [ ] R4 selected-team beta with CI plus test/runtime/history evidence
+- [ ] R5 authenticated remote pilot with repository-scoped authorization
+
+The first normal integrated AI usage begins at **R2 local MCP alpha**. R0 can be
+tested manually now; R1 is the first controlled AI repair checkpoint.
+
 ## Phase 3 — More language adapters
 
 Suggested order based on reuse and migration value:
