@@ -394,6 +394,21 @@ report root. The R1 report compares:
 - elapsed time; and
 - model input/output usage.
 
+After the four official evaluations finish, aggregate the complete generation
+record tree against the four SWE-bench run directories:
+
+~~~bash
+python -m feynmap.judgment.swebench_r1 aggregate \
+  experiments/swebench_r1_holdout.json \
+  --records-root .feynmap/r1/swebench/runs/records \
+  --run-root unassisted=logs/evaluation/feynmap-r1-unassisted \
+  --run-root deterministic_context=logs/evaluation/feynmap-r1-deterministic \
+  --run-root relevance_context=logs/evaluation/feynmap-r1-relevance \
+  --run-root dual_channel=logs/evaluation/feynmap-r1-dual \
+  --output .feynmap/r1/swebench/final-report.json \
+  --pretty
+~~~
+
 Assisted-arm deltas are always reported relative to the unassisted arm. Do not
 change retrieval, relevance, role, task-selection or corpus policy after the
 holdout is frozen; a policy change requires a new corpus id.
