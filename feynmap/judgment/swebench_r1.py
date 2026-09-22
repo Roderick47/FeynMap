@@ -24,6 +24,8 @@ import difflib
 import hashlib
 import json
 import os
+import platform
+import shutil
 import subprocess
 import tempfile
 import time
@@ -968,6 +970,105 @@ def run_prediction_matrix(
     return result
 
 
+def preflight_environment(path: Path) -> Dict[str, Any]:
+    """Check whether the local machine is ready for a small SWE-bench R1 pilot."""
+    checks = {}
+    warnings = []
+
+    try:
+        import datasets  # type: ignore
+        checks["datasets"] = {
+            "available": True,
+            "version": str(getattr(datasets, "__version__", "unknown")),
+        }
+    except Exception as exc:
+        checks["datasets"] = {"available": False, "error": str(exc)}
+        warnings.append("install the optional datasets package")
+
+    swebench_cli = shutil.which("swebench")
+    checks["swebench_cli"] = {
+        "available": bool(swebench_cli),
+        "path": swebench_cli,
+    }
+    if not swebench_cli:
+        warnings.append("install the SWE-bench package/CLI")
+
+    docker_cli = shutil.which("docker")
+    docker = {
+        "available": bool(docker_cli),
+        "path": docker_cli,
+        "daemon_reachable": False,
+    }
+    if docker_cli:
+        completed = subprocess.run(
+            [docker_cli, "info", "--format", "{{.ServerVersion}}"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        docker["daemon_reachable"] = completed.returncode == 0
+        docker["server_version"] = completed.stdout.strip() or None
+        if completed.returncode != 0:
+            docker["error"] = completed.stderr.strip()
+            warnings.append("start Docker Desktop/the Docker daemon")
+    else:
+        warnings.append("install Docker before local SWE-bench evaluation")
+    checks["docker"] = docker
+
+    machine = platform.machine().casefold()
+    checks["platform"] = {
+        "system": platform.system(),
+        "release": platform.release(),
+        "machine": platform.machine(),
+        "x86_64_recommended": machine in {"amd64", "x86_64"},
+    }
+    if machine not in {"amd64", "x86_64"}:
+        warnings.append("SWE-bench recommends x86_64; ARM support is experimental")
+
+    cpu_count = os.cpu_count() or 0
+    checks["cpu"] = {
+        "logical_count": cpu_count,
+        "recommended_minimum": 8,
+        "meets_recommendation": cpu_count >= 8,
+        "pilot_workers": max(1, min(2, int(cpu_count * 0.5) if cpu_count else 1)),
+    }
+    if cpu_count < 8:
+        warnings.append("SWE-bench recommends at least 8 CPU cores")
+
+    usage = shutil.disk_usage(path.resolve())
+    free_gib = usage.free / float(1024 ** 3)
+    checks["disk"] = {
+        "path": str(path.resolve()),
+        "free_gib": round(free_gib, 2),
+        "recommended_free_gib": 120,
+        "meets_recommendation": free_gib >= 120.0,
+    }
+    if free_gib < 120.0:
+        warnings.append(
+            "SWE-bench recommends about 120 GiB free storage for local evaluation"
+        )
+
+    result = {
+        "schema": "feynmap.swebench_r1_preflight.v1",
+        "ready_for_selection": bool(checks["datasets"]["available"]),
+        "ready_for_local_evaluation": bool(
+            checks["datasets"]["available"]
+            and checks["swebench_cli"]["available"]
+            and checks["docker"]["daemon_reachable"]
+        ),
+        "checks": checks,
+        "warnings": warnings,
+        "note": (
+            "Selection only needs dataset access. Local official grading additionally "
+            "needs the SWE-bench CLI and a reachable Docker daemon."
+        ),
+    }
+    return result
+
+
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -978,6 +1079,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         description="Run FeynMap R1 against real SWE-bench repair tasks"
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    preflight = sub.add_parser("preflight")
+    preflight.add_argument("--path", default=".")
+    preflight.add_argument("--pretty", action="store_true")
 
     select = sub.add_parser("select")
     select.add_argument("source")
@@ -1057,6 +1162,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     aggregate.add_argument("--pretty", action="store_true")
 
     args = parser.parse_args(argv)
+
+    if args.command == "preflight":
+        result = preflight_environment(Path(args.path))
+        print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
+        return 0
 
     if args.command == "select":
         dataset_name = args.dataset_name or args.source
