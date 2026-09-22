@@ -344,6 +344,72 @@ def _record(spec, task_index, arm, resolved=True):
     return record
 
 
+def test_context_generation_can_resume_completed_tasks(monkeypatch, tmp_path: Path):
+    import feynmap.judgment.swebench_r1 as module
+
+    spec = _audit_holdout_spec()
+    selected = [spec["tasks"][0]["id"], spec["tasks"][1]["id"]]
+    calls = []
+
+    def fake_generate_context(
+        spec_value,
+        task_id,
+        arm,
+        *,
+        project_root,
+        max_candidates,
+        max_relationships,
+        provider=None,
+    ):
+        calls.append((task_id, arm))
+        task = next(item for item in spec_value["tasks"] if item["id"] == task_id)
+        repository = task["repository"]
+        return {
+            "schema": "feynmap.ai_repair_context.v1",
+            "task_id": task_id,
+            "arm": arm,
+            "analysis_snapshot": {"snapshot_id": "snapshot-" + task_id},
+            "source_repository": {
+                "content_hash": repository["content_hash"],
+                "revision": repository["revision"],
+            },
+            "candidates": [
+                {
+                    "id": "python:symbol:%s.target" % task_id,
+                    "location": {"path": "pkg/target.py"},
+                }
+            ],
+            "relationships": [],
+            "selection": {"available_local_candidate_count": 1},
+        }
+
+    monkeypatch.setattr(module, "generate_context", fake_generate_context)
+    output_root = tmp_path / "contexts"
+
+    first = module.generate_context_matrix(
+        spec,
+        output_root=output_root,
+        project_root=tmp_path,
+        include_judged=False,
+        task_ids=selected,
+        resume=False,
+    )
+    assert len(calls) == 2
+    assert first["task_count"] == 2
+    assert first["complete"] is False
+
+    second = module.generate_context_matrix(
+        spec,
+        output_root=output_root,
+        project_root=tmp_path,
+        include_judged=False,
+        task_ids=selected,
+        resume=True,
+    )
+    assert len(calls) == 2
+    assert second["task_count"] == 2
+
+
 def test_context_audit_is_gold_blind_and_checks_shared_snapshot(tmp_path: Path):
     spec = _audit_holdout_spec()
     context_root = tmp_path / "contexts"
