@@ -12,6 +12,7 @@ from feynmap.judgment.swebench_r1 import (
     _arm_order,
     _patch_paths,
     aggregate_results,
+    audit_context_matrix,
     capture_swebench_patch,
     build_selection,
     export_predictions,
