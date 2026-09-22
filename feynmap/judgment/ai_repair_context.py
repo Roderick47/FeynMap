@@ -14,7 +14,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 import tempfile
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -259,22 +261,60 @@ def _base_context(
     max_relationships: int,
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]]]:
     repository = task["repository"]
+    task_id = str(task["id"])
+    timings: Dict[str, float] = {}
+    total_started = time.perf_counter()
+
     source = resolve_source_repository(project_root, str(repository["locator"]))
+    stage_started = time.perf_counter()
     actual_hash = repository_content_hash(
         source, policy=str(repository["content_hash_policy"])
     )
+    timings["repository_hash_seconds"] = time.perf_counter() - stage_started
     if actual_hash != str(repository["content_hash"]):
         raise ValueError(
             "repair benchmark repository content hash mismatch for task %s"
             % task["id"]
         )
+    print(
+        "[context:%s] repository hash %.1fs" % (
+            task_id, timings["repository_hash_seconds"]
+        ),
+        file=sys.stderr,
+        flush=True,
+    )
 
     sealed = [str(path) for path in task["oracle"].get("sealed_files") or []]
     with tempfile.TemporaryDirectory(prefix="feynmap-r1-context-") as temp:
         sanitized = Path(temp) / "repository"
+
+        stage_started = time.perf_counter()
         _copy_repository(source, sanitized, excluded_files=sealed)
         _seed_identity(sanitized, task)
+        timings["copy_sanitize_seconds"] = time.perf_counter() - stage_started
+        print(
+            "[context:%s] copy/sanitize %.1fs" % (
+                task_id, timings["copy_sanitize_seconds"]
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+
+        stage_started = time.perf_counter()
         graph = FeynMapEngine().analyze(str(sanitized))
+        timings["analysis_seconds"] = time.perf_counter() - stage_started
+        print(
+            "[context:%s] FeynMap analysis %.1fs (%d nodes, %d edges)" % (
+                task_id,
+                timings["analysis_seconds"],
+                len(graph.nodes),
+                len(graph.edges),
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+
+        stage_started = time.perf_counter()
         snapshot = capture_repository_snapshot(
             sanitized,
             graph,
@@ -284,12 +324,37 @@ def _base_context(
                 "sealed_oracles_excluded": True,
             },
         )
+        timings["snapshot_seconds"] = time.perf_counter() - stage_started
+        print(
+            "[context:%s] snapshot/hash %.1fs" % (
+                task_id, timings["snapshot_seconds"]
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+
+        stage_started = time.perf_counter()
         candidates, relationships, selection = _candidate_pool(
             graph,
             str(task["description"]),
             max_candidates=max_candidates,
             max_relationships=max_relationships,
         )
+        timings["candidate_pool_seconds"] = time.perf_counter() - stage_started
+        print(
+            "[context:%s] candidate pool %.1fs" % (
+                task_id, timings["candidate_pool_seconds"]
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+
+    timings["total_seconds"] = time.perf_counter() - total_started
+    print(
+        "[context:%s] total %.1fs" % (task_id, timings["total_seconds"]),
+        file=sys.stderr,
+        flush=True,
+    )
 
     context = {
         "schema": CONTEXT_SCHEMA,
@@ -314,6 +379,10 @@ def _base_context(
             "language_or_framework_rules": False,
             "max_candidates": int(max_candidates),
             "max_relationships": int(max_relationships),
+        },
+        "performance": {
+            key: round(float(value), 6)
+            for key, value in timings.items()
         },
         "candidates": candidates,
         "relationships": relationships,
