@@ -24,7 +24,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 
 
-EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache"}
+EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache", ".feynmap"}
 ResolvedAlias = Tuple[str, List[str], float]
 
 
