@@ -124,15 +124,8 @@ def _build_boundary_index(
             modules.setdefault(path, node)
         elif node.kind in owner_kinds:
             owners.setdefault(path, []).append(node)
-    for path_nodes in owners.values():
-        path_nodes.sort(
-            key=lambda node: (
-                node.location.line or 1,
-                node.location.end_line
-                if node.location.end_line is not None
-                else 2 ** 31,
-            )
-        )
+    # Keep graph insertion order inside each path. The owner sweep records
+    # that order as its stable tie-breaker, matching the historical resolver.
     return modules, owners
 
 
