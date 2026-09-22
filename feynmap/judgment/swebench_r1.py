@@ -589,7 +589,8 @@ def aggregate_results(
     spec: Mapping[str, Any],
     records: Sequence[Mapping[str, Any]],
     *,
-    run_root: Path,
+    run_root: Optional[Path] = None,
+    run_roots: Optional[Mapping[str, Path]] = None,
 ) -> Dict[str, Any]:
     """Join official SWE-bench reports to FeynMap generation telemetry."""
     validate_spec(spec)
@@ -601,7 +602,15 @@ def aggregate_results(
             raise ValueError("generation record is not in benchmark: %s" % task_id)
         if record.get("benchmark_hash") != content_hash(spec):
             raise ValueError("generation record benchmark hash mismatch")
-        path = _report_path(run_root, record)
+        arm = str(record["arm"])
+        root = (
+            Path(run_roots[arm])
+            if run_roots is not None and arm in run_roots
+            else run_root
+        )
+        if root is None:
+            raise ValueError("no SWE-bench report root configured for arm %s" % arm)
+        path = _report_path(Path(root), record)
         if not path.is_file():
             raise ValueError("missing official SWE-bench report: %s" % path)
         report = load_json(path)
@@ -981,8 +990,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     aggregate = sub.add_parser("aggregate")
     aggregate.add_argument("spec")
-    aggregate.add_argument("records", nargs="+")
-    aggregate.add_argument("--run-root", required=True)
+    aggregate.add_argument("records", nargs="*")
+    aggregate.add_argument(
+        "--records-root",
+        help="Recursively load generation JSON records from this directory",
+    )
+    aggregate.add_argument(
+        "--run-root",
+        action="append",
+        required=True,
+        help=(
+            "SWE-bench evaluation root. Use ARM=PATH once per arm, or one "
+            "plain PATH when all reports share a root."
+        ),
+    )
     aggregate.add_argument("--output")
     aggregate.add_argument("--pretty", action="store_true")
 
@@ -1115,8 +1136,46 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     spec = load_json(Path(args.spec))
-    records = _load_generation_records([Path(path) for path in args.records])
-    result = aggregate_results(spec, records, run_root=Path(args.run_root))
+    record_paths = [Path(path) for path in args.records]
+    if args.records_root:
+        record_paths.extend(
+            sorted(
+                path
+                for path in Path(args.records_root).rglob("*.json")
+                if path.name != "prediction_matrix.json"
+            )
+        )
+    if not record_paths:
+        parser.error("aggregate requires records or --records-root")
+    records = _load_generation_records(record_paths)
+
+    shared_root = None
+    arm_roots = {}
+    for raw in args.run_root:
+        if "=" in raw:
+            arm, path_value = raw.split("=", 1)
+            arm = arm.strip()
+            if arm not in ARMS or not path_value.strip():
+                parser.error("--run-root ARM=PATH uses a known R1 arm")
+            arm_roots[arm] = Path(path_value.strip())
+        else:
+            if shared_root is not None or arm_roots:
+                parser.error(
+                    "use either one shared --run-root PATH or repeated ARM=PATH roots"
+                )
+            shared_root = Path(raw)
+    if arm_roots and set(arm_roots) != set(ARMS):
+        parser.error(
+            "per-arm run roots must define all four arms: %s"
+            % ", ".join(ARMS)
+        )
+
+    result = aggregate_results(
+        spec,
+        records,
+        run_root=shared_root,
+        run_roots=arm_roots or None,
+    )
     if args.output:
         _write_json(Path(args.output), result)
     print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
