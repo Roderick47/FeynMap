@@ -295,6 +295,65 @@ def _record(spec, task_index, arm, resolved=True):
     return record
 
 
+def test_context_audit_is_gold_blind_and_checks_shared_snapshot(tmp_path: Path):
+    spec = _spec()
+    context_root = tmp_path / "contexts"
+    context_root.mkdir()
+
+    task_rows = []
+    for task in spec["tasks"]:
+        task_id = task["id"]
+        task_dir = context_root / task_id
+        task_dir.mkdir()
+        deterministic = {
+            "schema": "feynmap.ai_repair_context.v1",
+            "task_id": task_id,
+            "arm": "deterministic_context",
+            "analysis_snapshot": {"snapshot_id": "snapshot-" + task_id},
+            "candidates": [
+                {
+                    "id": "python:symbol:%s.target" % task_id,
+                    "language": "python",
+                    "framework": None,
+                    "location": {"path": "pkg/target.py"},
+                }
+            ],
+            "relationships": [],
+        }
+        path = task_dir / "deterministic_context.json"
+        path.write_text(json.dumps(deterministic), encoding="utf-8")
+        task_rows.append(
+            {
+                "task_id": task_id,
+                "deterministic_context": str(path),
+                "relevance_context": None,
+                "dual_channel": None,
+            }
+        )
+
+    manifest = {
+        "schema": "feynmap.swebench_r1_context_matrix.v1",
+        "benchmark_hash": content_hash(spec),
+        "task_count": len(task_rows),
+        "judged_context_included": False,
+        "policy": {},
+        "tasks": task_rows,
+    }
+    manifest["matrix_id"] = content_hash(manifest)
+    (context_root / "matrix.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+
+    result = audit_context_matrix(spec, context_root=context_root)
+
+    assert result["schema"] == "feynmap.swebench_r1_context_audit.v1"
+    assert result["oracle_leakage_detected"] is False
+    assert result["policy"]["gold_labels_consulted"] is False
+    assert result["policy"]["reference_changed_files_consulted"] is False
+    assert result["task_count"] == 2
+    assert result["mean_candidate_count"] == 1.0
+
+
 def test_swebench_patch_handles_modified_created_and_deleted_files(tmp_path: Path):
     baseline = tmp_path / "baseline"
     workspace = tmp_path / "workspace"
