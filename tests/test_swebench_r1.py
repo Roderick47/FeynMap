@@ -72,8 +72,20 @@ def test_selection_is_deterministic_and_contains_no_gold_fields():
     rendered = json.dumps(first, sort_keys=True)
     assert "SECRET TEST PATCH" not in rendered
     assert "SECRET HINT" not in rendered
-    assert '"patch"' not in rendered
-    assert '"test_patch"' not in rendered
+
+    selected_task_keys = {key for task in first["tasks"] for key in task}
+    assert "patch" not in selected_task_keys
+    assert "test_patch" not in selected_task_keys
+    assert "FAIL_TO_PASS" not in selected_task_keys
+    assert "PASS_TO_PASS" not in selected_task_keys
+    assert "hints_text" not in selected_task_keys
+    assert set(first["selection_policy"]["excluded_gold_keys"]) >= {
+        "patch",
+        "test_patch",
+        "FAIL_TO_PASS",
+        "PASS_TO_PASS",
+        "hints_text",
+    }
 
     counts = {}
     for task in first["tasks"]:
