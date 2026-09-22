@@ -9,6 +9,7 @@ from feynmap.judgment.swebench_r1 import (
     GENERATION_SCHEMA,
     REPORT_SCHEMA,
     SELECTION_SCHEMA,
+    _arm_order,
     _patch_paths,
     aggregate_results,
     build_selection,
@@ -78,6 +79,42 @@ def test_selection_is_deterministic_and_contains_no_gold_fields():
         counts[task["repo"]] = counts.get(task["repo"], 0) + 1
     assert max(counts.values()) <= 2
     validate_selection(first, rows)
+
+
+def test_selection_is_independent_of_gold_patch_and_test_contents():
+    rows = _rows()
+    original = build_selection(
+        rows,
+        dataset_name="verified",
+        split="test",
+        corpus_id="r1-gold-blind",
+        count=5,
+        selected_at="2026-09-22T00:00:00+00:00",
+    )
+    changed = copy.deepcopy(rows)
+    for index, row in enumerate(changed):
+        row["patch"] = "COMPLETELY DIFFERENT GOLD %d" % index
+        row["test_patch"] = "COMPLETELY DIFFERENT TEST %d" % index
+        row["FAIL_TO_PASS"] = json.dumps(["secret_changed_%d" % index])
+        row["PASS_TO_PASS"] = json.dumps([])
+        row["hints_text"] = "different hidden hint"
+
+    repeated = build_selection(
+        changed,
+        dataset_name="verified",
+        split="test",
+        corpus_id="r1-gold-blind",
+        count=5,
+        selected_at="2026-09-22T00:00:00+00:00",
+    )
+    assert repeated == original
+
+
+def test_arm_order_is_a_deterministic_counterbalanced_rotation():
+    orders = [_arm_order("task-%d" % index) for index in range(20)]
+    assert all(set(order) == set(ARMS) and len(order) == len(ARMS) for order in orders)
+    assert all(order == _arm_order("task-%d" % index) for index, order in enumerate(orders))
+    assert len({tuple(order) for order in orders}) > 1
 
 
 def test_selection_validation_detects_metadata_tampering():
