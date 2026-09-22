@@ -15,6 +15,7 @@ from ._python import (
     has_base,
     imported,
     imports_by_file,
+    iter_python_files,
     mark_role,
     node_imports,
     repository_imports,
@@ -34,7 +35,7 @@ class DjangoAdapter(FrameworkAdapter):
         imports = repository_imports(project_path)
         if imported(imports, "django"):
             score += 0.35
-        if any(path.name == "settings.py" for path in project_path.rglob("settings.py")):
+        if any(path.name == "settings.py" for path in iter_python_files(project_path)):
             score += 0.1
         return min(1.0, score)
 
