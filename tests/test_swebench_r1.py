@@ -15,6 +15,7 @@ from feynmap.judgment.swebench_r1 import (
     capture_swebench_patch,
     build_selection,
     export_predictions,
+    preflight_environment,
     validate_selection,
 )
 
@@ -43,6 +44,43 @@ def _rows(count=10):
             }
         )
     return result
+
+
+def test_preflight_reports_selection_and_local_evaluation_readiness(
+    monkeypatch, tmp_path: Path
+):
+    import feynmap.judgment.swebench_r1 as module
+
+    monkeypatch.setattr(
+        module.shutil,
+        "which",
+        lambda name: "C:/tools/%s.exe" % name,
+    )
+
+    class Completed:
+        returncode = 0
+        stdout = "27.0.0\n"
+        stderr = ""
+
+    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: Completed())
+    monkeypatch.setattr(module.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(
+        module.shutil,
+        "disk_usage",
+        lambda path: type("Usage", (), {"free": 130 * 1024 ** 3})(),
+    )
+
+    result = preflight_environment(tmp_path)
+
+    assert result["schema"] == "feynmap.swebench_r1_preflight.v1"
+    assert result["checks"]["swebench_cli"]["available"] is True
+    assert result["checks"]["docker"]["daemon_reachable"] is True
+    assert result["checks"]["cpu"]["meets_recommendation"] is True
+    assert result["checks"]["disk"]["meets_recommendation"] is True
+    # The real datasets import determines selection readiness in this test
+    # environment; local-evaluation readiness can only be true when it is present.
+    if result["checks"]["datasets"]["available"]:
+        assert result["ready_for_local_evaluation"] is True
 
 
 def test_selection_is_deterministic_and_contains_no_gold_fields():
