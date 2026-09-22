@@ -27,6 +27,7 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from collections import Counter
@@ -779,6 +780,47 @@ def aggregate_results(
     return result
 
 
+def _load_reusable_context(
+    path: Path,
+    *,
+    task: Mapping[str, Any],
+    arm: str,
+) -> Optional[Mapping[str, Any]]:
+    """Return an existing context only when it still matches the frozen task."""
+    if not path.is_file():
+        return None
+    context = load_json(path)
+    if (
+        context.get("schema") != "feynmap.ai_repair_context.v1"
+        or context.get("task_id") != str(task["id"])
+        or context.get("arm") != arm
+    ):
+        return None
+    source = context.get("source_repository") or {}
+    repository = task.get("repository") or {}
+    if (
+        source.get("content_hash") != repository.get("content_hash")
+        or source.get("revision") != repository.get("revision")
+    ):
+        return None
+    if _contains_leakage_key(context):
+        raise ValueError("reusable context contains reserved oracle metadata")
+    return context
+
+
+def _context_progress(
+    position: int,
+    total: int,
+    task_id: str,
+    message: str,
+) -> None:
+    print(
+        "[%d/%d] %s: %s" % (position, total, task_id, message),
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def generate_context_matrix(
     spec: Mapping[str, Any],
     *,
@@ -787,8 +829,10 @@ def generate_context_matrix(
     include_judged: bool = True,
     max_candidates: int = 32,
     max_relationships: int = 64,
+    task_ids: Optional[Sequence[str]] = None,
+    resume: bool = False,
 ) -> Dict[str, Any]:
-    """Generate one shared assisted-context matrix for every held-out task.
+    """Generate shared assisted context with observable, resumable execution.
 
     Relevance context is derived from the dual-channel call so relevance and
     dual-channel arms receive byte-equivalent relevance ordering. This avoids a
@@ -796,23 +840,72 @@ def generate_context_matrix(
     the only difference between those two arms.
     """
     validate_holdout_spec(spec)
+    requested = set(str(value) for value in (task_ids or ()))
+    known = {str(task["id"]) for task in spec["tasks"]}
+    unknown = sorted(requested - known)
+    if unknown:
+        raise ValueError("unknown R1 context task(s): %s" % ", ".join(unknown))
+
+    tasks = [
+        task for task in spec["tasks"]
+        if not requested or str(task["id"]) in requested
+    ]
     provider = JevJudgmentProvider() if include_judged else None
     rows = []
-    for task in spec["tasks"]:
+    total = len(tasks)
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    for position, task in enumerate(tasks, 1):
         task_id = str(task["id"])
         task_dir = output_root / task_id
         task_dir.mkdir(parents=True, exist_ok=True)
 
-        deterministic = generate_context(
-            spec,
-            task_id,
-            "deterministic_context",
-            project_root=project_root,
-            max_candidates=max_candidates,
-            max_relationships=max_relationships,
-        )
         deterministic_path = task_dir / "deterministic_context.json"
-        _write_json(deterministic_path, deterministic)
+        deterministic = (
+            _load_reusable_context(
+                deterministic_path,
+                task=task,
+                arm="deterministic_context",
+            )
+            if resume
+            else None
+        )
+        if deterministic is not None:
+            _context_progress(
+                position,
+                total,
+                task_id,
+                "reusing deterministic context (%d candidates)"
+                % len(deterministic.get("candidates") or []),
+            )
+        else:
+            _context_progress(position, total, task_id, "analyzing deterministic context...")
+            started = time.perf_counter()
+            deterministic = generate_context(
+                spec,
+                task_id,
+                "deterministic_context",
+                project_root=project_root,
+                max_candidates=max_candidates,
+                max_relationships=max_relationships,
+            )
+            _write_json(deterministic_path, deterministic)
+            elapsed = time.perf_counter() - started
+            selection = deterministic.get("selection") or {}
+            _context_progress(
+                position,
+                total,
+                task_id,
+                (
+                    "deterministic done in %.1fs; %d/%s candidates, %d relationships"
+                    % (
+                        elapsed,
+                        len(deterministic.get("candidates") or []),
+                        selection.get("available_local_candidate_count", "?"),
+                        len(deterministic.get("relationships") or []),
+                    )
+                ),
+            )
 
         item = {
             "task_id": task_id,
@@ -822,26 +915,62 @@ def generate_context_matrix(
         }
 
         if include_judged:
-            dual = generate_context(
-                spec,
-                task_id,
-                "dual_channel",
-                project_root=project_root,
-                provider=provider,
-                max_candidates=max_candidates,
-                max_relationships=max_relationships,
-            )
             dual_path = task_dir / "dual_channel.json"
-            _write_json(dual_path, dual)
-
-            relevance = copy.deepcopy(dual)
-            relevance["arm"] = "relevance_context"
-            relevance.pop("repair_guidance", None)
-            generation = dict(relevance.get("generation") or {})
-            generation.pop("roles", None)
-            relevance["generation"] = generation
             relevance_path = task_dir / "relevance_context.json"
-            _write_json(relevance_path, relevance)
+            dual = (
+                _load_reusable_context(dual_path, task=task, arm="dual_channel")
+                if resume
+                else None
+            )
+            relevance = (
+                _load_reusable_context(
+                    relevance_path,
+                    task=task,
+                    arm="relevance_context",
+                )
+                if resume
+                else None
+            )
+            if dual is not None and relevance is not None:
+                _context_progress(
+                    position,
+                    total,
+                    task_id,
+                    "reusing judged relevance + dual-channel contexts",
+                )
+            else:
+                _context_progress(
+                    position,
+                    total,
+                    task_id,
+                    "running shared Jev relevance + repair-role judgments...",
+                )
+                started = time.perf_counter()
+                dual = generate_context(
+                    spec,
+                    task_id,
+                    "dual_channel",
+                    project_root=project_root,
+                    provider=provider,
+                    max_candidates=max_candidates,
+                    max_relationships=max_relationships,
+                )
+                _write_json(dual_path, dual)
+
+                relevance = copy.deepcopy(dual)
+                relevance["arm"] = "relevance_context"
+                relevance.pop("repair_guidance", None)
+                generation = dict(relevance.get("generation") or {})
+                generation.pop("roles", None)
+                relevance["generation"] = generation
+                _write_json(relevance_path, relevance)
+                elapsed = time.perf_counter() - started
+                _context_progress(
+                    position,
+                    total,
+                    task_id,
+                    "judged contexts done in %.1fs" % elapsed,
+                )
 
             if [row["id"] for row in relevance["candidates"]] != [
                 row["id"] for row in dual["candidates"]
@@ -854,23 +983,29 @@ def generate_context_matrix(
 
         rows.append(item)
 
-    manifest = {
-        "schema": "feynmap.swebench_r1_context_matrix.v1",
-        "benchmark_hash": content_hash(spec),
-        "task_count": len(rows),
-        "judged_context_included": bool(include_judged),
-        "policy": {
-            "shared_candidate_pool": True,
-            "dual_channel_preserves_relevance_order": True,
-            "relevance_derived_from_dual_relevance_call": True,
-            "max_candidates": int(max_candidates),
-            "max_relationships": int(max_relationships),
-        },
-        "tasks": rows,
-    }
-    manifest["matrix_id"] = content_hash(manifest)
-    _write_json(output_root / "matrix.json", manifest)
-    return manifest
+        # Checkpoint after every task so interruption leaves a usable progress
+        # manifest. Full audits still require all frozen tasks.
+        checkpoint = {
+            "schema": "feynmap.swebench_r1_context_matrix.v1",
+            "benchmark_hash": content_hash(spec),
+            "task_count": len(rows),
+            "expected_task_count": len(spec["tasks"]),
+            "complete": len(rows) == len(spec["tasks"]) and not requested,
+            "judged_context_included": bool(include_judged),
+            "policy": {
+                "shared_candidate_pool": True,
+                "dual_channel_preserves_relevance_order": True,
+                "relevance_derived_from_dual_relevance_call": True,
+                "max_candidates": int(max_candidates),
+                "max_relationships": int(max_relationships),
+            },
+            "tasks": rows,
+        }
+        checkpoint["matrix_id"] = content_hash(checkpoint)
+        _write_json(output_root / "matrix.json", checkpoint)
+
+    manifest = load_json(output_root / "matrix.json")
+    return dict(manifest)
 
 
 def audit_context_matrix(
@@ -1261,6 +1396,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     contexts.add_argument("--deterministic-only", action="store_true")
     contexts.add_argument("--max-candidates", type=int, default=32)
     contexts.add_argument("--max-relationships", type=int, default=64)
+    contexts.add_argument(
+        "--task",
+        action="append",
+        default=[],
+        help="Generate only this task id; may be repeated for diagnostics.",
+    )
+    contexts.add_argument(
+        "--resume",
+        action="store_true",
+        help="Reuse matching context files completed by an earlier interrupted run.",
+    )
 
     matrix = sub.add_parser("run-matrix")
     matrix.add_argument("spec")
@@ -1380,6 +1526,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             include_judged=not args.deterministic_only,
             max_candidates=args.max_candidates,
             max_relationships=args.max_relationships,
+            task_ids=args.task,
+            resume=args.resume,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
