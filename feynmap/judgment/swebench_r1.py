@@ -19,6 +19,7 @@ JSON or JSONL, or an optional Hugging Face dataset when datasets is installed.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -47,6 +48,8 @@ from .ai_repair_execution import (
     resolve_source_repository,
 )
 from .ai_repair_holdout import build_holdout_lock, validate_holdout_spec
+from .ai_repair_context import generate_context
+from .jev import JevJudgmentProvider
 
 SELECTION_SCHEMA = "feynmap.swebench_r1_selection.v1"
 GENERATION_SCHEMA = "feynmap.swebench_r1_generation.v1"
@@ -715,6 +718,198 @@ def aggregate_results(
     return result
 
 
+def generate_context_matrix(
+    spec: Mapping[str, Any],
+    *,
+    output_root: Path,
+    project_root: Path,
+    include_judged: bool = True,
+    max_candidates: int = 32,
+    max_relationships: int = 64,
+) -> Dict[str, Any]:
+    """Generate one shared assisted-context matrix for every held-out task.
+
+    Relevance context is derived from the dual-channel call so relevance and
+    dual-channel arms receive byte-equivalent relevance ordering. This avoids a
+    second stochastic relevance judgment and ensures repair-role guidance is
+    the only difference between those two arms.
+    """
+    validate_holdout_spec(spec)
+    provider = JevJudgmentProvider() if include_judged else None
+    rows = []
+    for task in spec["tasks"]:
+        task_id = str(task["id"])
+        task_dir = output_root / task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
+
+        deterministic = generate_context(
+            spec,
+            task_id,
+            "deterministic_context",
+            project_root=project_root,
+            max_candidates=max_candidates,
+            max_relationships=max_relationships,
+        )
+        deterministic_path = task_dir / "deterministic_context.json"
+        _write_json(deterministic_path, deterministic)
+
+        item = {
+            "task_id": task_id,
+            "deterministic_context": str(deterministic_path),
+            "relevance_context": None,
+            "dual_channel": None,
+        }
+
+        if include_judged:
+            dual = generate_context(
+                spec,
+                task_id,
+                "dual_channel",
+                project_root=project_root,
+                provider=provider,
+                max_candidates=max_candidates,
+                max_relationships=max_relationships,
+            )
+            dual_path = task_dir / "dual_channel.json"
+            _write_json(dual_path, dual)
+
+            relevance = copy.deepcopy(dual)
+            relevance["arm"] = "relevance_context"
+            relevance.pop("repair_guidance", None)
+            generation = dict(relevance.get("generation") or {})
+            generation.pop("roles", None)
+            relevance["generation"] = generation
+            relevance_path = task_dir / "relevance_context.json"
+            _write_json(relevance_path, relevance)
+
+            if [row["id"] for row in relevance["candidates"]] != [
+                row["id"] for row in dual["candidates"]
+            ]:
+                raise ValueError(
+                    "dual-channel role guidance changed relevance context order"
+                )
+            item["relevance_context"] = str(relevance_path)
+            item["dual_channel"] = str(dual_path)
+
+        rows.append(item)
+
+    manifest = {
+        "schema": "feynmap.swebench_r1_context_matrix.v1",
+        "benchmark_hash": content_hash(spec),
+        "task_count": len(rows),
+        "judged_context_included": bool(include_judged),
+        "policy": {
+            "shared_candidate_pool": True,
+            "dual_channel_preserves_relevance_order": True,
+            "relevance_derived_from_dual_relevance_call": True,
+            "max_candidates": int(max_candidates),
+            "max_relationships": int(max_relationships),
+        },
+        "tasks": rows,
+    }
+    manifest["matrix_id"] = content_hash(manifest)
+    _write_json(output_root / "matrix.json", manifest)
+    return manifest
+
+
+def _arm_order(task_id: str) -> List[str]:
+    """Deterministically counterbalance arm execution order across tasks."""
+    offset = int(hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:8], 16) % len(
+        ARMS
+    )
+    return list(ARMS[offset:] + ARMS[:offset])
+
+
+def run_prediction_matrix(
+    spec: Mapping[str, Any],
+    *,
+    context_root: Path,
+    output_root: Path,
+    project_root: Path,
+    agent: CommandRepairAgent,
+    resume: bool = False,
+) -> Dict[str, Any]:
+    """Run all four R1 arms in a deterministic counterbalanced task matrix."""
+    validate_holdout_spec(spec)
+    context_manifest = load_json(context_root / "matrix.json")
+    if context_manifest.get("benchmark_hash") != content_hash(spec):
+        raise ValueError("context matrix benchmark hash mismatch")
+
+    context_index = {
+        str(row["task_id"]): row for row in context_manifest.get("tasks") or []
+    }
+    records = []
+    execution_order = []
+    for task in spec["tasks"]:
+        task_id = str(task["id"])
+        if task_id not in context_index:
+            raise ValueError("context matrix is missing task %s" % task_id)
+        for arm in _arm_order(task_id):
+            execution_order.append({"task_id": task_id, "arm": arm})
+            record_path = output_root / "records" / task_id / ("%s.json" % arm)
+            if resume and record_path.is_file():
+                record = load_json(record_path)
+                expected = content_hash(
+                    {
+                        key: value
+                        for key, value in record.items()
+                        if key != "generation_id"
+                    }
+                )
+                if (
+                    record.get("schema") != GENERATION_SCHEMA
+                    or record.get("generation_id") != expected
+                    or record.get("benchmark_hash") != content_hash(spec)
+                ):
+                    raise ValueError(
+                        "existing generation record is invalid: %s" % record_path
+                    )
+                records.append(record)
+                continue
+
+            context = None
+            if arm != "unassisted":
+                raw_path = context_index[task_id].get(arm)
+                if not raw_path:
+                    raise ValueError(
+                        "context matrix has no %s context for %s" % (arm, task_id)
+                    )
+                context = load_json(Path(str(raw_path)))
+
+            record = generate_prediction(
+                spec,
+                task_id,
+                arm,
+                project_root=project_root,
+                context=context,
+                agent=agent,
+            )
+            _write_json(record_path, record)
+            records.append(record)
+
+    predictions_dir = output_root / "predictions"
+    predictions_dir.mkdir(parents=True, exist_ok=True)
+    prediction_files = {}
+    for arm in ARMS:
+        path = predictions_dir / ("%s.jsonl" % arm)
+        path.write_text(export_predictions(records, arm=arm), encoding="utf-8")
+        prediction_files[arm] = str(path)
+
+    result = {
+        "schema": "feynmap.swebench_r1_prediction_matrix.v1",
+        "benchmark_hash": content_hash(spec),
+        "context_matrix_id": str(context_manifest.get("matrix_id") or ""),
+        "generation_count": len(records),
+        "expected_generation_count": len(spec["tasks"]) * len(ARMS),
+        "counterbalanced_execution_order": execution_order,
+        "prediction_files": prediction_files,
+        "records_root": str(output_root / "records"),
+    }
+    result["matrix_id"] = content_hash(result)
+    _write_json(output_root / "prediction_matrix.json", result)
+    return result
+
+
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -745,6 +940,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     prepare.add_argument("--output", required=True)
     prepare.add_argument("--lock-output", required=True)
     prepare.add_argument("--reuse-existing", action="store_true")
+
+    contexts = sub.add_parser("generate-contexts")
+    contexts.add_argument("spec")
+    contexts.add_argument("--project-root", default=".")
+    contexts.add_argument("--output-root", required=True)
+    contexts.add_argument("--deterministic-only", action="store_true")
+    contexts.add_argument("--max-candidates", type=int, default=32)
+    contexts.add_argument("--max-relationships", type=int, default=64)
+
+    matrix = sub.add_parser("run-matrix")
+    matrix.add_argument("spec")
+    matrix.add_argument("--context-root", required=True)
+    matrix.add_argument("--output-root", required=True)
+    matrix.add_argument("--project-root", default=".")
+    matrix.add_argument("--provider", required=True)
+    matrix.add_argument("--model", required=True)
+    matrix.add_argument("--agent-timeout", type=float, default=900.0)
+    matrix.add_argument("--pass-env", action="append", default=[])
+    matrix.add_argument("--resume", action="store_true")
+    matrix.add_argument("agent_command", nargs=argparse.REMAINDER)
 
     predict = sub.add_parser("record-prediction")
     predict.add_argument("spec")
@@ -815,6 +1030,49 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 sort_keys=True,
             )
         )
+        return 0
+
+    if args.command == "generate-contexts":
+        spec = load_json(Path(args.spec))
+        result = generate_context_matrix(
+            spec,
+            output_root=Path(args.output_root),
+            project_root=Path(args.project_root),
+            include_judged=not args.deterministic_only,
+            max_candidates=args.max_candidates,
+            max_relationships=args.max_relationships,
+        )
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+
+    if args.command == "run-matrix":
+        spec = load_json(Path(args.spec))
+        command = list(args.agent_command)
+        if command and command[0] == "--":
+            command = command[1:]
+        if not command:
+            parser.error("an agent command must follow --")
+        environment = {}
+        for name in args.pass_env:
+            if name not in os.environ:
+                parser.error("requested environment variable is not set: %s" % name)
+            environment[name] = os.environ[name]
+        agent = CommandRepairAgent(
+            command,
+            provider=args.provider,
+            model=args.model,
+            timeout_seconds=args.agent_timeout,
+            environment=environment,
+        )
+        result = run_prediction_matrix(
+            spec,
+            context_root=Path(args.context_root),
+            output_root=Path(args.output_root),
+            project_root=Path(args.project_root),
+            agent=agent,
+            resume=args.resume,
+        )
+        print(json.dumps(result, indent=2, sort_keys=True))
         return 0
 
     if args.command == "record-prediction":
