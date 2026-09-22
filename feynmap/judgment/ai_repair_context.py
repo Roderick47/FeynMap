@@ -380,10 +380,6 @@ def _base_context(
             "max_candidates": int(max_candidates),
             "max_relationships": int(max_relationships),
         },
-        "performance": {
-            key: round(float(value), 6)
-            for key, value in timings.items()
-        },
         "candidates": candidates,
         "relationships": relationships,
         "selection": selection,
