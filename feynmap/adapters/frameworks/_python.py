@@ -9,7 +9,7 @@ from typing import Dict, Iterable, List, Optional, Set
 from feynmap.core import Evidence, EvidenceKind, NodeKind, SemanticGraph, SemanticNode
 from feynmap.integration import add_contract
 
-EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__"}
+EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", ".feynmap"}
 DEPENDENCY_FILES = ("requirements.txt", "pyproject.toml", "Pipfile", "poetry.lock", "setup.py", "setup.cfg")
 HTTP_METHODS = ("get", "post", "put", "patch", "delete", "options", "head")
 
