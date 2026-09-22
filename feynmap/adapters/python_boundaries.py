@@ -10,7 +10,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from feynmap.core import NodeKind, SemanticGraph, SemanticNode
 from feynmap.integration import add_contract
 
-EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox"}
+EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".feynmap"}
 HTTP_ROOTS = {"requests", "httpx"}
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 PROCESS_APIS = {"subprocess.run", "subprocess.call", "subprocess.check_call", "subprocess.check_output", "subprocess.Popen", "os.system"}
