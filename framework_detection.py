@@ -18,7 +18,7 @@ class FrameworkDetector:
     """Detect the dominant supported Python framework without importing project code."""
 
     FRAMEWORKS = ("django", "flask", "fastapi")
-    EXCLUDED_DIRS = {".git", "venv", ".venv", "env", "node_modules", "__pycache__"}
+    EXCLUDED_DIRS = {".git", "venv", ".venv", "env", "node_modules", "__pycache__", ".feynmap"}
 
     def detect(self, project_path: str) -> FrameworkDetectionResult:
         root = Path(project_path).resolve()
