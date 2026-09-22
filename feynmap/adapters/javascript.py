@@ -17,7 +17,7 @@ from feynmap.core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdg
 from feynmap.integration import add_contract
 from .base import LanguageAdapter
 
-EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", "dist", "build", "coverage"}
+EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", "dist", "build", "coverage", ".feynmap"}
 JS_EXTENSIONS = {".js", ".mjs", ".cjs", ".jsx"}
 IDENT = r"[A-Za-z_$][A-Za-z0-9_$]*"
 FUNCTION_RE = re.compile(r"(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+(%s)\s*\(" % IDENT)
