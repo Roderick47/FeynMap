@@ -263,6 +263,54 @@ def _spec():
     }
 
 
+def _audit_holdout_spec():
+    base = _spec()
+    tasks = []
+    for index in range(5):
+        source = copy.deepcopy(base["tasks"][index % len(base["tasks"])])
+        source["id"] = "audit-instance-%d" % index
+        source["description"] = "Audit repair issue %d." % index
+        source["repository"] = {
+            "locator": "path:/tmp/audit-instance-%d" % index,
+            "revision": "%040x" % (index + 101),
+            "content_hash_policy": "canonical_text_lf_v1",
+            "content_hash": "%064x" % (index + 201),
+        }
+        source["external_evaluator"] = {
+            "kind": "swebench",
+            "dataset_name": "verified",
+            "split": "test",
+            "instance_id": source["id"],
+            "repo": "owner/repo-%d" % index,
+            "base_commit": source["repository"]["revision"],
+            "gold_changed_files_proxy": ["pkg/target%d.py" % index],
+        }
+        source["admission"] = {
+            "source_group": "owner/repo-%d" % index,
+            "source_reference": source["id"],
+            "selection_reason": "Selected before assisted results.",
+            "used_for_policy_tuning": False,
+            "solution_inspected_before_selection": False,
+        }
+        tasks.append(source)
+
+    return {
+        "schema": base["schema"],
+        "name": "audit held-out test",
+        "evaluation_tier": "held_out",
+        "arms": list(ARMS),
+        "holdout": {
+            "corpus_id": "audit-heldout-v1",
+            "selection_policy": "Deterministic test fixture selection.",
+            "selected_at": "2026-09-22T00:00:00Z",
+            "selection_owner": "test",
+            "assisted_results_observed_before_freeze": False,
+            "policy_tuning_allowed_after_freeze": False,
+        },
+        "tasks": tasks,
+    }
+
+
 def _record(spec, task_index, arm, resolved=True):
     task_id = "instance-%d" % task_index
     model = "model/%s" % arm
@@ -297,7 +345,7 @@ def _record(spec, task_index, arm, resolved=True):
 
 
 def test_context_audit_is_gold_blind_and_checks_shared_snapshot(tmp_path: Path):
-    spec = _spec()
+    spec = _audit_holdout_spec()
     context_root = tmp_path / "contexts"
     context_root.mkdir()
 
@@ -351,7 +399,7 @@ def test_context_audit_is_gold_blind_and_checks_shared_snapshot(tmp_path: Path):
     assert result["oracle_leakage_detected"] is False
     assert result["policy"]["gold_labels_consulted"] is False
     assert result["policy"]["reference_changed_files_consulted"] is False
-    assert result["task_count"] == 2
+    assert result["task_count"] == 5
     assert result["mean_candidate_count"] == 1.0
 
 
