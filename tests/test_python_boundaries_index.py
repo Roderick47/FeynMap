@@ -2,6 +2,7 @@ from feynmap.adapters.python_boundaries import (
     _build_boundary_index,
     _node_for_line,
     _owners_for_lines,
+    enrich_python_boundaries,
 )
 from feynmap.core import NodeKind, SemanticGraph, SemanticNode, SourceLocation
 
@@ -84,3 +85,46 @@ def test_single_line_compatibility_helper_uses_same_semantics():
 
     assert _node_for_line(graph, "pkg/mod.py", 22) is inner
     assert _node_for_line(graph, "pkg/mod.py", 40) is outer
+
+
+def test_boundary_enrichment_does_not_rescan_graph_per_call(tmp_path):
+    source = tmp_path / "pkg"
+    source.mkdir()
+    path = source / "mod.py"
+    path.write_text(
+        "def work():\n"
+        + "".join('    open("file%d.txt")\n' % index for index in range(200)),
+        encoding="utf-8",
+    )
+
+    module = _node("module", NodeKind.MODULE, 1, path="mod.py")
+    function = _node("work", NodeKind.FUNCTION, 1, 201, path="mod.py")
+    filler = [
+        _node(
+            "filler%d" % index,
+            NodeKind.FUNCTION,
+            1,
+            2,
+            path="other%d.py" % index,
+        )
+        for index in range(1000)
+    ]
+    graph = SemanticGraph(nodes=[module, function] + filler)
+
+    class CountingNodes(list):
+        def __init__(self, values):
+            super().__init__(values)
+            self.iterations = 0
+
+        def __iter__(self):
+            self.iterations += 1
+            return super().__iter__()
+
+    counting = CountingNodes(graph.nodes)
+    graph.nodes = counting
+
+    enrich_python_boundaries(graph, source)
+
+    assert counting.iterations == 1
+    contracts = function.attributes.get("integration_contracts") or []
+    assert len(contracts) == 200
