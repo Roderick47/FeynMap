@@ -254,6 +254,37 @@ The execution report also includes diagnostic output tails and the patch text.
 Those diagnostics are not model input and are not used to select or order
 context.
 
+## Freeze the held-out corpus before assisted runs
+
+A held-out R1 corpus must be locked before observing any assisted-arm result.
+The freeze gate requires at least five tasks, explicit selection metadata, per-task
+admission provenance, no reuse of the development fixtures or the five frozen
+Wikonomi task IDs, and explicit declarations that neither solutions nor
+assisted-agent outcomes were inspected before selection.
+
+Create the lock:
+
+~~~bash
+python -m feynmap.judgment.ai_repair_holdout freeze \
+  experiments/ai_repair_r1_holdout.json \
+  --pretty > experiments/ai_repair_r1_holdout.lock.json
+~~~
+
+Verify the lock before running the benchmark:
+
+~~~bash
+python -m feynmap.judgment.ai_repair_holdout check \
+  experiments/ai_repair_r1_holdout.json \
+  experiments/ai_repair_r1_holdout.lock.json \
+  --pretty
+~~~
+
+The lock hashes the complete benchmark specification plus each task description,
+repository identity, oracle and admission metadata. Any later change invalidates
+the lock. Once frozen, retrieval or role policy must not be tuned against that
+corpus; policy changes require a new corpus/version rather than silently
+re-running the same holdout.
+
 ## Remaining work before R1 testing opens
 
 The contracts, dry-run fixtures, and isolated command execution adapter are now
