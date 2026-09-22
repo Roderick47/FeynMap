@@ -15,7 +15,7 @@ from feynmap.core import Evidence, EvidenceKind, NodeKind, SemanticGraph, Semant
 from feynmap.integration import add_contract
 from .base import LanguageAdapter
 
-EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", "dist", "build"}
+EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", "dist", "build", ".feynmap"}
 HTML_EXTENSIONS = {".html", ".htm"}
 EVENT_ATTR_RE = re.compile(r"^on[a-z]+$", re.IGNORECASE)
 HANDLER_RE = re.compile(r"^\s*([A-Za-z_$][\w$]*)\s*(?:\(|$)")
