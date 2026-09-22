@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import difflib
 import hashlib
 import json
 import os
@@ -43,7 +44,8 @@ from .ai_repair_execution import (
     AgentRunResult,
     CommandRepairAgent,
     _copy_repository,
-    capture_patch,
+    _files,
+    _text_lines,
     repository_content_hash,
     resolve_source_repository,
 )
@@ -453,6 +455,51 @@ def _task(spec: Mapping[str, Any], task_id: str) -> Mapping[str, Any]:
     raise ValueError("unknown R1 task: %s" % task_id)
 
 
+def capture_swebench_patch(
+    baseline: Path,
+    workspace: Path,
+) -> Tuple[List[str], str, str]:
+    """Create a git-applicable textual patch for official SWE-bench grading."""
+    before = _files(baseline)
+    after = _files(workspace)
+    changed = sorted(
+        path for path in set(before) | set(after) if before.get(path) != after.get(path)
+    )
+    chunks: List[str] = []
+    for path in changed:
+        old_exists = path in before
+        new_exists = path in after
+        old = before.get(path, b"")
+        new = after.get(path, b"")
+        old_lines = _text_lines(old)
+        new_lines = _text_lines(new)
+        if old_lines is None or new_lines is None:
+            raise ValueError(
+                "SWE-bench R1 currently supports textual agent patches only: %s"
+                % path
+            )
+
+        chunks.append("diff --git a/%s b/%s\n" % (path, path))
+        if not old_exists:
+            chunks.append("new file mode 100644\n")
+        elif not new_exists:
+            chunks.append("deleted file mode 100644\n")
+
+        fromfile = "a/%s" % path if old_exists else "/dev/null"
+        tofile = "b/%s" % path if new_exists else "/dev/null"
+        chunks.extend(
+            difflib.unified_diff(
+                old_lines,
+                new_lines,
+                fromfile=fromfile,
+                tofile=tofile,
+            )
+        )
+    patch = "".join(chunks)
+    digest = hashlib.sha256(patch.encode("utf-8")).hexdigest()
+    return changed, patch, digest
+
+
 def generate_prediction(
     spec: Mapping[str, Any],
     task_id: str,
@@ -489,7 +536,9 @@ def generate_prediction(
         _copy_repository(source, baseline)
         _copy_repository(source, workspace)
         result: AgentRunResult = agent.run(workspace, agent_input, control)
-        changed_files, patch, patch_sha256 = capture_patch(baseline, workspace)
+        changed_files, patch, patch_sha256 = capture_swebench_patch(
+            baseline, workspace
+        )
     elapsed = time.perf_counter() - started
 
     record = {
