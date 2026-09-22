@@ -69,6 +69,62 @@ does not change a benchmark. Files containing NUL bytes or invalid UTF-8 remain
 byte-exact. The executor refuses to run if source content drifts from the frozen
 specification under that policy.
 
+## Generate assisted-arm context
+
+The three assisted R1 arms now share one oracle-free context generator. It
+verifies the frozen repository content hash, copies the repository into a
+temporary analysis workspace, removes every sealed oracle file before FeynMap
+analysis, and creates one bounded repository-wide candidate pool.
+
+The arms differ only after that shared pool exists:
+
+- `deterministic_context` keeps the deterministic task-text + graph-structure
+  order and makes no judgment-provider call;
+- `relevance_context` reranks the exact same candidates with the frozen
+  semantic-relevance judgment; and
+- `dual_channel` preserves that relevance order and all candidates, then adds
+  the frozen non-destructive repair-role guidance as a separate edit-target
+  channel.
+
+No benchmark gold/change-set labels participate in candidate selection,
+relevance ranking, or role guidance.
+
+Generate deterministic context:
+
+~~~bash
+python -m feynmap.judgment.ai_repair_context \
+  experiments/ai_repair_r1_fixture.json \
+  --task bounded-retry-delay \
+  --arm deterministic_context \
+  --project-root . \
+  --pretty
+~~~
+
+Generate relevance or dual-channel context with Jev:
+
+~~~bash
+python -m feynmap.judgment.ai_repair_context \
+  experiments/ai_repair_r1_fixture.json \
+  --task bounded-retry-delay \
+  --arm relevance_context \
+  --project-root . \
+  --jev \
+  --pretty
+
+python -m feynmap.judgment.ai_repair_context \
+  experiments/ai_repair_r1_fixture.json \
+  --task bounded-retry-delay \
+  --arm dual_channel \
+  --project-root . \
+  --jev \
+  --pretty
+~~~
+
+Role output cannot filter or reorder the relevance context. The context artifact
+records the snapshot identity, shared-pool policy, deterministic selection
+diagnostics, provider/model metadata where applicable, and the candidate and
+relationship bounds used for the run.
+
 ## Create agent-visible input
 
 Unassisted:
@@ -203,10 +259,9 @@ context.
 The contracts, dry-run fixtures, and isolated command execution adapter are now
 available. Controlled R1 AI testing still requires:
 
-1. deterministic context generation for the three assisted arms;
-2. a sealed set of new `held_out` tasks;
-3. selection/configuration of the first real AI command adapter; and
-4. explicit agent/tool versions in every execution environment.
+1. a sealed set of new `held_out` tasks;
+2. selection/configuration of the first real AI command adapter; and
+3. explicit agent/tool versions in every execution environment.
 
 No execution adapter should broaden FeynMap's own read-only authority. The
 adapter owns the disposable workspace and process boundary; FeynMap continues to
