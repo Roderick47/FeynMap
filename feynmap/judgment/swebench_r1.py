@@ -36,6 +36,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .ai_repair_benchmark import (
     ARMS,
+    _contains_leakage_key,
     REPOSITORY_CONTENT_HASH_POLICY,
     build_agent_input,
     content_hash,
@@ -872,6 +873,150 @@ def generate_context_matrix(
     return manifest
 
 
+def audit_context_matrix(
+    spec: Mapping[str, Any],
+    *,
+    context_root: Path,
+) -> Dict[str, Any]:
+    """Audit context mechanics without consulting held-out gold labels."""
+    validate_holdout_spec(spec)
+    manifest = load_json(context_root / "matrix.json")
+    if manifest.get("benchmark_hash") != content_hash(spec):
+        raise ValueError("context matrix benchmark hash mismatch")
+
+    expected_tasks = {str(task["id"]) for task in spec["tasks"]}
+    rows = []
+    seen_tasks = set()
+    leakage_hits = []
+    snapshot_ids = {}
+    for item in manifest.get("tasks") or []:
+        task_id = str(item.get("task_id") or "")
+        if task_id not in expected_tasks:
+            raise ValueError("context matrix contains unknown task %s" % task_id)
+        if task_id in seen_tasks:
+            raise ValueError("context matrix duplicates task %s" % task_id)
+        seen_tasks.add(task_id)
+
+        arm_rows = {}
+        candidate_sets = {}
+        for arm in ("deterministic_context", "relevance_context", "dual_channel"):
+            raw_path = item.get(arm)
+            if not raw_path:
+                continue
+            path = Path(str(raw_path))
+            if not path.is_file():
+                raise ValueError("context file does not exist: %s" % path)
+            context = load_json(path)
+            if context.get("task_id") != task_id or context.get("arm") != arm:
+                raise ValueError("context identity mismatch: %s" % path)
+            leakage = _contains_leakage_key(context)
+            if leakage:
+                leakage_hits.append(
+                    {"task_id": task_id, "arm": arm, "key": leakage}
+                )
+
+            candidates = list(context.get("candidates") or [])
+            relationships = list(context.get("relationships") or [])
+            candidate_ids = [str(row["id"]) for row in candidates]
+            if len(candidate_ids) != len(set(candidate_ids)):
+                raise ValueError(
+                    "context contains duplicate candidate ids: %s/%s"
+                    % (task_id, arm)
+                )
+            candidate_sets[arm] = set(candidate_ids)
+            snapshot = context.get("analysis_snapshot") or {}
+            snapshot_id = str(snapshot.get("snapshot_id") or "")
+            if not snapshot_id:
+                raise ValueError("context has no snapshot id: %s" % path)
+            snapshot_ids.setdefault(task_id, set()).add(snapshot_id)
+
+            paths = sorted(
+                {
+                    str((candidate.get("location") or {}).get("path"))
+                    for candidate in candidates
+                    if (candidate.get("location") or {}).get("path")
+                }
+            )
+            languages = sorted(
+                {
+                    str(candidate.get("language"))
+                    for candidate in candidates
+                    if candidate.get("language")
+                }
+            )
+            frameworks = sorted(
+                {
+                    str(candidate.get("framework"))
+                    for candidate in candidates
+                    if candidate.get("framework")
+                }
+            )
+            arm_rows[arm] = {
+                "candidate_count": len(candidates),
+                "relationship_count": len(relationships),
+                "unique_file_count": len(paths),
+                "languages": languages,
+                "frameworks": frameworks,
+                "snapshot_id": snapshot_id,
+            }
+
+        if "relevance_context" in candidate_sets and "dual_channel" in candidate_sets:
+            if candidate_sets["relevance_context"] != candidate_sets["dual_channel"]:
+                raise ValueError(
+                    "relevance and dual-channel candidate pools differ for %s"
+                    % task_id
+                )
+        if len(snapshot_ids.get(task_id, set())) > 1:
+            raise ValueError(
+                "assisted arms do not share one repository snapshot for %s" % task_id
+            )
+        rows.append({"task_id": task_id, "arms": arm_rows})
+
+    missing = sorted(expected_tasks - seen_tasks)
+    if missing:
+        raise ValueError(
+            "context matrix is missing tasks: %s" % ", ".join(missing)
+        )
+    if leakage_hits:
+        raise ValueError("context audit found reserved oracle leakage")
+
+    all_arm_rows = [
+        arm_row
+        for row in rows
+        for arm_row in row["arms"].values()
+    ]
+    result = {
+        "schema": "feynmap.swebench_r1_context_audit.v1",
+        "benchmark_hash": content_hash(spec),
+        "matrix_id": str(manifest.get("matrix_id") or ""),
+        "task_count": len(rows),
+        "judged_context_included": bool(
+            manifest.get("judged_context_included")
+        ),
+        "oracle_leakage_detected": False,
+        "mean_candidate_count": (
+            sum(row["candidate_count"] for row in all_arm_rows)
+            / float(len(all_arm_rows))
+            if all_arm_rows
+            else 0.0
+        ),
+        "mean_unique_file_count": (
+            sum(row["unique_file_count"] for row in all_arm_rows)
+            / float(len(all_arm_rows))
+            if all_arm_rows
+            else 0.0
+        ),
+        "tasks": sorted(rows, key=lambda row: row["task_id"]),
+        "policy": {
+            "gold_labels_consulted": False,
+            "reference_changed_files_consulted": False,
+            "scoring_performed": False,
+        },
+    }
+    result["audit_id"] = content_hash(result)
+    return result
+
+
 def _arm_order(task_id: str) -> List[str]:
     """Deterministically counterbalance arm execution order across tasks."""
     offset = int(hashlib.sha256(task_id.encode("utf-8")).hexdigest()[:8], 16) % len(
@@ -1104,6 +1249,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     prepare.add_argument("--lock-output", required=True)
     prepare.add_argument("--reuse-existing", action="store_true")
 
+    audit = sub.add_parser("audit-contexts")
+    audit.add_argument("spec")
+    audit.add_argument("--context-root", required=True)
+    audit.add_argument("--pretty", action="store_true")
+
     contexts = sub.add_parser("generate-contexts")
     contexts.add_argument("spec")
     contexts.add_argument("--project-root", default=".")
@@ -1210,6 +1360,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 sort_keys=True,
             )
         )
+        return 0
+
+    if args.command == "audit-contexts":
+        spec = load_json(Path(args.spec))
+        result = audit_context_matrix(
+            spec,
+            context_root=Path(args.context_root),
+        )
+        print(json.dumps(result, indent=2 if args.pretty else None, sort_keys=True))
         return 0
 
     if args.command == "generate-contexts":
