@@ -82,9 +82,10 @@ sealed-oracle integrity checks.
 
 The provider-neutral schemas, immutable manifest identity, scoring, comparison,
 leakage guards, intentionally failing development fixtures, disposable
-execution adapter, sealed verifier boundary, and command-agent protocol are
-documented in `AI_REPAIR_BENCHMARK.md`. Deterministic assisted-arm context and a
-sealed held-out corpus remain required before controlled R1 testing opens.
+execution adapter, sealed verifier boundary, command-agent protocol, and
+oracle-free assisted-arm context generation are documented in
+`AI_REPAIR_BENCHMARK.md`. A sealed held-out corpus and an explicitly versioned
+first agent configuration remain required before controlled R1 testing opens.
 
 ## R2: local MCP alpha — first normal real-world use
 
