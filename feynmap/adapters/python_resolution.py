@@ -22,7 +22,7 @@ from feynmap.core import EdgeKind, Evidence, EvidenceKind, SemanticEdge, Semanti
 from .python_reexports import ResolvedAlias, python_reexport_aliases
 
 
-EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache"}
+EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache", ".feynmap"}
 OPTIONAL_WRAPPERS = {"Optional", "Union", "Annotated"}
 CLASS_KINDS = {"class", "data_model", "service", "handler", "transformer", "middleware"}
 
