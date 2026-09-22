@@ -12,6 +12,7 @@ from feynmap.judgment.swebench_r1 import (
     _arm_order,
     _patch_paths,
     aggregate_results,
+    capture_swebench_patch,
     build_selection,
     export_predictions,
     validate_selection,
@@ -242,6 +243,30 @@ def _record(spec, task_index, arm, resolved=True):
     }
     record["generation_id"] = content_hash(record)
     return record
+
+
+def test_swebench_patch_handles_modified_created_and_deleted_files(tmp_path: Path):
+    baseline = tmp_path / "baseline"
+    workspace = tmp_path / "workspace"
+    baseline.mkdir()
+    workspace.mkdir()
+
+    (baseline / "keep.py").write_text("old\n", encoding="utf-8")
+    (workspace / "keep.py").write_text("new\n", encoding="utf-8")
+    (workspace / "created.py").write_text("created\n", encoding="utf-8")
+    (baseline / "deleted.py").write_text("deleted\n", encoding="utf-8")
+
+    changed, patch, digest = capture_swebench_patch(baseline, workspace)
+
+    assert changed == ["created.py", "deleted.py", "keep.py"]
+    assert "diff --git a/created.py b/created.py" in patch
+    assert "--- /dev/null" in patch
+    assert "+++ b/created.py" in patch
+    assert "diff --git a/deleted.py b/deleted.py" in patch
+    assert "--- a/deleted.py" in patch
+    assert "+++ /dev/null" in patch
+    assert "diff --git a/keep.py b/keep.py" in patch
+    assert len(digest) == 64
 
 
 def test_export_predictions_uses_official_swebench_shape():
