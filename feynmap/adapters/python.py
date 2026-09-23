@@ -107,6 +107,7 @@ class PythonAdapter(LanguageAdapter):
 
     def analyze(self, project_path: Path) -> SemanticGraph:
         root = project_path.resolve()
+        source = get_python_source_session(root)
         modules, diagnostics = self._parse_modules(root)
         graph = SemanticGraph(metadata={"language": "python", "adapter": "python-ast", "frameworks_applied": []})
 
@@ -203,11 +204,10 @@ class PythonAdapter(LanguageAdapter):
 
                 if not isinstance(definition.node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
                     continue
-                collector = _ScopedBodyCollector(definition.node)
-                collector.visit(definition.node)
+                calls, awaits = source.scoped_callable(definition.node)
                 unresolved_calls: List[str] = []
-                await_lines = {getattr(item.value, "lineno", None) for item in collector.awaits if isinstance(item.value, ast.Call)}
-                for call in collector.calls:
+                await_lines = {getattr(item.value, "lineno", None) for item in awaits if isinstance(item.value, ast.Call)}
+                for call in calls:
                     raw_call = _render_expr(call.func)
                     target_id = self._resolve_call(call.func, parsed, definition, module_ids, definitions_by_qualified, definitions_by_module_name)
                     if target_id:
