@@ -483,17 +483,19 @@ def _qualify(module: str, name: str) -> str:
 def _render_expr(node: Optional[ast.AST]) -> str:
     if node is None:
         return ""
+    # Name and dotted Attribute expressions dominate call targets and render
+    # identically without invoking ast.unparse's general-purpose machinery.
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        left = _render_expr(node.value)
+        return "%s.%s" % (left, node.attr) if left else node.attr
     unparse = getattr(ast, "unparse", None)
     if unparse is not None:
         try:
             return unparse(node)
         except Exception:
             pass
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        left = _render_expr(node.value)
-        return "%s.%s" % (left, node.attr) if left else node.attr
     if isinstance(node, ast.Call):
         return _render_expr(node.func)
     if isinstance(node, ast.Subscript):
