@@ -163,3 +163,34 @@ def test_boundary_enrichment_resolves_owners_only_for_boundary_candidates(monkey
     assert len(contracts) == 1
     assert contracts[0]["kind"] == "file_read"
     assert contracts[0]["target"] == "target.txt"
+
+
+
+def test_boundary_prefilter_skips_expression_rendering_for_ordinary_calls(monkeypatch, tmp_path):
+    path = tmp_path / "mod.py"
+    path.write_text(
+        "def work():\n"
+        + "".join("    abs(%d)\n" % index for index in range(500))
+        + '    open("target.txt")\n',
+        encoding="utf-8",
+    )
+
+    module = _node("module", NodeKind.MODULE, 1, path="mod.py")
+    function = _node("work", NodeKind.FUNCTION, 1, 502, path="mod.py")
+    graph = SemanticGraph(nodes=[module, function])
+
+    original = boundaries._expr_name
+    calls = {"count": 0}
+
+    def counting_expr_name(node):
+        calls["count"] += 1
+        return original(node)
+
+    monkeypatch.setattr(boundaries, "_expr_name", counting_expr_name)
+
+    enrich_python_boundaries(graph, tmp_path)
+
+    assert calls["count"] == 1
+    contracts = function.attributes.get("integration_contracts") or []
+    assert len(contracts) == 1
+    assert contracts[0]["target"] == "target.txt"
