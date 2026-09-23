@@ -8,23 +8,15 @@ from typing import Dict, Iterable, List, Optional, Set
 
 from feynmap.core import Evidence, EvidenceKind, NodeKind, SemanticGraph, SemanticNode
 from feynmap.integration import add_contract
+from feynmap.adapters.python_source import get_python_source_session
 
-EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__"}
+EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", ".feynmap"}
 DEPENDENCY_FILES = ("requirements.txt", "pyproject.toml", "Pipfile", "poetry.lock", "setup.py", "setup.cfg")
 HTTP_METHODS = ("get", "post", "put", "patch", "delete", "options", "head")
 
 
 def iter_python_files(root: Path) -> Iterable[Path]:
-    for path in root.rglob("*.py"):
-        if not path.is_file():
-            continue
-        try:
-            parts = path.relative_to(root).parts
-        except ValueError:
-            parts = path.parts
-        if any(part in EXCLUDED for part in parts):
-            continue
-        yield path
+    yield from get_python_source_session(root).paths()
 
 
 def dependency_text(root: Path) -> str:
@@ -41,27 +33,11 @@ def dependency_text(root: Path) -> str:
 
 
 def imports_by_file(root: Path) -> Dict[str, Set[str]]:
-    result: Dict[str, Set[str]] = {}
-    for path in iter_python_files(root):
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SyntaxError):
-            continue
-        imports: Set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imports.update(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                imports.add(node.module)
-        result[path.relative_to(root).as_posix()] = imports
-    return result
+    return get_python_source_session(root).imports_by_file()
 
 
 def repository_imports(root: Path) -> Set[str]:
-    combined: Set[str] = set()
-    for imports in imports_by_file(root).values():
-        combined.update(imports)
-    return combined
+    return get_python_source_session(root).repository_imports()
 
 
 def node_python(node: SemanticNode) -> Dict[str, object]:
@@ -119,13 +95,13 @@ def mark_role(node: SemanticNode, framework: str, kind: NodeKind, role: str, det
 
 def attach_decorator_http_contracts(graph: SemanticGraph, root: Path, framework: str) -> None:
     """Extract Flask/FastAPI-style HTTP/WebSocket routes directly from AST decorators."""
-    for path in iter_python_files(root):
-        relative = path.relative_to(root).as_posix()
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SyntaxError):
+    source = get_python_source_session(root)
+    for record in source.records():
+        if record.tree is None:
             continue
-        for definition in (item for item in ast.walk(tree) if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        relative = record.relative
+        tree = record.tree
+        for definition in source.ast_index(record.path).functions:
             semantic_node = _node_for_line(graph, relative, getattr(definition, "lineno", 1))
             if semantic_node is None or semantic_node.kind != NodeKind.HANDLER:
                 continue
@@ -162,14 +138,13 @@ def attach_django_url_contracts(graph: SemanticGraph, root: Path) -> None:
         if node.language == "python" and node.kind == NodeKind.HANDLER:
             by_name.setdefault(node.name, []).append(node)
 
-    for path in iter_python_files(root):
-        if path.name != "urls.py":
+    source = get_python_source_session(root)
+    for record in source.records():
+        path = record.path
+        if path.name != "urls.py" or record.tree is None:
             continue
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SyntaxError):
-            continue
-        for call in (item for item in ast.walk(tree) if isinstance(item, ast.Call)):
+        tree = record.tree
+        for call in source.ast_index(record.path).calls:
             call_name = _expr_name(call.func)
             if call_name.rsplit(".", 1)[-1] not in {"path", "re_path"} or len(call.args) < 2:
                 continue
@@ -184,13 +159,13 @@ def attach_django_url_contracts(graph: SemanticGraph, root: Path) -> None:
 
 def attach_template_render_contracts(graph: SemanticGraph, root: Path, framework: str) -> None:
     """Attach static template names to the smallest enclosing semantic callable."""
-    for path in iter_python_files(root):
-        relative = path.relative_to(root).as_posix()
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SyntaxError):
+    source = get_python_source_session(root)
+    for record in source.records():
+        if record.tree is None:
             continue
-        for call in (item for item in ast.walk(tree) if isinstance(item, ast.Call)):
+        relative = record.relative
+        tree = record.tree
+        for call in source.ast_index(record.path).calls:
             call_name = _expr_name(call.func)
             template: Optional[str] = None
             if framework == "django" and call_name.rsplit(".", 1)[-1] in {"render", "render_to_string"}:

@@ -23,8 +23,10 @@ from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 
+from .python_source import cached_relative_path, get_python_source_session
 
-EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache"}
+
+EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache", ".feynmap"}
 ResolvedAlias = Tuple[str, List[str], float]
 
 
@@ -97,6 +99,7 @@ def python_reexport_aliases(graph: SemanticGraph, project_path: Path) -> Dict[st
 def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> SemanticGraph:
     """Resolve statically provable package re-export aliases and calls through them."""
     root = project_path.resolve()
+    source = get_python_source_session(root)
     nodes_by_qname: Dict[str, SemanticNode] = {
         node.qualified_name: node
         for node in graph.nodes
@@ -107,8 +110,13 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
         return graph
 
     parsed = _parse_python_files(root)
-    resolved_aliases, ambiguous_aliases = _resolved_alias_index(parsed, nodes_by_qname)
-    raw_aliases, _ = _package_aliases(parsed)
+    raw_aliases, explicit_exports = _package_aliases(parsed)
+    resolved_aliases, ambiguous_aliases = _resolved_alias_index(
+        parsed,
+        nodes_by_qname,
+        raw_aliases=raw_aliases,
+        explicit_exports=explicit_exports,
+    )
 
     call_edges_added = 0
     import_edges_added = 0
@@ -170,9 +178,7 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
             source_node = nodes_by_qname.get(source_qname)
             if source_node is None:
                 continue
-            collector = _ScopedCallCollector(callable_node)
-            collector.visit(callable_node)
-            for call in collector.calls:
+            for call in source.scoped_calls(callable_node):
                 if not isinstance(call.func, ast.Name):
                     continue
                 binding = parsed_file.imports.get(call.func.id)
@@ -236,8 +242,11 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
 def _resolved_alias_index(
     parsed: Sequence[ParsedPythonFile],
     nodes_by_qname: Dict[str, SemanticNode],
+    raw_aliases: Optional[Dict[str, Set[str]]] = None,
+    explicit_exports: Optional[Set[str]] = None,
 ) -> Tuple[Dict[str, ResolvedAlias], List[str]]:
-    raw_aliases, explicit_exports = _package_aliases(parsed)
+    if raw_aliases is None or explicit_exports is None:
+        raw_aliases, explicit_exports = _package_aliases(parsed)
     resolved_aliases: Dict[str, ResolvedAlias] = {}
     ambiguous_aliases: List[str] = []
     for alias in sorted(raw_aliases):
@@ -273,12 +282,12 @@ def _binding_resolution(
 
 def _parse_python_files(root: Path) -> List[ParsedPythonFile]:
     result: List[ParsedPythonFile] = []
-    for path in _iter_python_files(root):
-        relative = _relative(root, path)
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
-        except (OSError, UnicodeDecodeError, SyntaxError):
+    source = get_python_source_session(root)
+    for record in source.records():
+        if record.tree is None:
             continue
+        path = record.path
+        tree = record.tree
         is_package = path.name == "__init__.py"
         module = _module_name(root, path)
         imports = _collect_imports(tree, module, is_package)
@@ -456,10 +465,7 @@ def _iter_python_files(root: Path) -> Iterable[Path]:
 
 
 def _relative(root: Path, path: Path) -> str:
-    try:
-        return path.relative_to(root).as_posix()
-    except ValueError:
-        return path.as_posix()
+    return cached_relative_path(root, path)
 
 
 def _qualify(module: str, name: str) -> str:

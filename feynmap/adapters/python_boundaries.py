@@ -2,39 +2,67 @@
 from __future__ import annotations
 
 import ast
+import heapq
 import shlex
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from feynmap.core import NodeKind, SemanticGraph, SemanticNode
 from feynmap.integration import add_contract
 
-EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox"}
+from .python_source import get_python_source_session
+
+EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".feynmap"}
 HTTP_ROOTS = {"requests", "httpx"}
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 PROCESS_APIS = {"subprocess.run", "subprocess.call", "subprocess.check_call", "subprocess.check_output", "subprocess.Popen", "os.system"}
 READ_MODES = {"r", "rb", "rt", "r+", "rb+", "r+b"}
+BOUNDARY_SHORT_NAMES = (
+    HTTP_METHODS
+    | {"urlopen", "connect", "create_connection", "run", "call", "check_call",
+       "check_output", "Popen", "system", "open", "getenv", "get",
+       "create_engine", "CDLL", "PyDLL", "dlopen", "publish", "send"}
+)
 
 
 def enrich_python_boundaries(graph: SemanticGraph, root: Path) -> SemanticGraph:
-    """Attach non-framework integration contracts to Python semantic nodes."""
-    for path in _iter_python_files(root):
-        relative = path.relative_to(root).as_posix()
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SyntaxError):
+    """Attach non-framework integration contracts to Python semantic nodes.
+
+    Graph nodes are indexed once up front. The previous implementation scanned
+    every graph node for every ast.Call, which becomes effectively quadratic on
+    large repositories such as SymPy and Astropy.
+    """
+    modules_by_path, owners_by_path = _build_boundary_index(graph)
+    source = get_python_source_session(root)
+    for record in source.records():
+        if record.tree is None:
             continue
-        module = _module_for_path(graph, relative)
+        path = record.path
+        relative = record.relative
+        tree = record.tree
+        module = modules_by_path.get(relative)
         if module and _has_main_guard(tree):
             add_contract(module, "cli_entrypoint", relative, 0.98, aliases=[path.name])
 
-        for call in (item for item in ast.walk(tree) if isinstance(item, ast.Call)):
-            owner = _node_for_line(graph, relative, getattr(call, "lineno", 1)) or module
+        candidates = []
+        for call in source.ast_index(record.path).calls:
+            identity = _boundary_call_identity(call)
+            if identity is None:
+                continue
+            name, short, root_name = identity
+            candidates.append((call, name, short, root_name))
+
+        if not candidates:
+            continue
+
+        owners = _owners_for_lines(
+            owners_by_path.get(relative, ()),
+            [getattr(call, "lineno", 1) for call, _, _, _ in candidates],
+        )
+        for call, name, short, root_name in candidates:
+            owner = owners.get(getattr(call, "lineno", 1)) or module
             if owner is None:
                 continue
-            name = _expr_name(call.func)
-            short = name.rsplit(".", 1)[-1]
-            root_name = name.split(".", 1)[0]
 
             if root_name in HTTP_ROOTS and short.lower() in HTTP_METHODS and call.args:
                 target = _string(call.args[0])
@@ -97,34 +125,144 @@ def enrich_python_boundaries(graph: SemanticGraph, root: Path) -> SemanticGraph:
     return graph
 
 
-def _module_for_path(graph: SemanticGraph, path: str) -> Optional[SemanticNode]:
-    for node in graph.nodes:
-        if node.language == "python" and node.kind == NodeKind.MODULE and node.location and node.location.path == path:
-            return node
+def _boundary_call_identity(call: ast.Call) -> Optional[Tuple[str, str, str]]:
+    """Return preclassified boundary-call identity, or None for ordinary calls.
+
+    Boundary extraction only emits contracts for calls with at least one
+    positional argument and one of the statically recognized API names below.
+    Rejecting all other calls before owner resolution preserves the historical
+    contract semantics while avoiding line-owner work for the common case.
+    """
+    if not call.args:
+        return None
+
+    # Most Python calls cannot possibly match a supported integration API.
+    # Name/Attribute nodes expose their terminal component without recursively
+    # rendering the entire dotted expression, so reject those calls first.
+    func = call.func
+    if isinstance(func, ast.Name):
+        if func.id not in BOUNDARY_SHORT_NAMES:
+            return None
+    elif isinstance(func, ast.Attribute):
+        if func.attr not in BOUNDARY_SHORT_NAMES:
+            return None
+
+    name = _expr_name(func)
+    if not name:
+        return None
+
+    short = name.rsplit(".", 1)[-1]
+    root_name = name.split(".", 1)[0]
+
+    if root_name in HTTP_ROOTS and short.lower() in HTTP_METHODS:
+        return name, short, root_name
+    if name in {
+        "urllib.request.urlopen",
+        "websockets.connect",
+        "websocket.create_connection",
+        "open",
+        "os.getenv",
+        "os.environ.get",
+        "sqlite3.connect",
+        "psycopg.connect",
+        "psycopg2.connect",
+        "sqlalchemy.create_engine",
+        "ctypes.CDLL",
+        "ctypes.PyDLL",
+        "cffi.dlopen",
+    }:
+        return name, short, root_name
+    if name in PROCESS_APIS:
+        return name, short, root_name
+    if short in {"publish", "send"}:
+        lowered = name.lower()
+        if "redis" in lowered or "producer" in lowered or "kafka" in lowered:
+            return name, short, root_name
     return None
+
+
+def _build_boundary_index(
+    graph: SemanticGraph,
+) -> Tuple[Dict[str, SemanticNode], Dict[str, List[SemanticNode]]]:
+    """Index Python modules and callable owners by source path in one graph pass."""
+    modules: Dict[str, SemanticNode] = {}
+    owners: Dict[str, List[SemanticNode]] = {}
+    owner_kinds = {NodeKind.FUNCTION, NodeKind.METHOD, NodeKind.HANDLER}
+    for node in graph.nodes:
+        if node.language != "python" or not node.location or not node.location.path:
+            continue
+        path = node.location.path
+        if node.kind == NodeKind.MODULE:
+            modules.setdefault(path, node)
+        elif node.kind in owner_kinds:
+            owners.setdefault(path, []).append(node)
+    # Keep graph insertion order inside each path. The owner sweep records
+    # that order as its stable tie-breaker, matching the historical resolver.
+    return modules, owners
+
+
+def _owners_for_lines(
+    nodes: Sequence[SemanticNode],
+    lines: Sequence[int],
+) -> Dict[int, SemanticNode]:
+    """Resolve call-line owners with a sweep instead of repeated graph scans.
+
+    Semantics match the historical resolver:
+    1. choose the smallest callable span that contains the line;
+    2. otherwise choose the callable with the latest start at/before the line.
+    """
+    if not nodes or not lines:
+        return {}
+
+    indexed = []
+    for order, node in enumerate(nodes):
+        location = node.location
+        if location is None:
+            continue
+        start = location.line or 1
+        end = location.end_line
+        span = (end - start) if end is not None else 2 ** 31
+        indexed.append((start, end, span, order, node))
+    indexed.sort(key=lambda item: (item[0], item[3]))
+
+    result: Dict[int, SemanticNode] = {}
+    active: List[Tuple[int, int, int, SemanticNode]] = []
+    position = 0
+    latest_preceding: Optional[Tuple[int, int, SemanticNode]] = None
+
+    for line in sorted(set(int(value or 1) for value in lines)):
+        while position < len(indexed) and indexed[position][0] <= line:
+            start, end, span, order, node = indexed[position]
+            if (
+                latest_preceding is None
+                or start > latest_preceding[0]
+                or (start == latest_preceding[0] and order < latest_preceding[1])
+            ):
+                latest_preceding = (start, order, node)
+            if end is not None:
+                heapq.heappush(active, (span, order, end, node))
+            position += 1
+
+        while active and active[0][2] < line:
+            heapq.heappop(active)
+
+        if active:
+            result[line] = active[0][3]
+        elif latest_preceding is not None:
+            result[line] = latest_preceding[2]
+
+    return result
+
+
+def _module_for_path(graph: SemanticGraph, path: str) -> Optional[SemanticNode]:
+    """Compatibility helper for callers outside the optimized enrichment path."""
+    return _build_boundary_index(graph)[0].get(path)
 
 
 def _node_for_line(graph: SemanticGraph, path: str, line: int) -> Optional[SemanticNode]:
-    exact: List[SemanticNode] = []
-    preceding: List[SemanticNode] = []
-    for node in graph.nodes:
-        if node.language != "python" or not node.location or node.location.path != path:
-            continue
-        if node.kind not in {NodeKind.FUNCTION, NodeKind.METHOD, NodeKind.HANDLER}:
-            continue
-        start = node.location.line or 1
-        end = node.location.end_line
-        if end is not None and start <= line <= end:
-            exact.append(node)
-        elif start <= line:
-            preceding.append(node)
-    if exact:
-        exact.sort(key=lambda item: (item.location.end_line or item.location.line or 1) - (item.location.line or 1))
-        return exact[0]
-    if preceding:
-        preceding.sort(key=lambda item: item.location.line or 1, reverse=True)
-        return preceding[0]
-    return None
+    """Compatibility helper retaining the historical single-line API."""
+    owners = _build_boundary_index(graph)[1].get(path, ())
+    return _owners_for_lines(owners, [line]).get(line)
 
 
 def _has_main_guard(tree: ast.Module) -> bool:

@@ -61,7 +61,9 @@ FeynMap now treats a repository as a heterogeneous software system rather than c
 ### Integration hardening backlog
 
 - [ ] embedded-language regions (inline `<script>`, Vue/Svelte single-file components, templated JS/CSS)
-- [ ] richer JavaScript parsing via Tree-sitter/TypeScript compiler APIs
+- [ ] shared Tree-sitter parsing/source-region foundation with explicit parser provenance and deterministic node identities
+- [ ] parser-backed JavaScript and TypeScript via Tree-sitter, with conformance comparisons against the dependency-free JavaScript adapter
+- [ ] optional TypeScript compiler enrichment for type/module facts that Tree-sitter syntax alone cannot prove
 - [ ] route-prefix composition (`include_router`, nested routers, mounted apps, reverse routing)
 - [ ] CSS/assets and bundler-generated dependency graphs
 - [ ] protocol schemas (OpenAPI, protobuf/gRPC, GraphQL schemas)
@@ -158,6 +160,34 @@ Groundwork has started, but no MCP SDK/transport or remote hosting dependency ha
 - [ ] Production hosting/shared-storage deployment
 
 See `docs/MCP_GROUNDING.md` for the tool boundary, transport plan, hosting choices and the project-owner decisions required before remote deployment.
+
+### Phase 2C — AI-assisted real-world validation 🚧
+
+Real-world testing expands through explicit evidence gates rather than a single
+"production ready" switch. See `docs/AI_REAL_WORLD_VALIDATION.md` for the full
+checkpoint definitions, safety boundaries, measurements, and rollback rules.
+
+- [x] R0 manual read-only grounding trials are possible with current CLI/snapshot outputs
+- [x] Freeze non-destructive dual-channel context/repair guidance through v1R
+- [x] Build a provider-neutral held-out-capable repair benchmark harness and immutable run manifests
+- [x] Add independent failing development fixtures and oracle-leakage guards for harness validation
+- [x] Add outcome scoring and four-arm comparison with completeness diagnostics
+- [x] Add disposable local execution, sealed verifier files, bounded test commands, and deterministic patch hashing
+- [x] Add an explicit argv/JSON command-agent protocol with opt-in environment forwarding
+- [ ] Compare unassisted, deterministic-context, relevance-context, and dual-channel AI repair arms
+- [ ] Record patch correctness, tests, changed files, unsupported claims, searches, time, and token cost
+- [ ] R1 controlled AI repair trial on disposable worktrees with new non-Wikonomi tasks
+- [ ] R2 local read-only stdio MCP alpha for real feature-branch usage
+- [ ] Capture privacy-preserving local MCP usefulness and outcome feedback
+- [ ] R3 Tree-sitter JavaScript/TypeScript mixed-language alpha after conformance gates
+- [ ] R4 selected-team beta with CI plus test/runtime/history evidence
+- [ ] R5 authenticated remote pilot with repository-scoped authorization
+
+The first normal integrated AI usage begins at **R2 local MCP alpha**. R0 can be
+tested manually now; R1 is the first controlled AI repair checkpoint.
+
+See `docs/AI_REPAIR_BENCHMARK.md` for the R1 schemas, commands, development
+fixtures, and remaining execution-adapter/held-out-corpus gates.
 
 ## Phase 3 — More language adapters
 

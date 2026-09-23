@@ -75,6 +75,57 @@ def test_semantic_graph_roundtrips_from_serialized_form():
     assert restored.edges[0].evidence[0].kind == EvidenceKind.STATIC
 
 
+def test_snapshot_identity_ignores_semantic_node_edge_and_metadata_order(tmp_path: Path):
+    (tmp_path / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+    graph = _graph()
+    graph.metadata.update(
+        {
+            "languages": [
+                {"name": "python", "frameworks": ["django", "drf"]},
+                {"name": "html", "frameworks": []},
+            ],
+            "language_names": ["python", "html"],
+            "frameworks_applied": ["django", "drf"],
+            "integration": {
+                "unresolved_sample": [
+                    {"node": "python:symbol:b", "kind": "template_filter", "target": "b"},
+                    {"node": "python:symbol:a", "kind": "template_filter", "target": "a"},
+                ]
+            },
+        }
+    )
+    reordered_metadata = dict(graph.metadata)
+    reordered_metadata["languages"] = [
+        {"name": "html", "frameworks": []},
+        {"name": "python", "frameworks": ["drf", "django"]},
+    ]
+    reordered_metadata["language_names"] = ["html", "python"]
+    reordered_metadata["frameworks_applied"] = ["drf", "django"]
+    reordered_metadata["integration"] = {
+        "unresolved_sample": list(
+            reversed(graph.metadata["integration"]["unresolved_sample"])
+        )
+    }
+    reordered = SemanticGraph(
+        nodes=list(reversed(graph.nodes)),
+        edges=list(reversed(graph.edges)),
+        metadata=reordered_metadata,
+        diagnostics={
+            "errors": list(reversed(graph.diagnostics.get("errors", []))),
+            "warnings": list(reversed(graph.diagnostics.get("warnings", []))),
+        },
+    )
+
+    assert graph.to_dict() != reordered.to_dict()
+
+    first = capture_repository_snapshot(tmp_path, graph)
+    second = capture_repository_snapshot(tmp_path, reordered)
+
+    assert first.content_hash == second.content_hash
+    assert first.graph_hash == second.graph_hash
+    assert first.snapshot_id == second.snapshot_id
+
+
 def test_snapshot_identity_is_stable_and_changes_with_repository_content(tmp_path: Path):
     (tmp_path / "app.py").write_text("def run():\n    return 1\n", encoding="utf-8")
     graph = _graph()
@@ -118,6 +169,37 @@ def test_equivalent_clones_share_graph_and_snapshot_identity_across_git_transpor
     assert repository_node.qualified_name == "repository"
     assert repository_node.attributes["repository"]["root"] == "."
     assert graph_a.metadata["project_root"] == "."
+
+
+def test_javascript_symbol_and_snapshot_identity_are_checkout_independent(tmp_path: Path):
+    clone_a = tmp_path / "js-checkout-a"
+    clone_b = tmp_path / "js-checkout-b"
+    _fake_git_checkout(clone_a, origin="https://example.com/owner/js-repo.git")
+    _fake_git_checkout(clone_b, origin="git@example.com:owner/js-repo.git")
+    source = (
+        "function loadItems() {\n"
+        "  return renderItems();\n"
+        "}\n\n"
+        "function renderItems() {\n"
+        "  return 1;\n"
+        "}\n"
+    )
+    (clone_a / "app.js").write_text(source, encoding="utf-8")
+    (clone_b / "app.js").write_text(source, encoding="utf-8")
+
+    graph_a = FeynMapEngine().analyze(str(clone_a), language="javascript", framework="none")
+    graph_b = FeynMapEngine().analyze(str(clone_b), language="javascript", framework="none")
+    snapshot_a = capture_repository_snapshot(clone_a, graph_a)
+    snapshot_b = capture_repository_snapshot(clone_b, graph_b)
+
+    ids_a = sorted(node.id for node in graph_a.nodes if node.language == "javascript")
+    ids_b = sorted(node.id for node in graph_b.nodes if node.language == "javascript")
+
+    assert ids_a == ids_b
+    assert graph_a.to_dict() == graph_b.to_dict()
+    assert snapshot_a.content_hash == snapshot_b.content_hash
+    assert snapshot_a.graph_hash == snapshot_b.graph_hash
+    assert snapshot_a.snapshot_id == snapshot_b.snapshot_id
 
 
 def test_sqlite_store_roundtrips_graph_and_current_pointer(tmp_path: Path):

@@ -1,0 +1,350 @@
+{
+  "schema": "feynmap.repair_role_v1l.v1",
+  "tasks": [
+    {
+      "id": "timestamp-boundary-rendering",
+      "description": "A timestamp exactly at the next-day boundary is rendered as the previous day. Repair boundary normalization while preserving record construction and telemetry behavior.",
+      "candidates": [
+        {
+          "id": "region_a1",
+          "symbol": "normalize_for_display",
+          "summary": "Normalizes a timestamp and chooses the calendar day emitted to the display value.",
+          "excerpt": "day = instant - offset; return day.date_label",
+          "region": {"path": "alpha/a.src", "start_line": 31, "end_line": 39},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "implementation_target"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "implementation_target"}
+            ],
+            "rationale": "The defective boundary calculation is performed in this region."
+          }
+        },
+        {
+          "id": "region_a2",
+          "symbol": "build_record",
+          "summary": "Loads the stored timestamp and delegates display normalization.",
+          "excerpt": "record.display_day = normalize_for_display(stored.instant)",
+          "region": {"path": "alpha/b.src", "start_line": 14, "end_line": 21},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "structural_bridge"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "structural_bridge"}
+            ],
+            "rationale": "It connects record construction to the faulty calculation but need not change."
+          }
+        },
+        {
+          "id": "region_a3",
+          "symbol": "midnight_examples",
+          "summary": "Specifies expected labels immediately before, at, and after the day boundary.",
+          "excerpt": "23:59 -> day 8; 00:00 -> day 9; 00:01 -> day 9",
+          "region": {"path": "alpha/c.spec", "start_line": 8, "end_line": 16},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "supporting_context"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "supporting_context"}
+            ],
+            "rationale": "The examples define the exact repair boundary and validate the result."
+          }
+        },
+        {
+          "id": "region_a4",
+          "symbol": "record_render_metric",
+          "summary": "Counts completed render operations without reading the rendered day.",
+          "excerpt": "metrics.increment('record.rendered')",
+          "region": {"path": "alpha/d.src", "start_line": 50, "end_line": 54},
+          "adjudication": {
+            "primary": {"semantic_relevance": false, "repair_role": "incidental_context"},
+            "acceptable_labels": [
+              {"semantic_relevance": false, "repair_role": "incidental_context"},
+              {"semantic_relevance": true, "repair_role": "supporting_context"}
+            ],
+            "boundary": "preserved_side_effect",
+            "rationale": "It does not affect the value; however, an adjudicator may reasonably treat the explicit telemetry-preservation clause as a behavioral constraint."
+          }
+        }
+      ],
+      "relationships": [
+        {"source": "region_a2", "relationship": "calls", "target": "region_a1"},
+        {"source": "region_a3", "relationship": "specifies", "target": "region_a1"},
+        {"source": "region_a2", "relationship": "observed_by", "target": "region_a4"}
+      ]
+    },
+    {
+      "id": "tenant-cache-key-scope",
+      "description": "Cached documents can cross tenant boundaries because the cache key omits tenant identity. Repair key composition without changing lookup fallback behavior.",
+      "candidates": [
+        {
+          "id": "region_b1",
+          "symbol": "compose_cache_key",
+          "summary": "Builds the key used for both document cache reads and writes.",
+          "excerpt": "return document.kind + ':' + document.identifier",
+          "region": {"path": "beta/a.src", "start_line": 22, "end_line": 29},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "implementation_target"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "implementation_target"}
+            ],
+            "rationale": "This is the shared definition that omits tenant identity and must change."
+          }
+        },
+        {
+          "id": "region_b2",
+          "symbol": "load_document",
+          "summary": "Requests a composed key, attempts a cache read, and falls back to storage.",
+          "excerpt": "cached = cache.get(compose_cache_key(document)); if absent: load_store()",
+          "region": {"path": "beta/b.src", "start_line": 40, "end_line": 52},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "structural_bridge"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "structural_bridge"},
+              {"semantic_relevance": true, "repair_role": "supporting_context"}
+            ],
+            "boundary": "connector_with_constraint",
+            "rationale": "It connects callers to key composition and also documents the fallback behavior that the task says to preserve."
+          }
+        },
+        {
+          "id": "region_b3",
+          "symbol": "tenant_isolation_cases",
+          "summary": "Defines two tenants with equal document identifiers and requires separate cached values.",
+          "excerpt": "tenant red/id 7 != tenant blue/id 7",
+          "region": {"path": "beta/c.spec", "start_line": 11, "end_line": 20},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "supporting_context"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "supporting_context"}
+            ],
+            "rationale": "The cases define the missing key dimension and validate isolation."
+          }
+        },
+        {
+          "id": "region_b4",
+          "symbol": "format_cache_stats",
+          "summary": "Formats aggregate cache hit counts for an operator summary.",
+          "excerpt": "return hits + '/' + requests",
+          "region": {"path": "beta/d.src", "start_line": 66, "end_line": 71},
+          "adjudication": {
+            "primary": {"semantic_relevance": false, "repair_role": "incidental_context"},
+            "acceptable_labels": [
+              {"semantic_relevance": false, "repair_role": "incidental_context"}
+            ],
+            "rationale": "Aggregate display formatting neither consumes nor constrains cache keys."
+          }
+        }
+      ],
+      "relationships": [
+        {"source": "region_b2", "relationship": "calls", "target": "region_b1"},
+        {"source": "region_b3", "relationship": "specifies", "target": "region_b1"},
+        {"source": "region_b2", "relationship": "contributes_to", "target": "region_b4"}
+      ]
+    },
+    {
+      "id": "trailing-field-delimiter",
+      "description": "Records ending with one legal trailing delimiter are rejected. Repair field scanning while leaving diagnostic presentation unchanged.",
+      "candidates": [
+        {
+          "id": "region_c1",
+          "symbol": "scan_fields",
+          "summary": "Splits fields and currently emits an empty terminal field as an error.",
+          "excerpt": "for part in split(delimiter): require(part.length > 0)",
+          "region": {"path": "gamma/a.src", "start_line": 17, "end_line": 28},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "implementation_target"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "implementation_target"}
+            ],
+            "rationale": "The scanner makes the incorrect rejection decision."
+          }
+        },
+        {
+          "id": "region_c2",
+          "symbol": "parse_record",
+          "summary": "Delegates token scanning, converts accepted fields, and returns scan failures.",
+          "excerpt": "fields = scan_fields(text); return convert(fields)",
+          "region": {"path": "gamma/b.src", "start_line": 33, "end_line": 42},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "structural_bridge"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "structural_bridge"}
+            ],
+            "rationale": "It is the unmodified path from parsing to the scanner."
+          }
+        },
+        {
+          "id": "region_c3",
+          "symbol": "delimiter_contract",
+          "summary": "Defines accepted empty, single-field, separated, and trailing-delimiter records.",
+          "excerpt": "a|b| is valid; a||b is invalid",
+          "region": {"path": "gamma/c.spec", "start_line": 5, "end_line": 15},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "supporting_context"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "supporting_context"},
+              {"semantic_relevance": true, "repair_role": "structural_bridge"}
+            ],
+            "boundary": "executable_specification",
+            "rationale": "It primarily constrains behavior; environments that execute specifications in the repair path may adjudicate it as a structural bridge."
+          }
+        },
+        {
+          "id": "region_c4",
+          "symbol": "diagnostic_palette",
+          "summary": "Maps diagnostic severities to presentation labels and colors.",
+          "excerpt": "error -> red; warning -> amber",
+          "region": {"path": "gamma/d.src", "start_line": 58, "end_line": 64},
+          "adjudication": {
+            "primary": {"semantic_relevance": false, "repair_role": "incidental_context"},
+            "acceptable_labels": [
+              {"semantic_relevance": false, "repair_role": "incidental_context"}
+            ],
+            "rationale": "Presentation of diagnostics does not affect delimiter acceptance."
+          }
+        }
+      ],
+      "relationships": [
+        {"source": "region_c2", "relationship": "calls", "target": "region_c1"},
+        {"source": "region_c3", "relationship": "specifies", "target": "region_c1"},
+        {"source": "region_c2", "relationship": "errors_rendered_by", "target": "region_c4"}
+      ]
+    },
+    {
+      "id": "new-account-quota-default",
+      "description": "New accounts receive a quota of 10 instead of 25. Change only the default for newly created accounts; existing-account migration behavior must remain unchanged.",
+      "candidates": [
+        {
+          "id": "region_d1",
+          "symbol": "new_account_quota",
+          "summary": "Defines the quota assigned when an account has no explicit quota.",
+          "excerpt": "default_quota = 10",
+          "region": {"path": "delta/a.src", "start_line": 7, "end_line": 10},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "implementation_target"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "implementation_target"}
+            ],
+            "rationale": "The requested new-account default is defined here."
+          }
+        },
+        {
+          "id": "region_d2",
+          "symbol": "create_account",
+          "summary": "Uses the default only when the request does not supply a quota.",
+          "excerpt": "quota = request.quota or new_account_quota",
+          "region": {"path": "delta/b.src", "start_line": 19, "end_line": 27},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "structural_bridge"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "structural_bridge"}
+            ],
+            "rationale": "It connects account creation to the default without requiring an edit."
+          }
+        },
+        {
+          "id": "region_d3",
+          "symbol": "legacy_quota_migration",
+          "summary": "Preserves explicit quotas for existing accounts during migration.",
+          "excerpt": "migrated.quota = existing.quota",
+          "region": {"path": "delta/c.src", "start_line": 44, "end_line": 51},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "supporting_context"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "supporting_context"},
+              {"semantic_relevance": false, "repair_role": "incidental_context"}
+            ],
+            "boundary": "explicit_non_regression_scope",
+            "rationale": "The task explicitly protects this behavior, though an adjudicator focused only on the edit path may omit it as incidental."
+          }
+        },
+        {
+          "id": "region_d4",
+          "symbol": "account_label",
+          "summary": "Formats the account display name from owner and sequence number.",
+          "excerpt": "return owner + '-' + sequence",
+          "region": {"path": "delta/d.src", "start_line": 62, "end_line": 67},
+          "adjudication": {
+            "primary": {"semantic_relevance": false, "repair_role": "incidental_context"},
+            "acceptable_labels": [
+              {"semantic_relevance": false, "repair_role": "incidental_context"}
+            ],
+            "rationale": "Display naming is unrelated to quota selection or migration."
+          }
+        }
+      ],
+      "relationships": [
+        {"source": "region_d2", "relationship": "reads", "target": "region_d1"},
+        {"source": "region_d3", "relationship": "coexists_with", "target": "region_d2"},
+        {"source": "region_d2", "relationship": "also_builds", "target": "region_d4"}
+      ]
+    },
+    {
+      "id": "distance-unit-conversion",
+      "description": "Imported distances marked as miles are persisted as kilometers without conversion. Repair conversion while keeping import orchestration and source-file archiving unchanged.",
+      "candidates": [
+        {
+          "id": "region_e1",
+          "symbol": "convert_distance",
+          "summary": "Converts the parsed numeric distance according to its declared unit.",
+          "excerpt": "if unit == miles: return value; else: return value",
+          "region": {"path": "epsilon/a.src", "start_line": 25, "end_line": 34},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "implementation_target"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "implementation_target"}
+            ],
+            "rationale": "The missing conversion is localized in this unit-dependent calculation."
+          }
+        },
+        {
+          "id": "region_e2",
+          "symbol": "import_measurement",
+          "summary": "Parses an import row, delegates distance conversion, and persists the result.",
+          "excerpt": "stored.distance = convert_distance(row.value, row.unit)",
+          "region": {"path": "epsilon/b.src", "start_line": 12, "end_line": 22},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "structural_bridge"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "structural_bridge"},
+              {"semantic_relevance": true, "repair_role": "supporting_context"}
+            ],
+            "boundary": "connector_with_persistence_constraint",
+            "rationale": "It is both the path to conversion and evidence that converted output, not raw input, is persisted."
+          }
+        },
+        {
+          "id": "region_e3",
+          "symbol": "conversion_table",
+          "summary": "Defines canonical conversion examples for miles and kilometers.",
+          "excerpt": "1 mile -> 1.609344 km; 1 km -> 1 km",
+          "region": {"path": "epsilon/c.spec", "start_line": 6, "end_line": 13},
+          "adjudication": {
+            "primary": {"semantic_relevance": true, "repair_role": "supporting_context"},
+            "acceptable_labels": [
+              {"semantic_relevance": true, "repair_role": "supporting_context"}
+            ],
+            "rationale": "It supplies the exact conversion contract and validation examples."
+          }
+        },
+        {
+          "id": "region_e4",
+          "symbol": "archive_source_file",
+          "summary": "Moves a successfully imported source file to the archive location.",
+          "excerpt": "archive.move(source.path, completed.path)",
+          "region": {"path": "epsilon/d.src", "start_line": 47, "end_line": 53},
+          "adjudication": {
+            "primary": {"semantic_relevance": false, "repair_role": "incidental_context"},
+            "acceptable_labels": [
+              {"semantic_relevance": false, "repair_role": "incidental_context"}
+            ],
+            "rationale": "Archiving follows import success but neither affects nor constrains distance conversion."
+          }
+        }
+      ],
+      "relationships": [
+        {"source": "region_e2", "relationship": "calls", "target": "region_e1"},
+        {"source": "region_e3", "relationship": "specifies", "target": "region_e1"},
+        {"source": "region_e2", "relationship": "followed_by", "target": "region_e4"}
+      ]
+    }
+  ]
+}

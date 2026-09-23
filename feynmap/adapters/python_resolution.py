@@ -20,9 +20,10 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 
 from .python_reexports import ResolvedAlias, python_reexport_aliases
+from .python_source import get_python_source_session
 
 
-EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache"}
+EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache", ".feynmap"}
 OPTIONAL_WRAPPERS = {"Optional", "Union", "Annotated"}
 CLASS_KINDS = {"class", "data_model", "service", "handler", "transformer", "middleware"}
 
@@ -81,12 +82,12 @@ def enrich_python_attribute_calls(graph: SemanticGraph, project_path: Path) -> S
 
     reexport_aliases = python_reexport_aliases(graph, root)
     parsed: List[Tuple[Path, str, ast.Module, Dict[str, str]]] = []
-    for path in _iter_python_files(root):
-        relative = _relative(root, path)
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
-        except (OSError, UnicodeDecodeError, SyntaxError):
+    source = get_python_source_session(root)
+    for record in source.records():
+        if record.tree is None:
             continue
+        path = record.path
+        tree = record.tree
         module = _module_name(root, path)
         parsed.append((path, module, tree, _collect_imports(tree, module)))
 
@@ -125,9 +126,7 @@ def enrich_python_attribute_calls(graph: SemanticGraph, project_path: Path) -> S
                 source_node = nodes_by_qname.get(source_qname)
                 if source_node is None:
                     continue
-                collector = _MethodCallCollector(method)
-                collector.visit(method)
-                for call in collector.calls:
+                for call in source.scoped_calls(method):
                     parsed_call = _self_attribute_method(call.func)
                     if parsed_call is None:
                         continue
@@ -466,17 +465,19 @@ def _qualify(module: str, name: str) -> str:
 def _render_expr(node: Optional[ast.AST]) -> str:
     if node is None:
         return ""
+    # Name and dotted Attribute expressions dominate call targets and render
+    # identically without invoking ast.unparse's general-purpose machinery.
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        left = _render_expr(node.value)
+        return "%s.%s" % (left, node.attr) if left else node.attr
     unparse = getattr(ast, "unparse", None)
     if unparse is not None:
         try:
             return unparse(node)
         except Exception:
             pass
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        left = _render_expr(node.value)
-        return "%s.%s" % (left, node.attr) if left else node.attr
     if isinstance(node, ast.Subscript):
         return _render_expr(node.value)
     if isinstance(node, ast.Constant):

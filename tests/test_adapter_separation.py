@@ -1,4 +1,8 @@
+import ast
+from pathlib import Path
+
 from feynmap import EdgeKind, FeynMapEngine, NodeKind
+from feynmap.adapters.python import Definition, ParsedModule, PythonAdapter, _render_expr
 
 
 def _node(graph, name):
@@ -104,3 +108,52 @@ def test_flask_and_fastapi_are_independent_framework_adapters(tmp_path):
     assert fastapi_graph.metadata["framework"] == "fastapi"
     assert _node(fastapi_graph, "items").kind == NodeKind.HANDLER
     assert _node(fastapi_graph, "Item").kind == NodeKind.TRANSFORMER
+
+
+
+def test_resolve_call_reuses_pre_rendered_expression(monkeypatch):
+    adapter = PythonAdapter()
+    tree = ast.parse("helper()")
+    call = tree.body[0].value
+    definition = Definition(
+        id="python:symbol:mod.run",
+        name="run",
+        qualified_name="mod.run",
+        module="mod",
+        path=Path("mod.py"),
+        node=ast.parse("def run():\n    pass\n").body[0],
+    )
+    parsed = ParsedModule(
+        path=Path("mod.py"),
+        module="mod",
+        tree=tree,
+        imports={},
+        definitions={},
+    )
+
+    def fail_render(_node):
+        raise AssertionError("pre-rendered call should not be rendered twice")
+
+    monkeypatch.setattr("feynmap.adapters.python._render_expr", fail_render)
+
+    assert adapter._resolve_call(
+        call.func,
+        parsed,
+        definition,
+        {},
+        {},
+        {},
+        rendered="helper",
+    ) is None
+
+
+
+def test_render_expr_fast_paths_name_and_attribute_without_unparse(monkeypatch):
+    expression = ast.parse("service.client.run()", mode="eval").body.func
+
+    def fail_unparse(_node):
+        raise AssertionError("Name/Attribute fast path should not call ast.unparse")
+
+    monkeypatch.setattr(ast, "unparse", fail_unparse)
+
+    assert _render_expr(expression) == "service.client.run"
