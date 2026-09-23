@@ -17,6 +17,12 @@ HTTP_ROOTS = {"requests", "httpx"}
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 PROCESS_APIS = {"subprocess.run", "subprocess.call", "subprocess.check_call", "subprocess.check_output", "subprocess.Popen", "os.system"}
 READ_MODES = {"r", "rb", "rt", "r+", "rb+", "r+b"}
+BOUNDARY_SHORT_NAMES = (
+    HTTP_METHODS
+    | {"urlopen", "connect", "create_connection", "run", "call", "check_call",
+       "check_output", "Popen", "system", "open", "getenv", "get",
+       "create_engine", "CDLL", "PyDLL", "dlopen", "publish", "send"}
+)
 
 
 def enrich_python_boundaries(graph: SemanticGraph, root: Path) -> SemanticGraph:
@@ -130,7 +136,18 @@ def _boundary_call_identity(call: ast.Call) -> Optional[Tuple[str, str, str]]:
     if not call.args:
         return None
 
-    name = _expr_name(call.func)
+    # Most Python calls cannot possibly match a supported integration API.
+    # Name/Attribute nodes expose their terminal component without recursively
+    # rendering the entire dotted expression, so reject those calls first.
+    func = call.func
+    if isinstance(func, ast.Name):
+        if func.id not in BOUNDARY_SHORT_NAMES:
+            return None
+    elif isinstance(func, ast.Attribute):
+        if func.attr not in BOUNDARY_SHORT_NAMES:
+            return None
+
+    name = _expr_name(func)
     if not name:
         return None
 
