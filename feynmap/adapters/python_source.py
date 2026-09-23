@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 from contextlib import contextmanager
+from functools import lru_cache
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,20 @@ EXCLUDED_DIRS = {
     ".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules",
     "__pycache__", ".tox", ".mypy_cache", ".pytest_cache", ".feynmap",
 }
+
+
+@lru_cache(maxsize=131072)
+def cached_relative_path(root: Path, path: Path) -> str:
+    """Return a stable POSIX relative path for immutable path values.
+
+    Unlike source/AST caches, this cache is safe across analyses because the
+    result depends only on the two Path values, not on repository contents.
+    The bounded size prevents unbounded growth in long-lived processes.
+    """
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 @dataclass(frozen=True)
@@ -106,10 +121,7 @@ class PythonSourceSession:
         return list(self._paths)
 
     def relative(self, path: Path) -> str:
-        try:
-            return Path(path).relative_to(self.root).as_posix()
-        except ValueError:
-            return Path(path).as_posix()
+        return cached_relative_path(self.root, Path(path))
 
     def record(self, path: Path) -> PythonSourceFile:
         key = Path(path).resolve()
