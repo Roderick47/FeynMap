@@ -126,9 +126,7 @@ def enrich_python_attribute_calls(graph: SemanticGraph, project_path: Path) -> S
                 source_node = nodes_by_qname.get(source_qname)
                 if source_node is None:
                     continue
-                collector = _MethodCallCollector(method)
-                collector.visit(method)
-                for call in collector.calls:
+                for call in source.scoped_calls(method):
                     parsed_call = _self_attribute_method(call.func)
                     if parsed_call is None:
                         continue
