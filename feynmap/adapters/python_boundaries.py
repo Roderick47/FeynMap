@@ -38,18 +38,25 @@ def enrich_python_boundaries(graph: SemanticGraph, root: Path) -> SemanticGraph:
         if module and _has_main_guard(tree):
             add_contract(module, "cli_entrypoint", relative, 0.98, aliases=[path.name])
 
-        calls = list(source.ast_index(record.path).calls)
+        candidates = []
+        for call in source.ast_index(record.path).calls:
+            identity = _boundary_call_identity(call)
+            if identity is None:
+                continue
+            name, short, root_name = identity
+            candidates.append((call, name, short, root_name))
+
+        if not candidates:
+            continue
+
         owners = _owners_for_lines(
             owners_by_path.get(relative, ()),
-            [getattr(call, "lineno", 1) for call in calls],
+            [getattr(call, "lineno", 1) for call, _, _, _ in candidates],
         )
-        for call in calls:
+        for call, name, short, root_name in candidates:
             owner = owners.get(getattr(call, "lineno", 1)) or module
             if owner is None:
                 continue
-            name = _expr_name(call.func)
-            short = name.rsplit(".", 1)[-1]
-            root_name = name.split(".", 1)[0]
 
             if root_name in HTTP_ROOTS and short.lower() in HTTP_METHODS and call.args:
                 target = _string(call.args[0])
@@ -110,6 +117,51 @@ def enrich_python_boundaries(graph: SemanticGraph, root: Path) -> SemanticGraph:
                     add_contract(owner, "queue_publish", target, 0.72, api=name, line=getattr(call, "lineno", 1))
 
     return graph
+
+
+def _boundary_call_identity(call: ast.Call) -> Optional[Tuple[str, str, str]]:
+    """Return preclassified boundary-call identity, or None for ordinary calls.
+
+    Boundary extraction only emits contracts for calls with at least one
+    positional argument and one of the statically recognized API names below.
+    Rejecting all other calls before owner resolution preserves the historical
+    contract semantics while avoiding line-owner work for the common case.
+    """
+    if not call.args:
+        return None
+
+    name = _expr_name(call.func)
+    if not name:
+        return None
+
+    short = name.rsplit(".", 1)[-1]
+    root_name = name.split(".", 1)[0]
+
+    if root_name in HTTP_ROOTS and short.lower() in HTTP_METHODS:
+        return name, short, root_name
+    if name in {
+        "urllib.request.urlopen",
+        "websockets.connect",
+        "websocket.create_connection",
+        "open",
+        "os.getenv",
+        "os.environ.get",
+        "sqlite3.connect",
+        "psycopg.connect",
+        "psycopg2.connect",
+        "sqlalchemy.create_engine",
+        "ctypes.CDLL",
+        "ctypes.PyDLL",
+        "cffi.dlopen",
+    }:
+        return name, short, root_name
+    if name in PROCESS_APIS:
+        return name, short, root_name
+    if short in {"publish", "send"}:
+        lowered = name.lower()
+        if "redis" in lowered or "producer" in lowered or "kafka" in lowered:
+            return name, short, root_name
+    return None
 
 
 def _build_boundary_index(
