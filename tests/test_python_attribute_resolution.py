@@ -1,4 +1,7 @@
+import ast
+
 from feynmap import EdgeKind, FeynMapEngine
+from feynmap.adapters.python_resolution import _render_expr as _resolution_render_expr
 
 
 def _node(graph, qualified_name):
@@ -97,3 +100,15 @@ def test_self_hosting_engine_resolver_relationship_is_now_grounded():
     resolve = _node(graph, "feynmap.integration.IntegrationResolver.resolve")
 
     assert _has_edge(graph, analyze, resolve, EdgeKind.CALLS)
+
+
+
+def test_resolution_render_expr_fast_paths_dotted_names_without_unparse(monkeypatch):
+    expression = ast.parse("typing.Optional", mode="eval").body
+
+    def fail_unparse(_node):
+        raise AssertionError("Name/Attribute fast path should not call ast.unparse")
+
+    monkeypatch.setattr(ast, "unparse", fail_unparse)
+
+    assert _resolution_render_expr(expression) == "typing.Optional"
