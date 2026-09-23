@@ -10,6 +10,8 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from feynmap.core import NodeKind, SemanticGraph, SemanticNode
 from feynmap.integration import add_contract
 
+from .python_source import get_python_source_session
+
 EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".feynmap"}
 HTTP_ROOTS = {"requests", "httpx"}
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
@@ -25,12 +27,13 @@ def enrich_python_boundaries(graph: SemanticGraph, root: Path) -> SemanticGraph:
     large repositories such as SymPy and Astropy.
     """
     modules_by_path, owners_by_path = _build_boundary_index(graph)
-    for path in _iter_python_files(root):
-        relative = path.relative_to(root).as_posix()
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SyntaxError):
+    source = get_python_source_session(root)
+    for record in source.records():
+        if record.tree is None:
             continue
+        path = record.path
+        relative = record.relative
+        tree = record.tree
         module = modules_by_path.get(relative)
         if module and _has_main_guard(tree):
             add_contract(module, "cli_entrypoint", relative, 0.98, aliases=[path.name])
