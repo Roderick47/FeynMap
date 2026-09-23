@@ -1,6 +1,9 @@
 from pathlib import Path
 
 from feynmap import EdgeKind, FeynMapEngine
+from feynmap.adapters.python import PythonAdapter
+from feynmap.adapters.python_reexports import enrich_python_reexports
+from feynmap.adapters.python_source import python_source_session
 
 
 def _has_edge(graph, source_qname, target_qname, kind):
@@ -115,3 +118,37 @@ def test_reexported_type_annotation_grounds_instance_method_call(tmp_path: Path)
     metadata = graph.metadata["python_attribute_resolution"]
     assert metadata["reexport_aliases_consulted"] >= 1
     assert metadata["alias_grounded_call_edges"] >= 1
+
+
+
+def test_reexport_enrichment_computes_package_aliases_once(monkeypatch, tmp_path: Path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text(
+        "from .impl import Thing\n__all__ = ['Thing']\n",
+        encoding="utf-8",
+    )
+    (package / "impl.py").write_text(
+        "class Thing:\n    pass\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.py").write_text(
+        "from pkg import Thing\n\ndef build():\n    return Thing()\n",
+        encoding="utf-8",
+    )
+
+    import feynmap.adapters.python_reexports as reexports
+
+    with python_source_session(tmp_path):
+        graph = PythonAdapter().analyze(tmp_path)
+        original = reexports._package_aliases
+        calls = {"count": 0}
+
+        def counting_package_aliases(parsed):
+            calls["count"] += 1
+            return original(parsed)
+
+        monkeypatch.setattr(reexports, "_package_aliases", counting_package_aliases)
+        enrich_python_reexports(graph, tmp_path)
+
+    assert calls["count"] == 1
