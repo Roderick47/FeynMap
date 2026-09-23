@@ -23,7 +23,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 
-from .python_source import get_python_source_session
+from .python_source import cached_relative_path, get_python_source_session
 
 
 EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache", ".feynmap"}
@@ -465,10 +465,7 @@ def _iter_python_files(root: Path) -> Iterable[Path]:
 
 
 def _relative(root: Path, path: Path) -> str:
-    try:
-        return path.relative_to(root).as_posix()
-    except ValueError:
-        return path.as_posix()
+    return cached_relative_path(root, path)
 
 
 def _qualify(module: str, name: str) -> str:
