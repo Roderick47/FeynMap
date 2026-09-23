@@ -247,6 +247,7 @@ class PythonAdapter(LanguageAdapter):
                 warnings.append("could not parse %s: %s" % (relative, record.error or "unknown parse error"))
                 continue
             tree = record.tree
+            source.ast_index(path)
             module_name = self._module_name(root, path)
             parsed = ParsedModule(path=path, module=module_name, tree=tree)
             parsed.imports = self._collect_imports(tree, module_name)
