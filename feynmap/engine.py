@@ -8,6 +8,7 @@ from .adapters import AdapterRegistry, DjangoAdapter, FastAPIAdapter, FlaskAdapt
 from .adapters.python_boundaries import enrich_python_boundaries
 from .adapters.python_reexports import enrich_python_reexports
 from .adapters.python_resolution import enrich_python_attribute_calls
+from .adapters.python_source import python_source_session
 from .core import SemanticGraph
 from .core.ontology import CONFIDENCE_POLICY_VERSION
 from .integration import IntegrationResolver
@@ -30,6 +31,15 @@ class FeynMapEngine:
         if not root.exists():
             raise FileNotFoundError("project path does not exist: %s" % root)
 
+        with python_source_session(root):
+            return self._analyze_in_source_session(root, language, framework)
+
+    def _analyze_in_source_session(
+        self,
+        root: Path,
+        language: str,
+        framework: str,
+    ) -> SemanticGraph:
         language_choices = self._select_languages(root, language)
         if not language_choices:
             raise ValueError("no registered language adapter recognized this repository")
