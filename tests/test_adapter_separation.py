@@ -2,7 +2,7 @@ import ast
 from pathlib import Path
 
 from feynmap import EdgeKind, FeynMapEngine, NodeKind
-from feynmap.adapters.python import Definition, ParsedModule, PythonAdapter
+from feynmap.adapters.python import Definition, ParsedModule, PythonAdapter, _render_expr
 
 
 def _node(graph, name):
@@ -145,3 +145,15 @@ def test_resolve_call_reuses_pre_rendered_expression(monkeypatch):
         {},
         rendered="helper",
     ) is None
+
+
+
+def test_render_expr_fast_paths_name_and_attribute_without_unparse(monkeypatch):
+    expression = ast.parse("service.client.run()", mode="eval").body.func
+
+    def fail_unparse(_node):
+        raise AssertionError("Name/Attribute fast path should not call ast.unparse")
+
+    monkeypatch.setattr(ast, "unparse", fail_unparse)
+
+    assert _render_expr(expression) == "service.client.run"
