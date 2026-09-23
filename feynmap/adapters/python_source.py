@@ -11,6 +11,7 @@ cache and therefore cannot silently retain stale ASTs after repository changes.
 from __future__ import annotations
 
 import ast
+from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -112,7 +113,8 @@ class PythonSourceSession:
             return Path(path).as_posix()
 
     def record(self, path: Path) -> PythonSourceFile:
-        key = Path(path).resolve()
+        path_value = Path(path)
+        key = path_value if path_value.is_absolute() else path_value.resolve()
         cached = self._records.get(key)
         if cached is not None:
             return cached
@@ -132,7 +134,8 @@ class PythonSourceSession:
             yield self.record(path)
 
     def ast_index(self, path: Path) -> PythonAstIndex:
-        key = Path(path).resolve()
+        path_value = Path(path)
+        key = path_value if path_value.is_absolute() else path_value.resolve()
         cached = self._ast_indexes.get(key)
         if cached is not None:
             return cached
@@ -142,16 +145,62 @@ class PythonSourceSession:
         calls: List[ast.Call] = []
         functions: List[ast.AST] = []
         classes: List[ast.ClassDef] = []
+        scoped_calls: Dict[int, List[ast.Call]] = {}
+        scoped_awaits: Dict[int, List[ast.Await]] = {}
+
         if record.tree is not None:
-            for node in ast.walk(record.tree):
+            # Match ast.walk's breadth-first ordering while carrying callable
+            # ownership. A nested function/lambda/class is a scope boundary,
+            # matching the historical scoped collectors exactly.
+            queue = deque([(record.tree, None)])
+            while queue:
+                node, owner = queue.popleft()
+
                 if isinstance(node, (ast.Import, ast.ImportFrom)):
                     imports.append(node)
                 if isinstance(node, ast.Call):
                     calls.append(node)
+                    if owner is not None:
+                        scoped_calls.setdefault(id(owner), []).append(node)
+                if isinstance(node, ast.Await) and owner is not None:
+                    scoped_awaits.setdefault(id(owner), []).append(node)
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     functions.append(node)
                 if isinstance(node, ast.ClassDef):
                     classes.append(node)
+
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    body_ids = {id(child) for child in node.body}
+                    for child in ast.iter_child_nodes(node):
+                        child_owner = node if id(child) in body_ids else None
+                        queue.append((child, child_owner))
+                    continue
+
+                if isinstance(node, ast.Lambda):
+                    for child in ast.iter_child_nodes(node):
+                        queue.append((child, node if child is node.body else None))
+                    continue
+
+                if isinstance(node, ast.ClassDef):
+                    for child in ast.iter_child_nodes(node):
+                        queue.append((child, None))
+                    continue
+
+                for child in ast.iter_child_nodes(node):
+                    queue.append((child, owner))
+
+        for owner_id, owner_calls in scoped_calls.items():
+            existing = self._scoped_callables.get(owner_id)
+            awaits = tuple(scoped_awaits.get(owner_id, ()))
+            if existing is None:
+                self._scoped_callables[owner_id] = (tuple(owner_calls), awaits)
+        for owner_id, owner_awaits in scoped_awaits.items():
+            if owner_id not in self._scoped_callables:
+                self._scoped_callables[owner_id] = ((), tuple(owner_awaits))
+
+        # Ensure callable nodes with no calls/awaits still become cache hits.
+        for node in functions:
+            self._scoped_callables.setdefault(id(node), ((), ()))
 
         index = PythonAstIndex(
             imports=tuple(imports),
