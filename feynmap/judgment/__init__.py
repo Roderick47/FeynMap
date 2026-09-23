@@ -15,9 +15,12 @@ from .ranking import (
     rerank_with_judgments,
     rerank_with_judgments_result,
 )
+from .search import GuidedSearchResult, JevGuidedSearch, SearchHit, SearchStep
 from .state import build_judgment_state
 
 __all__ = [
+    "GuidedSearchResult",
+    "JevGuidedSearch",
     "JevJudgmentProvider",
     "JevUnavailableError",
     "JudgmentAnswer",
@@ -27,6 +30,8 @@ __all__ = [
     "JudgmentQuestion",
     "JudgmentResult",
     "RankedCandidate",
+    "SearchHit",
+    "SearchStep",
     "baseline_rank",
     "build_judgment_state",
     "rerank_with_judgments",
