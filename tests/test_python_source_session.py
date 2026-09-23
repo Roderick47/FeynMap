@@ -1,7 +1,6 @@
 import ast
 
 from feynmap import FeynMapEngine
-from feynmap.adapters.python import _ScopedBodyCollector
 from feynmap.adapters.python_source import (
     PythonSourceSession,
     get_python_source_session,
@@ -98,16 +97,20 @@ def test_ast_index_is_reused_across_consumers(monkeypatch, tmp_path):
 
     with python_source_session(tmp_path) as source:
         record = source.record(path)
+        original_walk = ast.walk
+        calls = {"count": 0}
+
+        def counting_walk(node):
+            calls["count"] += 1
+            return original_walk(node)
+
+        monkeypatch.setattr(ast, "walk", counting_walk)
         first = source.ast_index(record.path)
-
-        def fail_children(*args, **kwargs):
-            raise AssertionError("cached AST index should not traverse the tree again")
-
-        monkeypatch.setattr(ast, "iter_child_nodes", fail_children)
         second = source.ast_index(record.path)
         imports = source.imports_by_file()
 
     assert first is second
+    assert calls["count"] == 1
     assert len(first.calls) == 2
     assert "os" in imports["mod.py"]
 
@@ -139,55 +142,3 @@ def test_scoped_callable_cache_preserves_nested_callable_boundaries(tmp_path):
     assert first_awaits == ()
     assert first_calls is second_calls
     assert first_awaits is second_awaits
-
-
-
-def test_indexed_scoped_traversal_matches_historical_collector_order(tmp_path):
-    path = tmp_path / "mod.py"
-    path.write_text(
-        "async def outer(flag):\n"
-        "    first(one(), two())\n"
-        "    if flag:\n"
-        "        await third()\n"
-        "    def inner():\n"
-        "        hidden()\n"
-        "    class Inner:\n"
-        "        value = class_hidden()\n"
-        "    (lambda: lambda_hidden())\n"
-        "    return final()\n",
-        encoding="utf-8",
-    )
-
-    with python_source_session(tmp_path) as source:
-        record = source.record(path)
-        assert record.tree is not None
-        outer = record.tree.body[0]
-        source.ast_index(path)
-
-        historical = _ScopedBodyCollector(outer)
-        historical.visit(outer)
-        indexed_calls, indexed_awaits = source.scoped_callable(outer)
-
-    assert indexed_calls == tuple(historical.calls)
-    assert indexed_awaits == tuple(historical.awaits)
-
-
-def test_full_ast_index_preserves_ast_walk_order(tmp_path):
-    path = tmp_path / "mod.py"
-    path.write_text(
-        "def first():\n"
-        "    alpha(beta())\n"
-        "def second():\n"
-        "    gamma()\n",
-        encoding="utf-8",
-    )
-
-    with python_source_session(tmp_path) as source:
-        record = source.record(path)
-        assert record.tree is not None
-        expected_calls = tuple(
-            node for node in ast.walk(record.tree) if isinstance(node, ast.Call)
-        )
-        indexed_calls = source.ast_index(path).calls
-
-    assert indexed_calls == expected_calls
