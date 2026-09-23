@@ -83,6 +83,7 @@ def python_reexport_aliases(graph: SemanticGraph, project_path: Path) -> Dict[st
     function is intentionally read-only: it does not mutate the graph.
     """
     root = project_path.resolve()
+    source = get_python_source_session(root)
     nodes_by_qname: Dict[str, SemanticNode] = {
         node.qualified_name: node
         for node in graph.nodes
@@ -172,9 +173,7 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
             source_node = nodes_by_qname.get(source_qname)
             if source_node is None:
                 continue
-            collector = _ScopedCallCollector(callable_node)
-            collector.visit(callable_node)
-            for call in collector.calls:
+            for call in source.scoped_calls(callable_node):
                 if not isinstance(call.func, ast.Name):
                     continue
                 binding = parsed_file.imports.get(call.func.id)
