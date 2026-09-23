@@ -98,20 +98,16 @@ def test_ast_index_is_reused_across_consumers(monkeypatch, tmp_path):
 
     with python_source_session(tmp_path) as source:
         record = source.record(path)
-        original_walk = ast.walk
-        calls = {"count": 0}
-
-        def counting_walk(node):
-            calls["count"] += 1
-            return original_walk(node)
-
-        monkeypatch.setattr(ast, "walk", counting_walk)
         first = source.ast_index(record.path)
+
+        def fail_children(*args, **kwargs):
+            raise AssertionError("cached AST index should not traverse the tree again")
+
+        monkeypatch.setattr(ast, "iter_child_nodes", fail_children)
         second = source.ast_index(record.path)
         imports = source.imports_by_file()
 
     assert first is second
-    assert calls["count"] == 1
     assert len(first.calls) == 2
     assert "os" in imports["mod.py"]
 
