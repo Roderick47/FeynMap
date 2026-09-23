@@ -110,8 +110,13 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
         return graph
 
     parsed = _parse_python_files(root)
-    resolved_aliases, ambiguous_aliases = _resolved_alias_index(parsed, nodes_by_qname)
-    raw_aliases, _ = _package_aliases(parsed)
+    raw_aliases, explicit_exports = _package_aliases(parsed)
+    resolved_aliases, ambiguous_aliases = _resolved_alias_index(
+        parsed,
+        nodes_by_qname,
+        raw_aliases=raw_aliases,
+        explicit_exports=explicit_exports,
+    )
 
     call_edges_added = 0
     import_edges_added = 0
@@ -237,8 +242,11 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
 def _resolved_alias_index(
     parsed: Sequence[ParsedPythonFile],
     nodes_by_qname: Dict[str, SemanticNode],
+    raw_aliases: Optional[Dict[str, Set[str]]] = None,
+    explicit_exports: Optional[Set[str]] = None,
 ) -> Tuple[Dict[str, ResolvedAlias], List[str]]:
-    raw_aliases, explicit_exports = _package_aliases(parsed)
+    if raw_aliases is None or explicit_exports is None:
+        raw_aliases, explicit_exports = _package_aliases(parsed)
     resolved_aliases: Dict[str, ResolvedAlias] = {}
     ambiguous_aliases: List[str] = []
     for alias in sorted(raw_aliases):
