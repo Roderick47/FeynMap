@@ -83,7 +83,6 @@ def python_reexport_aliases(graph: SemanticGraph, project_path: Path) -> Dict[st
     function is intentionally read-only: it does not mutate the graph.
     """
     root = project_path.resolve()
-    source = get_python_source_session(root)
     nodes_by_qname: Dict[str, SemanticNode] = {
         node.qualified_name: node
         for node in graph.nodes
@@ -100,6 +99,7 @@ def python_reexport_aliases(graph: SemanticGraph, project_path: Path) -> Dict[st
 def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> SemanticGraph:
     """Resolve statically provable package re-export aliases and calls through them."""
     root = project_path.resolve()
+    source = get_python_source_session(root)
     nodes_by_qname: Dict[str, SemanticNode] = {
         node.qualified_name: node
         for node in graph.nodes
