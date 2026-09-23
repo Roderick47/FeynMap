@@ -38,7 +38,7 @@ def enrich_python_boundaries(graph: SemanticGraph, root: Path) -> SemanticGraph:
         if module and _has_main_guard(tree):
             add_contract(module, "cli_entrypoint", relative, 0.98, aliases=[path.name])
 
-        calls = [item for item in ast.walk(tree) if isinstance(item, ast.Call)]
+        calls = list(source.ast_index(record.path).calls)
         owners = _owners_for_lines(
             owners_by_path.get(relative, ()),
             [getattr(call, "lineno", 1) for call in calls],
