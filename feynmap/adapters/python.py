@@ -26,6 +26,7 @@ from feynmap.core import (
 )
 
 from .base import LanguageAdapter
+from .python_source import get_python_source_session
 
 EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache", ".feynmap"}
 BUILTIN_NAMES = set(dir(builtins))
@@ -238,16 +239,14 @@ class PythonAdapter(LanguageAdapter):
     def _parse_modules(self, root: Path) -> Tuple[List[ParsedModule], List[str]]:
         modules: List[ParsedModule] = []
         warnings: List[str] = []
-        for path in sorted(self._iter_files(root), key=lambda item: self._relative(root, item)):
-            if path.suffix != ".py":
+        source = get_python_source_session(root)
+        for record in source.records():
+            path = record.path
+            relative = record.relative
+            if record.tree is None:
+                warnings.append("could not parse %s: %s" % (relative, record.error or "unknown parse error"))
                 continue
-            relative = self._relative(root, path)
-            try:
-                text = path.read_text(encoding="utf-8")
-                tree = ast.parse(text, filename=relative)
-            except (OSError, UnicodeDecodeError, SyntaxError) as exc:
-                warnings.append("could not parse %s: %s" % (relative, exc))
-                continue
+            tree = record.tree
             module_name = self._module_name(root, path)
             parsed = ParsedModule(path=path, module=module_name, tree=tree)
             parsed.imports = self._collect_imports(tree, module_name)
