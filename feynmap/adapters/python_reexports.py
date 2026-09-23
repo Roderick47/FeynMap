@@ -23,6 +23,8 @@ from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 
+from .python_source import get_python_source_session
+
 
 EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache", ".feynmap"}
 ResolvedAlias = Tuple[str, List[str], float]
@@ -273,12 +275,12 @@ def _binding_resolution(
 
 def _parse_python_files(root: Path) -> List[ParsedPythonFile]:
     result: List[ParsedPythonFile] = []
-    for path in _iter_python_files(root):
-        relative = _relative(root, path)
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
-        except (OSError, UnicodeDecodeError, SyntaxError):
+    source = get_python_source_session(root)
+    for record in source.records():
+        if record.tree is None:
             continue
+        path = record.path
+        tree = record.tree
         is_package = path.name == "__init__.py"
         module = _module_name(root, path)
         imports = _collect_imports(tree, module, is_package)
