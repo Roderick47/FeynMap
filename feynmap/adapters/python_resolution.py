@@ -20,6 +20,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 
 from .python_reexports import ResolvedAlias, python_reexport_aliases
+from .python_source import get_python_source_session
 
 
 EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache", ".feynmap"}
@@ -81,12 +82,12 @@ def enrich_python_attribute_calls(graph: SemanticGraph, project_path: Path) -> S
 
     reexport_aliases = python_reexport_aliases(graph, root)
     parsed: List[Tuple[Path, str, ast.Module, Dict[str, str]]] = []
-    for path in _iter_python_files(root):
-        relative = _relative(root, path)
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
-        except (OSError, UnicodeDecodeError, SyntaxError):
+    source = get_python_source_session(root)
+    for record in source.records():
+        if record.tree is None:
             continue
+        path = record.path
+        tree = record.tree
         module = _module_name(root, path)
         parsed.append((path, module, tree, _collect_imports(tree, module)))
 
