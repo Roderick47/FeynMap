@@ -3,6 +3,7 @@ import ast
 from feynmap import FeynMapEngine
 from feynmap.adapters.python_source import (
     PythonSourceSession,
+    cached_relative_path,
     get_python_source_session,
     python_source_session,
 )
@@ -142,3 +143,22 @@ def test_scoped_callable_cache_preserves_nested_callable_boundaries(tmp_path):
     assert first_awaits == ()
     assert first_calls is second_calls
     assert first_awaits is second_awaits
+
+
+
+def test_cached_relative_path_reuses_pure_path_normalization(tmp_path):
+    root = tmp_path.resolve()
+    inside = root / "pkg" / "mod.py"
+    outside = root.parent / "external.py"
+
+    cached_relative_path.cache_clear()
+    before = cached_relative_path.cache_info()
+
+    assert cached_relative_path(root, inside) == "pkg/mod.py"
+    middle = cached_relative_path.cache_info()
+    assert cached_relative_path(root, inside) == "pkg/mod.py"
+    after = cached_relative_path.cache_info()
+
+    assert middle.misses == before.misses + 1
+    assert after.hits == middle.hits + 1
+    assert cached_relative_path(root, outside) == outside.as_posix()
