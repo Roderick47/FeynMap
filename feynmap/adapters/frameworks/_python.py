@@ -101,7 +101,7 @@ def attach_decorator_http_contracts(graph: SemanticGraph, root: Path, framework:
             continue
         relative = record.relative
         tree = record.tree
-        for definition in (item for item in ast.walk(tree) if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        for definition in source.ast_index(record.path).functions:
             semantic_node = _node_for_line(graph, relative, getattr(definition, "lineno", 1))
             if semantic_node is None or semantic_node.kind != NodeKind.HANDLER:
                 continue
@@ -144,7 +144,7 @@ def attach_django_url_contracts(graph: SemanticGraph, root: Path) -> None:
         if path.name != "urls.py" or record.tree is None:
             continue
         tree = record.tree
-        for call in (item for item in ast.walk(tree) if isinstance(item, ast.Call)):
+        for call in source.ast_index(record.path).calls:
             call_name = _expr_name(call.func)
             if call_name.rsplit(".", 1)[-1] not in {"path", "re_path"} or len(call.args) < 2:
                 continue
@@ -165,7 +165,7 @@ def attach_template_render_contracts(graph: SemanticGraph, root: Path, framework
             continue
         relative = record.relative
         tree = record.tree
-        for call in (item for item in ast.walk(tree) if isinstance(item, ast.Call)):
+        for call in source.ast_index(record.path).calls:
             call_name = _expr_name(call.func)
             template: Optional[str] = None
             if framework == "django" and call_name.rsplit(".", 1)[-1] in {"render", "render_to_string"}:
