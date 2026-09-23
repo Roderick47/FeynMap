@@ -1,3 +1,5 @@
+import feynmap.adapters.python_boundaries as boundaries
+
 from feynmap.adapters.python_boundaries import (
     _build_boundary_index,
     _node_for_line,
@@ -128,3 +130,36 @@ def test_boundary_enrichment_does_not_rescan_graph_per_call(tmp_path):
     assert counting.iterations == 1
     contracts = function.attributes.get("integration_contracts") or []
     assert len(contracts) == 200
+
+
+
+def test_boundary_enrichment_resolves_owners_only_for_boundary_candidates(monkeypatch, tmp_path):
+    path = tmp_path / "mod.py"
+    path.write_text(
+        "def work():\n"
+        + "".join("    abs(%d)\n" % index for index in range(500))
+        + '    open("target.txt")\n',
+        encoding="utf-8",
+    )
+
+    module = _node("module", NodeKind.MODULE, 1, path="mod.py")
+    function = _node("work", NodeKind.FUNCTION, 1, 502, path="mod.py")
+    graph = SemanticGraph(nodes=[module, function])
+
+    original = boundaries._owners_for_lines
+    observed = []
+
+    def counting_owners(nodes, lines):
+        observed.extend(lines)
+        return original(nodes, lines)
+
+    monkeypatch.setattr(boundaries, "_owners_for_lines", counting_owners)
+
+    enrich_python_boundaries(graph, tmp_path)
+
+    assert len(observed) == 1
+    assert observed[0] == 502
+    contracts = function.attributes.get("integration_contracts") or []
+    assert len(contracts) == 1
+    assert contracts[0]["kind"] == "file_read"
+    assert contracts[0]["target"] == "target.txt"
