@@ -145,25 +145,25 @@ class PythonSourceSession:
         calls: List[ast.Call] = []
         functions: List[ast.AST] = []
         classes: List[ast.ClassDef] = []
-        scoped_calls: Dict[int, List[ast.Call]] = {}
-        scoped_awaits: Dict[int, List[ast.Await]] = {}
+        scoped_calls: Dict[int, List[Tuple[Tuple[int, ...], ast.Call]]] = {}
+        scoped_awaits: Dict[int, List[Tuple[Tuple[int, ...], ast.Await]]] = {}
 
         if record.tree is not None:
             # Match ast.walk's breadth-first ordering while carrying callable
             # ownership. A nested function/lambda/class is a scope boundary,
             # matching the historical scoped collectors exactly.
-            queue = deque([(record.tree, None)])
+            queue = deque([(record.tree, None, ())])
             while queue:
-                node, owner = queue.popleft()
+                node, owner, path_key = queue.popleft()
 
                 if isinstance(node, (ast.Import, ast.ImportFrom)):
                     imports.append(node)
                 if isinstance(node, ast.Call):
                     calls.append(node)
                     if owner is not None:
-                        scoped_calls.setdefault(id(owner), []).append(node)
+                        scoped_calls.setdefault(id(owner), []).append((path_key, node))
                 if isinstance(node, ast.Await) and owner is not None:
-                    scoped_awaits.setdefault(id(owner), []).append(node)
+                    scoped_awaits.setdefault(id(owner), []).append((path_key, node))
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     functions.append(node)
                 if isinstance(node, ast.ClassDef):
@@ -171,32 +171,47 @@ class PythonSourceSession:
 
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     body_ids = {id(child) for child in node.body}
-                    for child in ast.iter_child_nodes(node):
+                    for child_index, child in enumerate(ast.iter_child_nodes(node)):
                         child_owner = node if id(child) in body_ids else None
-                        queue.append((child, child_owner))
+                        queue.append((child, child_owner, path_key + (child_index,)))
                     continue
 
                 if isinstance(node, ast.Lambda):
-                    for child in ast.iter_child_nodes(node):
-                        queue.append((child, node if child is node.body else None))
+                    for child_index, child in enumerate(ast.iter_child_nodes(node)):
+                        queue.append((child, node if child is node.body else None, path_key + (child_index,)))
                     continue
 
                 if isinstance(node, ast.ClassDef):
-                    for child in ast.iter_child_nodes(node):
-                        queue.append((child, None))
+                    for child_index, child in enumerate(ast.iter_child_nodes(node)):
+                        queue.append((child, None, path_key + (child_index,)))
                     continue
 
-                for child in ast.iter_child_nodes(node):
-                    queue.append((child, owner))
+                for child_index, child in enumerate(ast.iter_child_nodes(node)):
+                    queue.append((child, owner, path_key + (child_index,)))
 
         for owner_id, owner_calls in scoped_calls.items():
             existing = self._scoped_callables.get(owner_id)
-            awaits = tuple(scoped_awaits.get(owner_id, ()))
+            calls_in_historical_order = tuple(
+                node for _, node in sorted(owner_calls, key=lambda item: item[0])
+            )
+            awaits_in_historical_order = tuple(
+                node
+                for _, node in sorted(
+                    scoped_awaits.get(owner_id, ()),
+                    key=lambda item: item[0],
+                )
+            )
             if existing is None:
-                self._scoped_callables[owner_id] = (tuple(owner_calls), awaits)
+                self._scoped_callables[owner_id] = (
+                    calls_in_historical_order,
+                    awaits_in_historical_order,
+                )
         for owner_id, owner_awaits in scoped_awaits.items():
             if owner_id not in self._scoped_callables:
-                self._scoped_callables[owner_id] = ((), tuple(owner_awaits))
+                awaits_in_historical_order = tuple(
+                    node for _, node in sorted(owner_awaits, key=lambda item: item[0])
+                )
+                self._scoped_callables[owner_id] = ((), awaits_in_historical_order)
 
         # Ensure callable nodes with no calls/awaits still become cache hits.
         for node in functions:
