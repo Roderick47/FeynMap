@@ -209,7 +209,15 @@ class PythonAdapter(LanguageAdapter):
                 await_lines = {getattr(item.value, "lineno", None) for item in awaits if isinstance(item.value, ast.Call)}
                 for call in calls:
                     raw_call = _render_expr(call.func)
-                    target_id = self._resolve_call(call.func, parsed, definition, module_ids, definitions_by_qualified, definitions_by_module_name)
+                    target_id = self._resolve_call(
+                        call.func,
+                        parsed,
+                        definition,
+                        module_ids,
+                        definitions_by_qualified,
+                        definitions_by_module_name,
+                        rendered=raw_call,
+                    )
                     if target_id:
                         line = getattr(call, "lineno", getattr(definition.node, "lineno", 1))
                         self._add_edge_once(
@@ -344,8 +352,18 @@ class PythonAdapter(LanguageAdapter):
             evidence=[self._evidence(root, definition.path, getattr(node, "lineno", 1), "python.ast.definition", "Python %s definition" % kind.value)],
         )
 
-    def _resolve_call(self, expr: ast.AST, parsed: ParsedModule, definition: Definition, module_ids: Dict[str, str], by_qualified: Dict[str, Definition], by_module_name: Dict[Tuple[str, str], Definition]) -> Optional[str]:
-        return self._resolve_reference(_render_expr(expr), parsed, definition, module_ids, by_qualified, by_module_name)
+    def _resolve_call(
+        self,
+        expr: ast.AST,
+        parsed: ParsedModule,
+        definition: Definition,
+        module_ids: Dict[str, str],
+        by_qualified: Dict[str, Definition],
+        by_module_name: Dict[Tuple[str, str], Definition],
+        rendered: Optional[str] = None,
+    ) -> Optional[str]:
+        raw = rendered if rendered is not None else _render_expr(expr)
+        return self._resolve_reference(raw, parsed, definition, module_ids, by_qualified, by_module_name)
 
     def _resolve_reference(self, raw: str, parsed: ParsedModule, definition: Definition, module_ids: Dict[str, str], by_qualified: Dict[str, Definition], by_module_name: Dict[Tuple[str, str], Definition]) -> Optional[str]:
         if not raw:
