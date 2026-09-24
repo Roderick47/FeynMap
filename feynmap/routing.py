@@ -192,6 +192,7 @@ class RegionIndex:
         neighbor_regions = self.adjacency.get(anchor_region, set()) if anchor_region else set()
 
         scored: List[Tuple[float, str]] = []
+        direct_path_scored: List[Tuple[float, str]] = []
         considered = 0
         denominator = sum(self._idf(token) for token in query_tokens) if query_tokens else 1.0
         for region_id, region in self.regions.items():
@@ -215,10 +216,38 @@ class RegionIndex:
             score = lexical + locality
             if score > 0.0:
                 scored.append((score, region_id))
+            if path_match > 0.0:
+                direct_path_scored.append((path_match * weight, region_id))
 
         scored.sort(key=lambda item: (-item[0], item[1]))
+        direct_path_scored.sort(key=lambda item: (-item[0], item[1]))
         limit = max(1, int(limit))
-        selected = [region_id for _, region_id in scored[:limit]]
+
+        # Broad semantic regions can accumulate many weak query matches and
+        # otherwise crowd out a file whose path directly matches one rare task
+        # term (for example "formatting"). Alternate general and direct-path
+        # candidates to retain both signals under the same small region budget.
+        selected: List[str] = []
+        seen_regions: Set[str] = set()
+        general_index = 0
+        path_index = 0
+        while len(selected) < limit and (
+            general_index < len(scored) or path_index < len(direct_path_scored)
+        ):
+            if general_index < len(scored):
+                region_id = scored[general_index][1]
+                general_index += 1
+                if region_id not in seen_regions:
+                    selected.append(region_id)
+                    seen_regions.add(region_id)
+                    if len(selected) >= limit:
+                        break
+            if path_index < len(direct_path_scored):
+                region_id = direct_path_scored[path_index][1]
+                path_index += 1
+                if region_id not in seen_regions:
+                    selected.append(region_id)
+                    seen_regions.add(region_id)
 
         if anchor_region and anchor_region not in selected:
             selected.insert(0, anchor_region)
