@@ -63,6 +63,7 @@ class SufficiencyResult:
     score: float
     query_coverage: float
     novel_region_gain: float
+    actionable_query_terms: int
     region_coverage: float
     marginal_gain: float
     frontier_pressure: float
@@ -76,6 +77,7 @@ class SufficiencyResult:
             "score": float(self.score),
             "query_coverage": float(self.query_coverage),
             "novel_region_gain": float(self.novel_region_gain),
+            "actionable_query_terms": int(self.actionable_query_terms),
             "region_coverage": float(self.region_coverage),
             "marginal_gain": float(self.marginal_gain),
             "frontier_pressure": float(self.frontier_pressure),
@@ -114,7 +116,16 @@ class SufficiencyEvaluator:
         result: GuidedSearchResult,
         route: RegionRouteResult,
     ) -> SufficiencyResult:
-        query_terms = _tokens(query)
+        raw_query_terms = _tokens(query)
+        # A prose token is only actionable if it occurs somewhere in the
+        # grounded region index. This removes language-specific stop-word
+        # assumptions and prevents ordinary connective prose from being scored
+        # as missing repository knowledge.
+        query_terms = {
+            token
+            for token in raw_query_terms
+            if self.region_index.document_frequency.get(token, 0) > 0
+        }
         activated_terms: Set[str] = set()
         activated_regions: Set[str] = set()
         for hit in result.hits:
@@ -123,11 +134,16 @@ class SufficiencyEvaluator:
             if region:
                 activated_regions.add(region)
 
+        def weight(term: str) -> float:
+            return self.region_index._idf(term)
+
+        total_weight = sum(weight(term) for term in query_terms)
         covered = query_terms & activated_terms
         uncovered = query_terms - activated_terms
+        covered_weight = sum(weight(term) for term in covered)
         query_coverage = (
-            float(len(covered)) / float(len(query_terms))
-            if query_terms
+            covered_weight / total_weight
+            if total_weight > 0.0
             else 1.0
         )
 
@@ -139,21 +155,31 @@ class SufficiencyEvaluator:
             else 1.0
         )
 
+        # Estimate marginal global value from the actual representative nodes
+        # that would be activated, not the union of every term in a whole file.
+        representative_ids = self.region_index.seed_nodes(
+            query,
+            route,
+            per_region=1,
+            total_limit=max(1, len(selected_regions)),
+        )
         novel_terms: Set[str] = set()
-        for region_id in selected_regions:
+        for node_id in representative_ids:
+            region_id = self.region_index.region_for_node(node_id)
             if region_id in activated_regions:
                 continue
-            region = self.region_index.regions.get(region_id)
-            if region is None:
+            node = self.graph.node(node_id)
+            if node is None:
                 continue
-            novel_terms.update(uncovered & set(region.terms))
+            novel_terms.update(uncovered & _node_terms(node))
+        novel_weight = sum(weight(term) for term in novel_terms)
         novel_region_gain = (
-            float(len(novel_terms)) / float(len(query_terms))
-            if query_terms
+            novel_weight / total_weight
+            if total_weight > 0.0
             else 0.0
         )
 
-        marginal_gain = self._marginal_gain(query_terms, result)
+        marginal_gain = self._marginal_gain(query_terms, result, weight)
         frontier_pressure = self._frontier_pressure(result)
 
         # Weighted confidence-like sufficiency score. Query coverage and the
@@ -179,6 +205,7 @@ class SufficiencyEvaluator:
             score=score,
             query_coverage=query_coverage,
             novel_region_gain=novel_region_gain,
+            actionable_query_terms=len(query_terms),
             region_coverage=region_coverage,
             marginal_gain=marginal_gain,
             frontier_pressure=frontier_pressure,
@@ -188,7 +215,7 @@ class SufficiencyEvaluator:
         )
 
     @staticmethod
-    def _marginal_gain(query_terms: Set[str], result: GuidedSearchResult) -> float:
+    def _marginal_gain(query_terms: Set[str], result: GuidedSearchResult, weight) -> float:
         if not query_terms or not result.hits:
             return 0.0
         max_depth = max(hit.depth for hit in result.hits)
@@ -200,7 +227,9 @@ class SufficiencyEvaluator:
             elif hit.depth == max_depth:
                 last_terms.update(_node_terms(hit.node))
         new_terms = (last_terms - before_terms) & query_terms
-        return float(len(new_terms)) / float(len(query_terms))
+        denominator = sum(weight(term) for term in query_terms)
+        numerator = sum(weight(term) for term in new_terms)
+        return numerator / denominator if denominator > 0.0 else 0.0
 
     @staticmethod
     def _frontier_pressure(result: GuidedSearchResult) -> float:
