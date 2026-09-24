@@ -11,10 +11,12 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
+from .adaptive import AdaptiveSearchResult
 from .context import estimate_tokens
 from .context_pipeline import SparseContextPipeline, SparseContextResult
 from .core import SemanticEdge, SemanticGraph
 from .judgment.contracts import JudgmentProvider
+from .judgment.search import GuidedSearchResult, SearchHit
 from .minimal_context import MinimalContextBudget
 
 
