@@ -190,3 +190,64 @@ def test_explicit_invalidation_blocks_rehydration():
 
     with pytest.raises(ActiveStateInvalidated, match="new runtime trace"):
         runtime.rehydrate(invalid)
+
+
+def test_followup_reuses_sufficient_active_context_without_fresh_search(monkeypatch):
+    runtime = ActiveStateRuntime(_graph(), "snapshot-a")
+    first = runtime.begin_from_node(
+        "root",
+        "price helper",
+        context_budget=_context_budget(),
+        max_depth=1,
+        beam_width=3,
+    )
+
+    def fail_fresh_search(*args, **kwargs):
+        raise AssertionError("fresh graph search should not run for sufficient active state")
+
+    monkeypatch.setattr(runtime.pipeline, "from_node", fail_fresh_search)
+    second = runtime.continue_from_node(
+        first.state,
+        "root",
+        "price helper",
+        context_budget=_context_budget(),
+    )
+
+    assert second.retrieval.activation.stage == "active_state"
+    assert second.retrieval.activation.effort == "fast"
+    assert second.reused_node_ids
+    assert second.state.step == 2
+
+
+def test_novel_followup_reexpands_instead_of_forcing_active_state_reuse():
+    runtime = ActiveStateRuntime(
+        _graph(),
+        "snapshot-a",
+        budget=ActiveStateBudget(max_nodes=5, max_edges=5),
+    )
+    first = runtime.begin_from_node(
+        "root",
+        "price helper",
+        context_budget=_context_budget(),
+        max_depth=1,
+        beam_width=3,
+    )
+    assert "audit" not in first.state.active_node_ids
+
+    second = runtime.continue_from_node(
+        first.state,
+        "root",
+        "audit log",
+        context_budget=MinimalContextBudget(
+            max_tokens=1200,
+            max_nodes=5,
+            max_edges=5,
+            initial_tokens=1200,
+        ),
+        max_depth=3,
+        beam_width=4,
+    )
+
+    assert second.retrieval.activation.stage != "active_state"
+    assert "audit" in second.state.active_node_ids
+    assert "audit" in second.introduced_node_ids
