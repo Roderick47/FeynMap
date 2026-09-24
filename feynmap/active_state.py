@@ -300,16 +300,25 @@ class ActiveStateRuntime:
         direction: str = "both",
     ) -> ActiveStateTransition:
         self._require_fresh(state)
-        retrieval = self.pipeline.from_node(
-            node,
-            goal,
-            context_budget=context_budget,
-            max_depth=max_depth,
-            beam_width=beam_width,
-            max_nodes=max_nodes,
-            direction=direction,
-        )
-        root = retrieval.activation.search.roots[0].id if retrieval.activation.search.roots else str(node)
+        resolved = self.pipeline.search.query.resolve(node)
+        retrieval = None
+        if resolved.id in set(state.active_node_ids):
+            retrieval = self._reuse_retrieval(
+                state,
+                goal,
+                context_budget=context_budget,
+            )
+        if retrieval is None:
+            retrieval = self.pipeline.from_node(
+                resolved.id,
+                goal,
+                context_budget=context_budget,
+                max_depth=max_depth,
+                beam_width=beam_width,
+                max_nodes=max_nodes,
+                direction=direction,
+            )
+        root = retrieval.activation.search.roots[0].id if retrieval.activation.search.roots else resolved.id
         return self._transition(
             previous=state,
             retrieval=retrieval,
@@ -411,6 +420,87 @@ class ActiveStateRuntime:
                 "snapshot changed from %s to %s; re-expand from canonical graph"
                 % (state.snapshot_id, self.snapshot_id)
             )
+
+    def _reuse_retrieval(
+        self,
+        state: ActiveState,
+        goal: str,
+        *,
+        context_budget: Optional[MinimalContextBudget],
+    ) -> Optional[SparseContextResult]:
+        """Reuse the current grounded working set when S2 says it is sufficient.
+
+        This is the S4 fast path. It performs no new graph traversal and no
+        global region route. The same provider-neutral S2 precheck used for a
+        fresh local search decides whether the already-active evidence covers
+        the follow-up. Novel/weakly covered goals fall through to the normal
+        S2/S3 pipeline and can therefore re-expand the working set.
+        """
+
+        search = self._active_search_result(state, goal)
+        if not search.hits:
+            return None
+        sufficiency = self.pipeline.search.sufficiency.precheck(goal, search)
+        if sufficiency is None or not sufficiency.sufficient:
+            return None
+
+        packed = self.pipeline.packer.pack(
+            search,
+            budget=context_budget,
+        )
+        if not packed.sufficient:
+            return None
+
+        activation = AdaptiveSearchResult(
+            search=search,
+            route=None,
+            stage="active_state",
+            effort="fast",
+            escalations=(),
+            local_sufficiency=sufficiency,
+            final_sufficiency=sufficiency,
+            timings_ms={"active_state_reuse": 0.0},
+        )
+        return SparseContextResult(
+            activation=activation,
+            context=packed,
+        )
+
+    def _active_search_result(
+        self,
+        state: ActiveState,
+        goal: str,
+    ) -> GuidedSearchResult:
+        active_ids = set(state.active_node_ids)
+        roots = [
+            self.graph.node(node_id)
+            for node_id in state.focus_node_ids
+            if node_id in active_ids and self.graph.node(node_id) is not None
+        ]
+        hits = [
+            SearchHit(node=self.graph.node(node_id), depth=0)
+            for node_id in state.active_node_ids
+            if self.graph.node(node_id) is not None
+        ]
+        edges = [
+            self._edge_by_id[edge_id]
+            for edge_id in state.active_edge_ids
+            if edge_id in self._edge_by_id
+            and self._edge_by_id[edge_id].source in active_ids
+            and self._edge_by_id[edge_id].target in active_ids
+        ]
+        return GuidedSearchResult(
+            mode="active_state",
+            query=str(goal),
+            roots=[node for node in roots if node is not None],
+            hits=hits,
+            edges=edges,
+            trace=(),
+            provider=None,
+            model=None,
+            exhausted=False,
+            truncated=False,
+        )
 
     def _transition(
         self,
