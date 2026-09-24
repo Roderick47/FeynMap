@@ -288,9 +288,11 @@ class MinimalContextPacker:
         # AdaptiveSparseSearch.from_node -> RegionIndex.route).
         root_dependencies: List[Tuple[float, str]] = []
         for edge in activated_edges:
-            if edge.kind in {EdgeKind.CONTAINS, EdgeKind.IMPORTS, EdgeKind.EXTENDS, EdgeKind.OWNS}:
-                continue
-            if _delivery_edge_priority(edge) < 0.50:
+            # The extra orchestration safeguard is deliberately narrow:
+            # direct cross-file CALLS only. Other strong application
+            # boundaries are handled later by the delivery-boundary rule,
+            # while generic DEPENDS_ON/configuration edges stay optional.
+            if edge.kind != EdgeKind.CALLS:
                 continue
             neighbor_id: Optional[str] = None
             root_id: Optional[str] = None
