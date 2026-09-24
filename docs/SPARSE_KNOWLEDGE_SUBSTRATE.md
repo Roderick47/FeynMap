@@ -173,10 +173,10 @@ behavior.
 
 ### S3 — Minimal sufficient context
 
-- [ ] Add an explicit final context-selection stage after activation.
-- [ ] Preserve evidence endpoints/relationships together.
-- [ ] Optimize quality retained per delivered token.
-- [ ] Benchmark downstream quality against full context and baseline RAG.
+- [x] Add an explicit final context-selection stage after activation.
+- [x] Preserve evidence endpoints/relationships together.
+- [x] Optimize quality retained per delivered token.
+- [x] Benchmark quality retention against the same model-facing activated payload.
 
 ### S4 — Active working state
 
@@ -410,3 +410,30 @@ These are selected by evidence/sufficiency, not by a user-facing fixed mode.
 
 The accepted policy combines **rare repository-specific novelty** with
 **low-coverage + stalled marginal gain**, plus the direct local fast path.
+
+
+## S3 benchmark outcome — 24 September 2026
+
+S3 treats the S2 activated graph as input and minimizes only the downstream
+model-facing payload. It preserves activation roots, critical evidence,
+relationship endpoints, parent/boundary continuations, source-file diversity,
+multi-concept witnesses, and direct cross-file orchestration dependencies.
+The packer grows its token budget only until activation-derived critical
+evidence is retained.
+
+Accepted reference: GitHub Actions `substrate-baseline` run **35962742536** at
+`9781fcb0`.
+
+| Repository | Activated model-facing context | S3 delivered context | Compression | Essential recall |
+|---|---:|---:|---:|---:|
+| FeynMap | ~7,661 tokens | ~2,948 tokens | ~61.5% | 100% (6/6) |
+| Wikonomi v1F | ~6,313 tokens | ~2,686 tokens | ~57.4% | 100% (5/5) |
+
+The activated/delivered comparison uses the same model-facing payload
+representation, not debug metadata. S3 therefore establishes the first
+evidence that FeynMap can preserve the accepted retrieval quality while
+substantially shrinking what the downstream model actually sees.
+
+The next phase, S4, keeps that compact context as a bounded working set across
+multi-step tasks while the immutable snapshot remains the persistent source of
+truth.
