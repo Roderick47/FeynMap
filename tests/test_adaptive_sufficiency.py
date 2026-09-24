@@ -69,7 +69,7 @@ def test_sufficiency_escalates_when_unopened_region_contains_missing_query_term(
     )
     result = AdaptiveSparseSearch(
         graph,
-        region_limit=1,
+        region_limit=2,
         sufficiency=evaluator,
     ).from_node(
         "root",
@@ -227,7 +227,7 @@ def test_adaptive_search_escalates_to_provider_only_after_deterministic_stages()
     result = AdaptiveSparseSearch(
         graph,
         provider=provider,
-        region_limit=2,
+        region_limit=1,
         sufficiency=evaluator,
     ).from_node(
         root.id,
