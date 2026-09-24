@@ -395,6 +395,33 @@ class JevGuidedSearch:
             ),
         )
         if self.provider is None:
+            if phase == "frontier" and deterministic_scores is None and limit > 1:
+                structural = sorted(
+                    candidates,
+                    key=lambda node: (-float(node.confidence), node.id),
+                )
+                diversified: List[SemanticNode] = []
+                seen: Set[str] = set()
+                relevant_index = 0
+                structural_index = 0
+                while len(diversified) < limit and (
+                    relevant_index < len(fallback) or structural_index < len(structural)
+                ):
+                    if relevant_index < len(fallback):
+                        node = fallback[relevant_index]
+                        relevant_index += 1
+                        if node.id not in seen:
+                            diversified.append(node)
+                            seen.add(node.id)
+                            if len(diversified) >= limit:
+                                break
+                    if structural_index < len(structural):
+                        node = structural[structural_index]
+                        structural_index += 1
+                        if node.id not in seen:
+                            diversified.append(node)
+                            seen.add(node.id)
+                return diversified[:limit], {}, None
             return fallback[:limit], {}, None
 
         state = {
