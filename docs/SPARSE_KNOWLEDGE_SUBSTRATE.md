@@ -280,3 +280,52 @@ JEV / optional expensive judgment
 
 The target is to retain the S1 100% benchmark recall while moving average
 latency/context cost closer to the flat-search path.
+
+
+## S2 adaptive sufficiency contract
+
+S2 introduces a separate provider-neutral effort controller. It does not change
+graph truth and it does not use benchmark gold labels at task time.
+
+The deterministic decision sequence is:
+
+```text
+local semantic traversal
+        ↓
+cheap region summaries only
+        ↓
+sufficiency(local)
+   ┌────┴────┐
+  yes        no
+   │          │
+ stop     activate bounded
+           region reps
+              ↓
+       sufficiency(merged)
+          ┌───┴───┐
+         yes      no
+          │        │
+        stop   JEV/provider
+                 if available
+```
+
+The first provider-neutral sufficiency signals are:
+
+- **query coverage** — how much of the task vocabulary is represented by the
+  activated grounded nodes;
+- **novel region gain** — whether cheap unopened region summaries contain query
+  terms that the active set does not yet explain;
+- **region coverage** — how much of the cheap routed region set is already
+  represented locally;
+- **marginal gain** — how much new task vocabulary the most recent search depth
+  added;
+- **frontier pressure** — how much candidate information the fixed sparse beam
+  had to leave unopened.
+
+These are routing/effort signals, not epistemic truth scores. A sufficient
+result means "additional retrieval is unlikely to add task-relevant grounded
+context", not "the downstream answer is guaranteed correct".
+
+Every adaptive result records the stop stage (`local`, `region`, or `jev`),
+the escalation sequence, all sufficiency signals, uncovered query terms, and
+the specific reason(s) for escalation.
