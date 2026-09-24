@@ -24,7 +24,7 @@ from .sufficiency import SufficiencyEvaluator, SufficiencyResult
 @dataclass(frozen=True)
 class AdaptiveSearchResult:
     search: GuidedSearchResult
-    route: RegionRouteResult
+    route: Optional[RegionRouteResult]
     stage: str
     escalations: Sequence[str]
     local_sufficiency: SufficiencyResult
@@ -35,7 +35,7 @@ class AdaptiveSearchResult:
         return {
             "stage": self.stage,
             "escalations": list(self.escalations),
-            "route": self.route.to_dict(),
+            "route": self.route.to_dict() if self.route is not None else None,
             "local_sufficiency": self.local_sufficiency.to_dict(),
             "final_sufficiency": self.final_sufficiency.to_dict(),
             "timings_ms": {
@@ -128,14 +128,6 @@ class AdaptiveSparseSearch:
         timings: Dict[str, float] = {}
 
         started = time.perf_counter()
-        route = self.index.route(
-            goal,
-            anchor_node_id=root.id,
-            limit=self.region_limit,
-        )
-        timings["route"] = (time.perf_counter() - started) * 1000.0
-
-        started = time.perf_counter()
         local = self.local_searcher.from_node(
             root.id,
             goal,
@@ -145,6 +137,28 @@ class AdaptiveSparseSearch:
             direction=direction,
         )
         timings["local_search"] = (time.perf_counter() - started) * 1000.0
+
+        started = time.perf_counter()
+        precheck = self.sufficiency.precheck(goal, local)
+        timings["precheck"] = (time.perf_counter() - started) * 1000.0
+        if precheck is not None:
+            return AdaptiveSearchResult(
+                search=local,
+                route=None,
+                stage="local",
+                escalations=(),
+                local_sufficiency=precheck,
+                final_sufficiency=precheck,
+                timings_ms=timings,
+            )
+
+        started = time.perf_counter()
+        route = self.index.route(
+            goal,
+            anchor_node_id=root.id,
+            limit=self.region_limit,
+        )
+        timings["route"] = (time.perf_counter() - started) * 1000.0
 
         started = time.perf_counter()
         global_budget = max(4, min(16, max(4, int(max_nodes)) // 4))
@@ -188,6 +202,7 @@ class AdaptiveSparseSearch:
             region_seeds=region_seeds,
         )
         timings["region_search"] = (time.perf_counter() - started) * 1000.0
+
         started = time.perf_counter()
         region_sufficiency = self.sufficiency.evaluate(
             goal,
@@ -252,9 +267,7 @@ class AdaptiveSparseSearch:
         direction: str = "both",
     ) -> AdaptiveSearchResult:
         timings: Dict[str, float] = {}
-        started = time.perf_counter()
-        route = self.index.route(concept, limit=self.region_limit)
-        timings["route"] = (time.perf_counter() - started) * 1000.0
+
         started = time.perf_counter()
         local = self.local_searcher.concept(
             concept,
@@ -266,6 +279,24 @@ class AdaptiveSparseSearch:
             direction=direction,
         )
         timings["local_search"] = (time.perf_counter() - started) * 1000.0
+
+        started = time.perf_counter()
+        precheck = self.sufficiency.precheck(concept, local)
+        timings["precheck"] = (time.perf_counter() - started) * 1000.0
+        if precheck is not None:
+            return AdaptiveSearchResult(
+                search=local,
+                route=None,
+                stage="local",
+                escalations=(),
+                local_sufficiency=precheck,
+                final_sufficiency=precheck,
+                timings_ms=timings,
+            )
+
+        started = time.perf_counter()
+        route = self.index.route(concept, limit=self.region_limit)
+        timings["route"] = (time.perf_counter() - started) * 1000.0
         started = time.perf_counter()
         region_seeds = self.index.seed_nodes(
             concept,
@@ -283,6 +314,7 @@ class AdaptiveSparseSearch:
             representative_ids=region_seeds,
         )
         timings["sufficiency"] = (time.perf_counter() - started) * 1000.0
+
         if local_sufficiency.sufficient or self.provider_searcher is None:
             return AdaptiveSearchResult(
                 search=local,
