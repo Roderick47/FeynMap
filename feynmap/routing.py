@@ -202,7 +202,11 @@ class RegionIndex:
             lexical = sum(self._idf(token) for token in query_tokens if token in region.terms)
             if query_tokens:
                 lexical /= denominator
-            lexical *= weight
+            path_terms = set(_tokens(region_id))
+            path_match = sum(self._idf(token) for token in query_tokens if token in path_terms)
+            if query_tokens:
+                path_match /= denominator
+            lexical = (lexical + (1.5 * path_match)) * weight
             locality = 0.0
             if region_id == anchor_region:
                 locality = 2.0
