@@ -14,9 +14,43 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .context import _compact_edge, _compact_node, estimate_tokens
-from .core import SemanticEdge, SemanticGraph, SemanticNode
+from .core import EdgeKind, SemanticEdge, SemanticGraph, SemanticNode
 from .core.model import TIER_RANK
 from .judgment.search import GuidedSearchResult, SearchHit, _edge_search_priority
+
+
+_DELIVERY_EDGE_PRIORITY = {
+    EdgeKind.RENDERS: 1.00,
+    EdgeKind.LOADS: 1.00,
+    EdgeKind.REQUESTS: 1.00,
+    EdgeKind.INVOKES: 1.00,
+    EdgeKind.CONNECTS_TO: 1.00,
+    EdgeKind.FLOWS_TO: 1.00,
+    EdgeKind.ROUTES_TO: 1.00,
+    EdgeKind.SPAWNS: 0.95,
+    EdgeKind.EMITS: 0.95,
+    EdgeKind.SUBSCRIBES: 0.95,
+    EdgeKind.CALLS: 0.75,
+    EdgeKind.USES_DATA: 0.70,
+    EdgeKind.READS: 0.70,
+    EdgeKind.WRITES: 0.70,
+    EdgeKind.MUTATES: 0.70,
+    EdgeKind.PERSISTS: 0.70,
+    EdgeKind.VALIDATES: 0.65,
+    EdgeKind.SERIALIZES: 0.65,
+    EdgeKind.DEPENDS_ON: 0.55,
+    EdgeKind.AWAITS: 0.55,
+    EdgeKind.CREATES: 0.50,
+    EdgeKind.DELETES: 0.50,
+    EdgeKind.EXTENDS: 0.35,
+    EdgeKind.IMPORTS: 0.25,
+    EdgeKind.CONTAINS: 0.15,
+    EdgeKind.OWNS: 0.15,
+}
+
+
+def _delivery_edge_priority(edge: SemanticEdge) -> float:
+    return float(_DELIVERY_EDGE_PRIORITY.get(edge.kind, 0.50))
 
 
 def _tokens(value: str) -> Set[str]:
@@ -184,37 +218,83 @@ class MinimalContextPacker:
             # rather than returning a misleading empty context.
             raise ValueError("minimal context budget is too small for the primary grounded root")
 
-        # Reserve a few application-boundary continuations before ordinary
-        # node ranking. These often carry the critical cross-file/language
-        # evidence (render/load/request/route/invoke) that pure lexical scoring
-        # underweights.
-        boundary_edges = sorted(
-            (
-                edge for edge in activated_edges
-                if _edge_search_priority(edge) >= 0.95
-            ),
-            key=lambda edge: (-edge_scores.get(edge.id, 0.0), edge.id),
-        )
-        for edge in boundary_edges[:3]:
-            nodes = {edge.source, edge.target}
-            candidate_anchors = list(anchors)
-            if not nodes.intersection(selected_nodes):
-                anchor_id = max(
-                    nodes,
-                    key=lambda item: (node_scores.get(item, 0.0), item),
+        # Reserve a few delivery-critical boundary continuations. Unlike
+        # search-time priority, delivery priority demotes generic inheritance
+        # and containment. Selection is frontier-aware so the reserve tends to
+        # continue an already grounded path instead of opening arbitrary
+        # disconnected high-confidence edges.
+        remaining_boundary = {
+            edge.id: edge
+            for edge in activated_edges
+            if _delivery_edge_priority(edge) >= 0.90
+        }
+        for _ in range(4):
+            candidates: List[Tuple[float, str, SemanticEdge]] = []
+            for edge_id, edge in remaining_boundary.items():
+                nodes = {edge.source, edge.target}
+                connectivity = 1.0 if nodes.intersection(selected_nodes) else 0.0
+                source = self.graph.node(edge.source)
+                target = self.graph.node(edge.target)
+                cross_language = bool(
+                    source is not None
+                    and target is not None
+                    and source.language
+                    and target.language
+                    and source.language != target.language
                 )
-                if anchor_id not in candidate_anchors:
-                    candidate_anchors.append(anchor_id)
-            if self._fits(
-                result,
-                budget,
-                selected_nodes | nodes,
-                selected_edges | {edge.id},
-                candidate_anchors,
-            ):
-                selected_nodes.update(nodes)
-                selected_edges.add(edge.id)
-                anchors[:] = candidate_anchors
+                file_novelty = 0.0
+                selected_paths = {
+                    self.graph.node(node_id).location.path
+                    for node_id in selected_nodes
+                    if self.graph.node(node_id) is not None
+                    and self.graph.node(node_id).location is not None
+                }
+                endpoint_paths = {
+                    node.location.path
+                    for node in (source, target)
+                    if node is not None and node.location is not None
+                }
+                if endpoint_paths - selected_paths:
+                    file_novelty = 0.45
+                score = (
+                    2.0 * _delivery_edge_priority(edge)
+                    + 0.35 * (
+                        node_scores.get(edge.source, 0.0)
+                        + node_scores.get(edge.target, 0.0)
+                    )
+                    + 1.35 * connectivity
+                    + file_novelty
+                    + (0.55 if cross_language else 0.0)
+                )
+                candidates.append((score, edge_id, edge))
+            candidates.sort(key=lambda item: (-item[0], item[1]))
+            admitted = False
+            for _, edge_id, edge in candidates:
+                nodes = {edge.source, edge.target}
+                candidate_anchors = list(anchors)
+                if not nodes.intersection(selected_nodes):
+                    anchor_id = max(
+                        nodes,
+                        key=lambda item: (node_scores.get(item, 0.0), item),
+                    )
+                    if anchor_id not in candidate_anchors:
+                        candidate_anchors.append(anchor_id)
+                if self._fits(
+                    result,
+                    budget,
+                    selected_nodes | nodes,
+                    selected_edges | {edge.id},
+                    candidate_anchors,
+                ):
+                    selected_nodes.update(nodes)
+                    selected_edges.add(edge.id)
+                    anchors[:] = candidate_anchors
+                    admitted = True
+                    del remaining_boundary[edge_id]
+                    break
+                del remaining_boundary[edge_id]
+            if not admitted:
+                break
 
         # Preserve semantic diversity across source files. Activated search has
         # already paid to discover these nodes; S3 should not spend its entire
@@ -230,6 +310,7 @@ class MinimalContextPacker:
 
         file_candidates: List[Tuple[float, str, str]] = []
         total_hits = max(1, len(result.hits))
+        query_terms = _tokens(result.query)
         for path, node_ids in file_groups.items():
             representative = max(
                 node_ids,
@@ -251,10 +332,21 @@ class MinimalContextPacker:
                 float(hit_order.get(representative, total_hits))
                 / float(total_hits)
             )
+            file_terms: Set[str] = set()
+            for item in node_ids:
+                node = self.graph.node(item)
+                if node is not None:
+                    file_terms.update(_node_terms(node))
+            file_overlap = (
+                float(len(query_terms & file_terms)) / float(len(query_terms))
+                if query_terms
+                else 0.0
+            )
             file_score = (
                 node_scores.get(representative, 0.0)
-                + (0.55 * order_bonus)
-                + (0.65 * incident_boundary)
+                + (0.45 * order_bonus)
+                + (0.45 * incident_boundary)
+                + (2.0 * file_overlap)
             )
             file_candidates.append((file_score, path, representative))
 
@@ -444,7 +536,7 @@ class MinimalContextPacker:
             )
             evidence = TIER_RANK.get(edge.confidence_tier, 0) / 3.0
             scores[edge.id] = (
-                1.6 * _edge_search_priority(edge)
+                1.6 * _delivery_edge_priority(edge)
                 + 0.5 * endpoint
                 + 0.5 * evidence
                 + 0.25 * float(edge.confidence)
