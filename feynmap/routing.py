@@ -420,18 +420,25 @@ class RegionFirstSearch:
         # missing a direct edge from the anchor path.
         allowed = self.index.node_ids_for_regions(route.selected_regions)
         global_budget = max(4, min(16, max(4, int(max_nodes)) // 4))
-        global_result = self.searcher.concept(
+        region_seeds = self.index.seed_nodes(
             goal,
-            seed_limit=min(4, self.seed_limit, global_budget),
-            candidate_limit=max(8, min(32, len(allowed) or 8)),
-            max_depth=min(1, max_depth),
-            beam_width=min(4, beam_width),
-            max_nodes=global_budget,
-            direction=direction,
-            allowed_node_ids=allowed,
+            route,
+            per_region=1,
+            total_limit=min(global_budget, max(1, len(route.selected_regions))),
         )
-
-        search = _merge_search_results(local, global_result, max_nodes=max_nodes)
+        if region_seeds:
+            global_result = self.searcher.from_roots(
+                region_seeds,
+                goal,
+                max_depth=min(1, max_depth),
+                beam_width=min(4, beam_width),
+                max_nodes=global_budget,
+                direction=direction,
+                allowed_node_ids=allowed,
+            )
+            search = _merge_search_results(local, global_result, max_nodes=max_nodes)
+        else:
+            search = local
         return RegionFirstSearchResult(search=search, route=route)
 
     def concept(
