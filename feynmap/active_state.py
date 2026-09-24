@@ -75,13 +75,21 @@ class ActiveStateBudget:
 
 @dataclass(frozen=True)
 class ActiveRetrieval:
+    """Bounded retrieval history without duplicating graph-reference payloads.
+
+    Current active node/edge references already live on ActiveState. Historical
+    retrieval records keep only enough information to understand or replay the
+    retrieval decision; storing every prior selected ID would make the working
+    state grow with history, which is exactly what S4 is meant to avoid.
+    """
+
     query: str
     root_node_id: str
     stage: str
     effort: str
     region_ids: Tuple[str, ...]
-    node_ids: Tuple[str, ...]
-    edge_ids: Tuple[str, ...]
+    selected_node_count: int
+    selected_edge_count: int
     delivered_tokens: int
 
     def to_dict(self) -> Dict[str, Any]:
@@ -91,21 +99,25 @@ class ActiveRetrieval:
             "stage": self.stage,
             "effort": self.effort,
             "region_ids": list(self.region_ids),
-            "node_ids": list(self.node_ids),
-            "edge_ids": list(self.edge_ids),
+            "selected_node_count": int(self.selected_node_count),
+            "selected_edge_count": int(self.selected_edge_count),
             "delivered_tokens": int(self.delivered_tokens),
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ActiveRetrieval":
+        # Backward-compatible with the first unreleased S4 draft that stored
+        # node_ids/edge_ids in each history row.
+        raw_nodes = payload.get("node_ids", []) or []
+        raw_edges = payload.get("edge_ids", []) or []
         return cls(
             query=str(payload.get("query", "")),
             root_node_id=str(payload.get("root_node_id", "")),
             stage=str(payload.get("stage", "")),
             effort=str(payload.get("effort", "")),
             region_ids=tuple(str(item) for item in payload.get("region_ids", []) or []),
-            node_ids=tuple(str(item) for item in payload.get("node_ids", []) or []),
-            edge_ids=tuple(str(item) for item in payload.get("edge_ids", []) or []),
+            selected_node_count=int(payload.get("selected_node_count", len(raw_nodes))),
+            selected_edge_count=int(payload.get("selected_edge_count", len(raw_edges))),
             delivered_tokens=int(payload.get("delivered_tokens", 0)),
         )
 
@@ -199,9 +211,18 @@ class ActiveStateTransition:
 
     @property
     def context_growth_avoided_tokens(self) -> int:
+        """Worst-case saving if the entire active graph slice is rehydrated."""
         return max(
             0,
             self.state.cumulative_delivered_tokens - int(self.working_context_tokens),
+        )
+
+    @property
+    def carried_state_growth_avoided_tokens(self) -> int:
+        """Saving for the compact state actually carried between agent turns."""
+        return max(
+            0,
+            self.state.cumulative_delivered_tokens - int(self.state.compact_tokens),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -218,6 +239,7 @@ class ActiveStateTransition:
                 "working_context_tokens": int(self.working_context_tokens),
                 "cumulative_delivered_tokens": self.state.cumulative_delivered_tokens,
                 "context_growth_avoided_tokens": self.context_growth_avoided_tokens,
+                "carried_state_growth_avoided_tokens": self.carried_state_growth_avoided_tokens,
             },
         }
 
@@ -600,8 +622,8 @@ class ActiveStateRuntime:
             stage=str(retrieval.activation.stage),
             effort=str(retrieval.activation.effort),
             region_ids=_dedupe(current_regions, budget.max_regions),
-            node_ids=tuple(latest_nodes),
-            edge_ids=tuple(latest_edges),
+            selected_node_count=len(latest_nodes),
+            selected_edge_count=len(latest_edges),
             delivered_tokens=int(retrieval.context.delivered_tokens),
         )
         history = list(previous.retrievals) if previous is not None else []
