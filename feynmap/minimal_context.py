@@ -279,7 +279,44 @@ class MinimalContextPacker:
             for node_id in grounded_roots:
                 add_critical(node_id)
         else:
+            grounded_roots = [result.hits[0].node.id]
             add_critical(result.hits[0].node.id)
+
+        # Preserve a bounded set of direct cross-file behavioral dependencies
+        # from activation roots. These edges define orchestration even when the
+        # callee's vocabulary differs from the task prose (for example,
+        # AdaptiveSparseSearch.from_node -> RegionIndex.route).
+        root_dependencies: List[Tuple[float, str]] = []
+        for edge in activated_edges:
+            if edge.kind in {EdgeKind.CONTAINS, EdgeKind.IMPORTS, EdgeKind.EXTENDS, EdgeKind.OWNS}:
+                continue
+            if _delivery_edge_priority(edge) < 0.50:
+                continue
+            neighbor_id: Optional[str] = None
+            root_id: Optional[str] = None
+            if edge.source in grounded_roots:
+                root_id, neighbor_id = edge.source, edge.target
+            elif edge.target in grounded_roots:
+                root_id, neighbor_id = edge.target, edge.source
+            if neighbor_id is None or root_id is None:
+                continue
+            root_node = self.graph.node(root_id)
+            neighbor_node = self.graph.node(neighbor_id)
+            if root_node is None or neighbor_node is None:
+                continue
+            root_path = root_node.location.path if root_node.location else None
+            neighbor_path = neighbor_node.location.path if neighbor_node.location else None
+            if not root_path or not neighbor_path or root_path == neighbor_path:
+                continue
+            score = (
+                2.0 * _delivery_edge_priority(edge)
+                + node_scores.get(neighbor_id, 0.0)
+            )
+            root_dependencies.append((score, neighbor_id))
+
+        root_dependencies.sort(key=lambda item: (-item[0], item[1]))
+        for _, node_id in root_dependencies[:6]:
+            add_critical(node_id)
 
         # Preserve the best activated witness for each task term that actually
         # appears in the semantic substrate.
