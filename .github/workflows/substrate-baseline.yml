@@ -106,7 +106,8 @@ jobs:
                   "activation": mean([m["knowledge_activation_ratio"] for m in metrics]),
                   "delivery": mean([m["delivery_to_activation_ratio"] for m in metrics]),
                   "latency": mean([m["routing_elapsed_ms"] for m in metrics]),
-                  "active_tokens": mean([m["activated_context_tokens"] for m in metrics]),
+                  "compact_active_tokens": mean([m["activated_context_tokens"] for m in metrics]),
+                  "model_active_tokens": mean([task.get("model_activated_context_tokens") for task in task_rows]),
                   "delivered_tokens": mean([task.get("delivered_context_tokens") for task in task_rows]),
                   "compression": mean([task.get("token_compression_ratio") for task in task_rows]),
                   "activation_recall": mean([task.get("activation_essential_recall") for task in task_rows]),
@@ -156,7 +157,7 @@ jobs:
           lines = [
               "## FeynMap sparse activation + minimal context comparison",
               "",
-              "| Repository | Strategy | Candidate touch | Activation | Delivery/activation | Routing ms | Active tokens | Delivered tokens | Token ratio | Activated recall | Delivered recall | Quality retention | Full recall |",
+              "| Repository | Strategy | Candidate touch | Activation | Delivery/activation | Routing ms | Model ctx before | Model ctx delivered | Token ratio | Activated recall | Delivered recall | Quality retention | Full recall |",
               "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
           ]
           for row in rows:
@@ -169,7 +170,7 @@ jobs:
                       row["activation"] or 0.0,
                       row["delivery"] or 0.0,
                       row["latency"] or 0.0,
-                      row["active_tokens"] or 0.0,
+                      row["model_active_tokens"] or 0.0,
                       row["delivered_tokens"] or 0.0,
                       row["compression"] or 0.0,
                       row["activation_recall"] or 0.0,
