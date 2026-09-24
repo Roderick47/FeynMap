@@ -75,19 +75,27 @@ metadata.
 ### S4 — Active state for long-horizon agents
 
 - [x] Distinguish persistent graph memory from active working context
-- [ ] Reuse task regions across tool calls
+- [x] Reuse task regions/working context across tool calls when S2 sufficiency allows it
 - [x] Re-expand or invalidate state when new evidence changes the task
-- [ ] Measure context growth avoided over long agent runs
+- [x] Measure context growth avoided over long agent runs
 
-S4 foundation now has a portable snapshot-bound `ActiveState` contract.
-The state contains stable node/edge/region references plus bounded task memory,
-never copied graph truth. `ActiveStateRuntime` rehydrates exact evidence from
-the canonical graph, keeps a bounded working set across steps, re-expands with
-S2/S3 retrieval when the goal changes, and rejects state whose immutable
-snapshot changed. Per-transition metrics already expose cumulative delivered
-tokens versus the current working-context footprint; the remaining S4 work is
-to make region reuse reduce routing/retrieval work and benchmark long-horizon
-growth avoidance on real multi-step tasks.
+S4 accepted benchmark: `substrate-baseline` run **36024684677** at
+`f78c7c77`. Across two recursive FeynMap agent loops (12 steps total), the
+active-state fast path served 7/12 follow-ups without a fresh graph route/search
+and re-expanded on the other 5. Essential-symbol recall remained 100% (12/12).
+
+Naively accumulating each fresh S3 context would retain 26,119 tokens. The
+portable carried `ActiveState` ended at 2,439 tokens, avoiding about **90.7%**
+of that retained-context growth. Even fully rehydrating every currently active
+node/edge produced 9,931 tokens, still about **62.0%** below accumulated
+history. The bounded state retained about 78.0% of the fresh S3 node set on
+average while preserving every benchmark-essential symbol.
+
+The accepted policy is conservative: an existing active set is reused only
+when the same provider-neutral S2 sufficiency precheck says it already covers
+the follow-up. Otherwise FeynMap falls back to the normal S2 adaptive retrieval
+and S3 packing path. Active state stores references and compact retrieval
+history rather than copied graph truth, and snapshot changes invalidate reuse.
 
 ### S5 — Tool-space routing
 
