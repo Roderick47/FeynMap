@@ -180,10 +180,18 @@ def run_benchmark(
         actual_names = _node_names(result)
         essential_files = [_normalize_path(item) for item in task.get("essential_files") or []]
         essential_symbols = [str(item) for item in task.get("essential_symbols") or []]
+        retrievable_files = [
+            item for item in essential_files
+            if (Path(project_root) / item).exists()
+        ]
+        unretrievable_files = [
+            item for item in essential_files
+            if item not in retrievable_files
+        ]
 
-        matched_files = [item for item in essential_files if _matches_file(actual_paths, item)]
+        matched_files = [item for item in retrievable_files if _matches_file(actual_paths, item)]
         matched_symbols = [item for item in essential_symbols if _matches_symbol(actual_names, item)]
-        total_essential = len(essential_files) + len(essential_symbols)
+        total_essential = len(retrievable_files) + len(essential_symbols)
         total_matched = len(matched_files) + len(matched_symbols)
         essential_recall = (float(total_matched) / float(total_essential)) if total_essential else None
 
@@ -200,8 +208,10 @@ def run_benchmark(
                 "essential_recall": essential_recall,
                 "essential_full_recall": bool(total_essential and total_matched == total_essential),
                 "essential_files": essential_files,
+                "retrievable_essential_files": retrievable_files,
+                "unretrievable_essential_files": unretrievable_files,
                 "matched_essential_files": matched_files,
-                "missing_essential_files": [item for item in essential_files if item not in matched_files],
+                "missing_essential_files": [item for item in retrievable_files if item not in matched_files],
                 "essential_symbols": essential_symbols,
                 "matched_essential_symbols": matched_symbols,
                 "missing_essential_symbols": [item for item in essential_symbols if item not in matched_symbols],
