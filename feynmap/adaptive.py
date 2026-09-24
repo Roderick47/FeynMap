@@ -79,19 +79,21 @@ class AdaptiveSparseSearch:
         beam_width: int,
         max_nodes: int,
         direction: str,
+        region_seeds: Optional[Sequence[str]] = None,
     ) -> GuidedSearchResult:
         allowed = self.index.node_ids_for_regions(route.selected_regions)
         global_budget = max(4, min(16, max(4, int(max_nodes)) // 4))
-        region_seeds = self.index.seed_nodes(
-            query,
-            route,
-            per_region=1,
-            total_limit=min(
-                global_budget,
-                self.region_seed_limit,
-                max(1, len(route.selected_regions)),
-            ),
-        )
+        if region_seeds is None:
+            region_seeds = self.index.seed_nodes(
+                query,
+                route,
+                per_region=1,
+                total_limit=min(
+                    global_budget,
+                    self.region_seed_limit,
+                    max(1, len(route.selected_regions)),
+                ),
+            )
         if not region_seeds:
             return local
 
@@ -131,7 +133,23 @@ class AdaptiveSparseSearch:
             max_nodes=max_nodes,
             direction=direction,
         )
-        local_sufficiency = self.sufficiency.evaluate(goal, local, route)
+        global_budget = max(4, min(16, max(4, int(max_nodes)) // 4))
+        region_seeds = self.index.seed_nodes(
+            goal,
+            route,
+            per_region=1,
+            total_limit=min(
+                global_budget,
+                self.region_seed_limit,
+                max(1, len(route.selected_regions)),
+            ),
+        )
+        local_sufficiency = self.sufficiency.evaluate(
+            goal,
+            local,
+            route,
+            representative_ids=region_seeds,
+        )
         if local_sufficiency.sufficient:
             return AdaptiveSearchResult(
                 search=local,
@@ -150,11 +168,13 @@ class AdaptiveSparseSearch:
             beam_width=beam_width,
             max_nodes=max_nodes,
             direction=direction,
+            region_seeds=region_seeds,
         )
         region_sufficiency = self.sufficiency.evaluate(
             goal,
             region_search,
             route,
+            representative_ids=region_seeds,
         )
         if region_sufficiency.sufficient or self.provider_searcher is None:
             return AdaptiveSearchResult(
@@ -179,7 +199,12 @@ class AdaptiveSparseSearch:
             judged,
             max_nodes=max_nodes,
         )
-        final_sufficiency = self.sufficiency.evaluate(goal, merged, route)
+        final_sufficiency = self.sufficiency.evaluate(
+            goal,
+            merged,
+            route,
+            representative_ids=region_seeds,
+        )
         return AdaptiveSearchResult(
             search=merged,
             route=route,
@@ -210,7 +235,21 @@ class AdaptiveSparseSearch:
             max_nodes=max_nodes,
             direction=direction,
         )
-        local_sufficiency = self.sufficiency.evaluate(concept, local, route)
+        region_seeds = self.index.seed_nodes(
+            concept,
+            route,
+            per_region=1,
+            total_limit=min(
+                self.region_seed_limit,
+                max(1, len(route.selected_regions)),
+            ),
+        )
+        local_sufficiency = self.sufficiency.evaluate(
+            concept,
+            local,
+            route,
+            representative_ids=region_seeds,
+        )
         if local_sufficiency.sufficient or self.provider_searcher is None:
             return AdaptiveSearchResult(
                 search=local,
@@ -230,7 +269,12 @@ class AdaptiveSparseSearch:
             max_nodes=max_nodes,
             direction=direction,
         )
-        final_sufficiency = self.sufficiency.evaluate(concept, judged, route)
+        final_sufficiency = self.sufficiency.evaluate(
+            concept,
+            judged,
+            route,
+            representative_ids=region_seeds,
+        )
         return AdaptiveSearchResult(
             search=judged,
             route=route,
