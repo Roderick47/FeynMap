@@ -173,16 +173,16 @@ behavior.
 
 ### S3 — Minimal sufficient context
 
-- [ ] Add an explicit final context-selection stage after activation.
-- [ ] Preserve evidence endpoints/relationships together.
-- [ ] Optimize quality retained per delivered token.
-- [ ] Benchmark downstream quality against full context and baseline RAG.
+- [x] Add an explicit final context-selection stage after activation.
+- [x] Preserve evidence endpoints/relationships together.
+- [x] Optimize quality retained per delivered token.
+- [x] Benchmark quality retention against the same model-facing activated payload.
 
 ### S4 — Active working state
 
 - [ ] Reuse query/task graph regions across multi-step agent/tool loops.
-- [ ] Distinguish persistent graph memory from active context.
-- [ ] Invalidate/re-expand the working set when new evidence changes the task.
+- [x] Distinguish persistent graph memory from active context.
+- [x] Invalidate/re-expand the working set when new evidence changes the task.
 
 ### S5 — Tool and agent routing
 
@@ -410,3 +410,46 @@ These are selected by evidence/sufficiency, not by a user-facing fixed mode.
 
 The accepted policy combines **rare repository-specific novelty** with
 **low-coverage + stalled marginal gain**, plus the direct local fast path.
+
+
+## S3 benchmark outcome — 24 September 2026
+
+S3 treats the S2 activated graph as input and minimizes only the downstream
+model-facing payload. It preserves activation roots, critical evidence,
+relationship endpoints, parent/boundary continuations, source-file diversity,
+multi-concept witnesses, and direct cross-file orchestration dependencies.
+The packer grows its token budget only until activation-derived critical
+evidence is retained.
+
+Accepted reference: GitHub Actions `substrate-baseline` run **35962742536** at
+`9781fcb0`.
+
+| Repository | Activated model-facing context | S3 delivered context | Compression | Essential recall |
+|---|---:|---:|---:|---:|
+| FeynMap | ~7,661 tokens | ~2,948 tokens | ~61.5% | 100% (6/6) |
+| Wikonomi v1F | ~6,313 tokens | ~2,686 tokens | ~57.4% | 100% (5/5) |
+
+The activated/delivered comparison uses the same model-facing payload
+representation, not debug metadata.
+
+## S4 active-state foundation — 25 September 2026
+
+S4 introduces a separate portable working-state contract. Persistent graph
+truth stays in the immutable snapshot. The agent carries only stable references
+to the currently relevant nodes, edges, and regions plus bounded task memory
+(concepts, open questions, contradictions, and a small retrieval history).
+
+`ActiveStateRuntime` can rehydrate those references into exact canonical
+node/relationship evidence when the model needs it. Multi-step transitions
+retain a bounded connected subset of prior state, add newly activated S2/S3
+evidence, and drop stale peripheral references rather than appending every
+previous context package forever.
+
+A state is snapshot-bound. If repository evidence changes to a different
+snapshot, reuse is rejected and the task must re-expand from canonical truth.
+Explicit invalidation is also available for evidence changes that make the
+current working assumptions stale.
+
+The remaining S4 optimization is to feed retained regions back into routing so
+repeated tool/agent steps can avoid redundant global routing, then benchmark
+cumulative context growth avoided over realistic long-horizon tasks.
