@@ -241,7 +241,14 @@ class MinimalContextPacker:
             if edge.source in activated_ids and edge.target in activated_ids
         ]
         node_scores = self._node_scores(result, hit_by_id, activated_edges)
-        critical: Set[str] = set()
+        ordered: List[str] = []
+        seen_critical: Set[str] = set()
+
+        def add_critical(node_id: str) -> None:
+            if node_id not in activated_ids or node_id in seen_critical:
+                return
+            seen_critical.add(node_id)
+            ordered.append(node_id)
 
         # Every activation root is required. In S2, secondary roots are
         # deliberate region/global seeds used to recover knowledge that local
@@ -252,9 +259,10 @@ class MinimalContextPacker:
             if node.id in activated_ids
         ]
         if grounded_roots:
-            critical.update(grounded_roots)
+            for node_id in grounded_roots:
+                add_critical(node_id)
         else:
-            critical.add(result.hits[0].node.id)
+            add_critical(result.hits[0].node.id)
 
         # Preserve the best activated witness for each task term that actually
         # appears in the semantic substrate.
@@ -270,7 +278,7 @@ class MinimalContextPacker:
             ]
             if not candidates:
                 continue
-            critical.add(max(
+            add_critical(max(
                 candidates,
                 key=lambda item: (node_scores.get(item, 0.0), item),
             ))
@@ -282,7 +290,7 @@ class MinimalContextPacker:
         for hit in result.hits:
             edge = edge_by_id.get(hit.via_edge_id or "")
             if edge is not None and _delivery_edge_priority(edge) >= 0.90:
-                critical.add(hit.node.id)
+                add_critical(hit.node.id)
 
         # Preserve a bounded set of high-value distinct source-file witnesses.
         file_groups: Dict[str, List[str]] = {}
@@ -330,13 +338,9 @@ class MinimalContextPacker:
         file_rank.sort(key=lambda item: (-item[0], item[1], item[2]))
         file_slots = min(4, max(2, int(math.ceil(math.sqrt(len(file_rank) or 1)))))
         for _, _, representative in file_rank[:file_slots]:
-            critical.add(representative)
+            add_critical(representative)
 
-        # Preserve deterministic order by activated hit order.
-        return tuple(
-            hit.node.id for hit in result.hits
-            if hit.node.id in critical
-        )
+        return tuple(ordered)
 
     def _pack_once(
         self,
