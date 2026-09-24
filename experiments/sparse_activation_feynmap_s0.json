@@ -99,6 +99,25 @@
         "max_nodes": 64,
         "direction": "both"
       }
+    },
+    {
+      "id": "self-minimal-sufficient-context",
+      "mode": "node",
+      "root": "feynmap.minimal_context.MinimalContextPacker.pack",
+      "query": "How does FeynMap compress an activated search into minimal downstream context while preserving grounded relationships, endpoints, evidence and search paths?",
+      "essential_files": [
+        "feynmap/minimal_context.py",
+        "feynmap/context.py"
+      ],
+      "essential_symbols": [
+        "feynmap.minimal_context.MinimalContextPacker._path_closure"
+      ],
+      "search": {
+        "max_depth": 4,
+        "beam_width": 8,
+        "max_nodes": 64,
+        "direction": "both"
+      }
     }
   ]
 }
