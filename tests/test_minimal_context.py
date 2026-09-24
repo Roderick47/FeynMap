@@ -189,6 +189,7 @@ def test_minimal_context_grows_budget_until_critical_evidence_fits():
 
 def test_minimal_context_reports_insufficient_when_maximum_is_too_small():
     graph, result = _graph_and_result()
+    graph.node("target").name = "stale_history_" + ("expensive" * 120)
     packed = MinimalContextPacker(graph).pack(
         result,
         budget=MinimalContextBudget(
