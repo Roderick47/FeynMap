@@ -63,6 +63,7 @@ class SearchHit:
     via_edge_id: Optional[str] = None
     search_probability: Optional[float] = None
     seed_score: Optional[float] = None
+    path_score: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -77,6 +78,8 @@ class SearchHit:
             payload["search_probability"] = float(self.search_probability)
         if self.seed_score is not None:
             payload["seed_score"] = float(self.seed_score)
+        if self.path_score is not None:
+            payload["path_score"] = float(self.path_score)
         return payload
 
 
@@ -306,6 +309,7 @@ class JevGuidedSearch:
 
         kind_filter = set(relationship_kinds) if relationship_kinds is not None else None
         visited: Set[str] = set(node.id for node in roots)
+        path_scores: Dict[str, float] = {node.id: 0.0 for node in roots}
         if allowed_node_ids is not None:
             allowed_node_ids.update(visited)
         hits: List[SearchHit] = []
@@ -316,6 +320,7 @@ class JevGuidedSearch:
                     depth=0,
                     search_probability=(seed_probabilities or {}).get(node.id),
                     seed_score=(seed_scores or {}).get(node.id),
+                    path_score=0.0,
                 )
             )
 
@@ -345,7 +350,10 @@ class JevGuidedSearch:
             available = max_nodes - len(hits)
             limit = min(beam_width, available, len(candidates))
             structural_scores = {
-                node_id: _edge_search_priority(parents[node_id][1])
+                node_id: (
+                    _edge_search_priority(parents[node_id][1])
+                    + (0.5 * path_scores.get(parents[node_id][0], 0.0))
+                )
                 for node_id in candidates
             }
             chosen, probabilities, judgment = self._select_candidates(
@@ -379,6 +387,11 @@ class JevGuidedSearch:
                 parent_id, edge = parents[chosen_node.id]
                 visited.add(chosen_node.id)
                 selected_edges[edge.id] = edge
+                path_score = structural_scores.get(
+                    chosen_node.id,
+                    _edge_search_priority(edge),
+                )
+                path_scores[chosen_node.id] = path_score
                 hits.append(
                     SearchHit(
                         node=chosen_node,
@@ -386,6 +399,7 @@ class JevGuidedSearch:
                         parent_id=parent_id,
                         via_edge_id=edge.id,
                         search_probability=probabilities.get(chosen_node.id),
+                        path_score=path_score,
                     )
                 )
                 next_frontier.append(chosen_node)
