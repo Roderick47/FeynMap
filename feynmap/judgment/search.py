@@ -534,8 +534,19 @@ class JevGuidedSearch:
             if allowed_node_ids is not None and neighbor_id not in allowed_node_ids:
                 continue
             neighbor = self.graph.node(neighbor_id)
-            if neighbor is not None:
-                yield edge, neighbor
+            if neighbor is None:
+                continue
+            # Repository ownership is an indexing/container relationship, not
+            # an application-semantic path. Walking upward into the repository
+            # root turns it into a giant hub and defeats sparse activation.
+            # Searching *from* a repository node still permits walking down.
+            if (
+                edge.kind == EdgeKind.CONTAINS
+                and neighbor.kind.value == "repository"
+                and node_id != neighbor.id
+            ):
+                continue
+            yield edge, neighbor
 
     def _concept_candidates(
         self,
