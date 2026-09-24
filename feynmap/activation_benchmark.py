@@ -14,12 +14,14 @@ import argparse
 import json
 import os
 import time
+from collections import deque
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .activation import measure_guided_search
 from .engine import FeynMapEngine
 from .judgment.search import JevGuidedSearch
+from .query import FeynMapQuery
 from .routing import RegionFirstSearch
 
 BENCHMARK_SCHEMA = "feynmap.sparse_activation_benchmark.v1"
@@ -59,6 +61,92 @@ def _matches_file(actual_paths: Iterable[str], expected: str) -> bool:
 
 def _matches_symbol(actual_names: Set[str], expected: str) -> bool:
     return str(expected) in actual_names
+
+
+def _graph_nodes_for_file(graph, expected: str):
+    target = _normalize_path(expected)
+    matches = []
+    for node in graph.nodes:
+        if not node.location or not node.location.path:
+            continue
+        path = _normalize_path(node.location.path)
+        if path == target or path.endswith("/" + target):
+            matches.append(node)
+    return matches
+
+
+def _shortest_graph_path(graph, start_id: str, target_ids: Set[str], max_depth: int = 8):
+    if start_id in target_ids:
+        return {"reachable": True, "depth": 0, "nodes": [start_id], "edges": []}
+
+    queue = deque([(start_id, [])])
+    seen = {start_id}
+    while queue:
+        current, path = queue.popleft()
+        if len(path) >= max_depth:
+            continue
+        edges = list(graph.outgoing(current)) + list(graph.incoming(current))
+        edges.sort(key=lambda edge: (edge.kind.value, edge.source, edge.target, edge.id))
+        for edge in edges:
+            neighbor = edge.target if edge.source == current else edge.source
+            if neighbor in seen:
+                continue
+            next_path = path + [edge]
+            if neighbor in target_ids:
+                node_ids = [start_id]
+                cursor = start_id
+                for item in next_path:
+                    cursor = item.target if item.source == cursor else item.source
+                    node_ids.append(cursor)
+                return {
+                    "reachable": True,
+                    "depth": len(next_path),
+                    "nodes": node_ids,
+                    "edges": [
+                        {
+                            "id": item.id,
+                            "kind": item.kind.value,
+                            "source": item.source,
+                            "target": item.target,
+                        }
+                        for item in next_path
+                    ],
+                }
+            seen.add(neighbor)
+            queue.append((neighbor, next_path))
+    return {"reachable": False, "depth": None, "nodes": [], "edges": []}
+
+
+def _essential_file_diagnostics(graph, task: Mapping[str, Any], files: Sequence[str]) -> Dict[str, Any]:
+    root_id = None
+    if task.get("mode", "concept") == "node" and task.get("root"):
+        try:
+            root_id = FeynMapQuery(graph).resolve(str(task["root"])).id
+        except KeyError:
+            root_id = None
+
+    diagnostics: Dict[str, Any] = {}
+    for expected in files:
+        nodes = _graph_nodes_for_file(graph, expected)
+        payload: Dict[str, Any] = {
+            "graph_node_ids": [node.id for node in nodes],
+            "present_in_graph": bool(nodes),
+        }
+        if root_id and nodes:
+            payload["path_from_root"] = _shortest_graph_path(
+                graph,
+                root_id,
+                {node.id for node in nodes},
+            )
+        elif root_id:
+            payload["path_from_root"] = {
+                "reachable": False,
+                "depth": None,
+                "nodes": [],
+                "edges": [],
+            }
+        diagnostics[expected] = payload
+    return diagnostics
 
 
 def _average(rows: Sequence[Mapping[str, Any]], key: str) -> Optional[float]:
@@ -212,6 +300,7 @@ def run_benchmark(
                 "unretrievable_essential_files": unretrievable_files,
                 "matched_essential_files": matched_files,
                 "missing_essential_files": [item for item in retrievable_files if item not in matched_files],
+                "essential_file_diagnostics": _essential_file_diagnostics(graph, task, retrievable_files),
                 "essential_symbols": essential_symbols,
                 "matched_essential_symbols": matched_symbols,
                 "missing_essential_symbols": [item for item in essential_symbols if item not in matched_symbols],
