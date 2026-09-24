@@ -26,6 +26,7 @@ class AdaptiveSearchResult:
     search: GuidedSearchResult
     route: Optional[RegionRouteResult]
     stage: str
+    effort: str
     escalations: Sequence[str]
     local_sufficiency: SufficiencyResult
     final_sufficiency: Optional[SufficiencyResult]
@@ -34,6 +35,7 @@ class AdaptiveSearchResult:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "stage": self.stage,
+            "effort": self.effort,
             "escalations": list(self.escalations),
             "route": self.route.to_dict() if self.route is not None else None,
             "local_sufficiency": self.local_sufficiency.to_dict(),
@@ -150,6 +152,7 @@ class AdaptiveSparseSearch:
                 search=local,
                 route=None,
                 stage="local",
+                effort="fast",
                 escalations=(),
                 local_sufficiency=precheck,
                 final_sufficiency=precheck,
@@ -201,6 +204,7 @@ class AdaptiveSparseSearch:
                 search=local,
                 route=route,
                 stage="local",
+                effort="normal",
                 escalations=(),
                 local_sufficiency=local_sufficiency,
                 final_sufficiency=local_sufficiency,
@@ -225,6 +229,7 @@ class AdaptiveSparseSearch:
                 search=region_search,
                 route=route,
                 stage="region",
+                effort="normal",
                 escalations=("region",),
                 local_sufficiency=local_sufficiency,
                 final_sufficiency=None,
@@ -246,6 +251,7 @@ class AdaptiveSparseSearch:
                 search=region_search,
                 route=route,
                 stage="region",
+                effort="normal",
                 escalations=("region",),
                 local_sufficiency=local_sufficiency,
                 final_sufficiency=region_sufficiency,
@@ -277,6 +283,7 @@ class AdaptiveSparseSearch:
             search=merged,
             route=route,
             stage="jev",
+            effort="deep",
             escalations=("region", "jev"),
             local_sufficiency=local_sufficiency,
             final_sufficiency=final_sufficiency,
@@ -316,6 +323,7 @@ class AdaptiveSparseSearch:
                 search=local,
                 route=None,
                 stage="local",
+                effort="fast",
                 escalations=(),
                 local_sufficiency=precheck,
                 final_sufficiency=precheck,
@@ -361,6 +369,7 @@ class AdaptiveSparseSearch:
                 search=local,
                 route=route,
                 stage="local",
+                effort="normal",
                 escalations=(),
                 local_sufficiency=local_sufficiency,
                 final_sufficiency=local_sufficiency,
@@ -388,6 +397,7 @@ class AdaptiveSparseSearch:
             search=judged,
             route=route,
             stage="jev",
+            effort="deep",
             escalations=("jev",),
             local_sufficiency=local_sufficiency,
             final_sufficiency=final_sufficiency,
