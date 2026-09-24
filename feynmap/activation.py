@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Optional, Set
 
+from .context import estimate_tokens
 from .core import SemanticGraph
 from .judgment.search import GuidedSearchResult
 
@@ -28,6 +29,8 @@ class ActivationMetrics:
     search_steps: int
     exhausted: bool
     truncated: bool
+    routing_elapsed_ms: float = 0.0
+    activated_context_tokens: int = 0
 
     @property
     def candidate_touch_ratio(self) -> float:
@@ -56,6 +59,8 @@ class ActivationMetrics:
             "search_steps": int(self.search_steps),
             "exhausted": bool(self.exhausted),
             "truncated": bool(self.truncated),
+            "routing_elapsed_ms": round(float(self.routing_elapsed_ms), 6),
+            "activated_context_tokens": int(self.activated_context_tokens),
             "candidate_touch_ratio": self.candidate_touch_ratio,
             "knowledge_activation_ratio": self.knowledge_activation_ratio,
             "delivery_to_activation_ratio": self.delivery_to_activation_ratio,
@@ -66,6 +71,7 @@ def measure_guided_search(
     graph: SemanticGraph,
     result: GuidedSearchResult,
     delivered_node_ids: Optional[Iterable[str]] = None,
+    routing_elapsed_seconds: float = 0.0,
 ) -> ActivationMetrics:
     """Measure one JEV-guided search without changing its retrieval behavior.
 
@@ -88,6 +94,30 @@ def measure_guided_search(
         delivered_ids = {str(node_id) for node_id in delivered_node_ids}
         delivered_ids.intersection_update(activated_ids)
 
+    compact_payload = {
+        "nodes": [
+            {
+                "id": hit.node.id,
+                "name": hit.node.name,
+                "qualified_name": hit.node.qualified_name,
+                "kind": hit.node.kind.value,
+                "location": hit.node.location.to_dict() if hit.node.location else None,
+                "confidence_tier": hit.node.confidence_tier.value,
+            }
+            for hit in result.hits
+        ],
+        "relationships": [
+            {
+                "source": edge.source,
+                "relationship": edge.kind.value,
+                "target": edge.target,
+                "confidence_tier": edge.confidence_tier.value,
+            }
+            for edge in result.edges
+        ],
+    }
+    activated_context_tokens = estimate_tokens(compact_payload)
+
     return ActivationMetrics(
         total_graph_nodes=len(graph.nodes),
         candidate_nodes_seen=len(candidate_ids),
@@ -96,4 +126,6 @@ def measure_guided_search(
         search_steps=len(result.trace),
         exhausted=result.exhausted,
         truncated=result.truncated,
+        routing_elapsed_ms=max(0.0, float(routing_elapsed_seconds)) * 1000.0,
+        activated_context_tokens=activated_context_tokens,
     )
