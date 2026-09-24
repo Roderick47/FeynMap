@@ -106,3 +106,26 @@ def test_offline_fallback_is_deterministic_and_does_not_require_jev():
 def test_invalid_direction_is_rejected():
     with pytest.raises(ValueError, match="direction"):
         JevGuidedSearch(_graph()).from_node("root", "x", direction="sideways")
+
+
+
+def test_offline_fallback_uses_query_relevance_before_confidence():
+    result = JevGuidedSearch(_graph()).from_node(
+        "root",
+        "beta helper",
+        max_depth=1,
+        beam_width=1,
+    )
+    assert [hit.node.id for hit in result.hits] == ["root", "beta"]
+
+
+def test_allowed_node_filter_bounds_search_candidates():
+    result = JevGuidedSearch(_graph()).from_node(
+        "root",
+        "find payment reconciliation logic",
+        max_depth=2,
+        beam_width=4,
+        allowed_node_ids={"root", "alpha", "target"},
+    )
+    assert [hit.node.id for hit in result.hits] == ["root", "alpha", "target"]
+    assert all("beta" not in step.candidates for step in result.trace)
