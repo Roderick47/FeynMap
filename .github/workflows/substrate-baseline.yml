@@ -1,0 +1,103 @@
+name: substrate-baseline
+
+on:
+  push:
+    branches:
+      - feature/sparse-knowledge-substrate
+  workflow_dispatch:
+
+jobs:
+  s0-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout FeynMap
+        uses: actions/checkout@v4
+        with:
+          path: feynmap-src
+
+      - name: Checkout Wikonomi V2
+        uses: actions/checkout@v4
+        with:
+          repository: Roderick47/wikonomi-v2
+          ref: main
+          path: wikonomi-v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install FeynMap
+        run: python -m pip install -e ./feynmap-src
+
+      - name: Run FeynMap self baseline
+        run: |
+          python -m feynmap.activation_benchmark \
+            feynmap-src/experiments/sparse_activation_feynmap_s0.json \
+            feynmap-src \
+            --output baseline-results/feynmap-s0.json \
+            --pretty
+
+      - name: Run Wikonomi V2 baseline
+        run: |
+          python -m feynmap.activation_benchmark \
+            feynmap-src/experiments/sparse_activation_wikonomi_s0.json \
+            wikonomi-v2 \
+            --output baseline-results/wikonomi-s0.json \
+            --pretty
+
+      - name: Write benchmark summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          rows = []
+          for label, path in (
+              ("FeynMap", "baseline-results/feynmap-s0.json"),
+              ("Wikonomi V2", "baseline-results/wikonomi-s0.json"),
+          ):
+              with open(path, "r", encoding="utf-8") as handle:
+                  data = json.load(handle)
+              summary = data["summary"]
+              rows.append(
+                  (
+                      label,
+                      data["analysis"]["graph_nodes"],
+                      data["analysis"]["graph_edges"],
+                      summary["mean_candidate_touch_ratio"],
+                      summary["mean_knowledge_activation_ratio"],
+                      summary["mean_routing_elapsed_ms"],
+                      summary["mean_activated_context_tokens"],
+                      summary["mean_essential_recall"],
+                      summary["full_recall_tasks"],
+                      data["task_count"],
+                  )
+              )
+
+          lines = [
+              "## FeynMap sparse activation S0",
+              "",
+              "| Repository | Nodes | Edges | Candidate touch | Knowledge activation | Routing ms | Active ctx tokens | Essential recall | Full recall tasks |",
+              "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+          ]
+          for row in rows:
+              label, nodes, edges, touch, activation, latency, tokens, recall, full, count = row
+              lines.append(
+                  "| %s | %d | %d | %.4f | %.4f | %.3f | %.1f | %.3f | %d/%d |"
+                  % (label, nodes, edges, touch or 0.0, activation or 0.0, latency or 0.0, tokens or 0.0, recall or 0.0, full, count)
+              )
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path:
+              with open(summary_path, "a", encoding="utf-8") as handle:
+                  handle.write("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          PY
+
+      - name: Upload S0 results
+        uses: actions/upload-artifact@v4
+        with:
+          name: sparse-activation-s0
+          path: baseline-results/*.json

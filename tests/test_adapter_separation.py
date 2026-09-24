@@ -154,6 +154,6 @@ def test_render_expr_fast_paths_name_and_attribute_without_unparse(monkeypatch):
     def fail_unparse(_node):
         raise AssertionError("Name/Attribute fast path should not call ast.unparse")
 
-    monkeypatch.setattr(ast, "unparse", fail_unparse)
+    monkeypatch.setattr(ast, "unparse", fail_unparse, raising=False)
 
     assert _render_expr(expression) == "service.client.run"

@@ -1,5 +1,76 @@
 # FeynMap Roadmap
 
+## 2026 realignment — sparse knowledge activation substrate
+
+The completed semantic-graph, evidence, snapshot, context, and JEV work remains
+the foundation. The product priority is now a **low-latency sparse
+knowledge-activation substrate** rather than treating MCP or a grounding server
+as the end state.
+
+MCP, HTTP, IDE, and agent integrations become thin consumers of the substrate.
+The hot path should minimize graph regions touched, nodes activated, context
+tokens delivered, and routing latency while preserving task quality.
+
+See `docs/SPARSE_KNOWLEDGE_SUBSTRATE.md` for the architecture and definitions.
+
+### S0 — Measure the current activation path 🚧
+
+- [x] Evidence-backed canonical graph
+- [x] Immutable snapshots and token-budgeted context
+- [x] Provider-neutral JEV judgment layer
+- [x] JEV-guided bounded node/concept search (PR #28)
+- [x] Candidate-touch and knowledge-activation metrics
+- [ ] Baseline the metrics on FeynMap itself
+- [ ] Baseline the metrics on a substantially larger real repository
+- [ ] Add routing-latency and context-token instrumentation
+
+### S1 — Region-first sparse routing
+
+- [ ] Stable region/cluster summaries over the canonical graph
+- [ ] Route to regions before individual nodes
+- [ ] Reuse region selections within one task
+- [ ] Compare flat vs region-first recall, activation ratio, and latency
+- [ ] Preserve deterministic routing when JEV is unavailable
+
+### S2 — Adaptive sufficiency and effort
+
+- [ ] Provider-neutral sufficiency contract
+- [ ] Marginal information-gain tracking
+- [ ] Confidence/coverage-based early stopping
+- [ ] Escalation policy: deterministic → JEV → optional LLM
+- [ ] Fast/normal/deep budgets driven by uncertainty rather than fixed user mode
+
+### S3 — Minimal sufficient context
+
+- [ ] Explicit post-activation context-selection stage
+- [ ] Evidence-preserving endpoint/relationship packing
+- [ ] Quality-retention benchmark against full context and baseline retrieval
+- [ ] Context-compression and downstream-cost metrics
+
+### S4 — Active state for long-horizon agents
+
+- [ ] Distinguish persistent graph memory from active working context
+- [ ] Reuse task regions across tool calls
+- [ ] Re-expand or invalidate state when new evidence changes the task
+- [ ] Measure context growth avoided over long agent runs
+
+### S5 — Tool-space routing
+
+- [ ] Represent tool capabilities as routable grounded contracts
+- [ ] Expose only the small relevant tool subset to the downstream model
+- [ ] Measure tool-schema token reduction and routing quality
+
+### S6 — Performance implementation
+
+- [ ] Profile the Python hot path before porting
+- [ ] Cache only measured bottlenecks
+- [ ] Freeze substrate contracts
+- [ ] Port latency-critical pieces to Rust where profiling justifies it
+
+The older phases below remain valid capability work. Their priority is now
+judged by how much they improve graph truth, activation quality, context
+efficiency, or delivery of the substrate.
+
 ## Phase 0 — V3 foundation
 
 - [x] Canonical language-neutral semantic graph

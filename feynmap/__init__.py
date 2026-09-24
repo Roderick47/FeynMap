@@ -1,4 +1,5 @@
-"""FeynMap: grounded semantic infrastructure for AI-assisted software engineering."""
+"""FeynMap: evidence-backed sparse knowledge activation for AI systems."""
+from .activation import ActivationMetrics, measure_guided_search
 from .context import ContextBudget, StoredSnapshotContext, estimate_tokens
 from .core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 from .diff import diff_file_inventories, diff_graphs, diff_snapshots, diff_store_snapshots
@@ -26,12 +27,12 @@ def __getattr__(name):
 
 
 __all__ = [
-    "ContextBudget", "EdgeKind", "Evidence", "EvidenceKind", "FeynMapEngine", "FeynMapQuery",
+    "ActivationMetrics", "ContextBudget", "EdgeKind", "Evidence", "EvidenceKind", "FeynMapEngine", "FeynMapQuery",
     "FileFingerprint", "GROUNDING_TOOL_CONTRACT_VERSION", "GROUNDING_TOOLS", "GroundingService",
     "GroundingTool", "IncrementalPlan", "IntegrationResolver", "MigrationPlanner", "NodeKind",
     "RepositorySnapshot", "SemanticEdge", "SemanticGraph", "SemanticNode", "SnapshotStore",
     "SourceLocation", "StoredSnapshotContext", "add_contract", "analyze_incrementally",
     "capture_and_store", "capture_repository_snapshot", "contracts", "diff_file_inventories",
     "diff_graphs", "diff_snapshots", "diff_store_snapshots", "estimate_tokens",
-    "incremental_snapshot", "plan_incremental_analysis", "evaluate_graph",
+    "incremental_snapshot", "measure_guided_search", "plan_incremental_analysis", "evaluate_graph",
 ]

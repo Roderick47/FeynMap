@@ -1,0 +1,85 @@
+{
+  "schema": "feynmap.sparse_activation_benchmark.v1",
+  "name": "S0 sparse activation baseline - FeynMap self-hosting",
+  "repository": {
+    "name": "Roderick47/FeynMap",
+    "policy": "Analyze the checked-out benchmark revision once, then run bounded deterministic search without a judgment provider."
+  },
+  "analysis": {
+    "language": "auto",
+    "framework": "auto"
+  },
+  "tasks": [
+    {
+      "id": "self-integration-resolution",
+      "mode": "node",
+      "root": "feynmap.engine.FeynMapEngine.analyze",
+      "query": "How does repository analysis resolve cross-language and cross-runtime integration boundaries?",
+      "essential_files": [
+        "feynmap/integration.py"
+      ],
+      "essential_symbols": [
+        "feynmap.integration.IntegrationResolver.resolve"
+      ],
+      "search": {
+        "max_depth": 4,
+        "beam_width": 8,
+        "max_nodes": 64,
+        "direction": "both"
+      }
+    },
+    {
+      "id": "self-context-bundle",
+      "mode": "node",
+      "root": "feynmap.grounding.GroundingService.call",
+      "query": "How is an evidence-preserving token-budgeted context bundle produced from a stored snapshot?",
+      "essential_files": [
+        "feynmap/context.py"
+      ],
+      "essential_symbols": [
+        "feynmap.context.StoredSnapshotContext.context_bundle"
+      ],
+      "search": {
+        "max_depth": 4,
+        "beam_width": 8,
+        "max_nodes": 64,
+        "direction": "both"
+      }
+    },
+    {
+      "id": "self-jev-guided-search",
+      "mode": "concept",
+      "query": "JEV guided targeted graph search candidate selection adaptive traversal",
+      "essential_files": [
+        "feynmap/judgment/search.py"
+      ],
+      "essential_symbols": [
+        "feynmap.judgment.search.JevGuidedSearch"
+      ],
+      "search": {
+        "seed_limit": 8,
+        "candidate_limit": 64,
+        "max_depth": 3,
+        "beam_width": 8,
+        "max_nodes": 64,
+        "direction": "both"
+      }
+    },
+    {
+      "id": "self-snapshot-persistence",
+      "mode": "concept",
+      "query": "immutable repository snapshot persistence semantic graph hash current snapshot",
+      "essential_files": [
+        "feynmap/snapshots.py"
+      ],
+      "search": {
+        "seed_limit": 8,
+        "candidate_limit": 64,
+        "max_depth": 3,
+        "beam_width": 8,
+        "max_nodes": 64,
+        "direction": "both"
+      }
+    }
+  ]
+}

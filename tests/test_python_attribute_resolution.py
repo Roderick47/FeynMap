@@ -109,6 +109,6 @@ def test_resolution_render_expr_fast_paths_dotted_names_without_unparse(monkeypa
     def fail_unparse(_node):
         raise AssertionError("Name/Attribute fast path should not call ast.unparse")
 
-    monkeypatch.setattr(ast, "unparse", fail_unparse)
+    monkeypatch.setattr(ast, "unparse", fail_unparse, raising=False)
 
     assert _resolution_render_expr(expression) == "typing.Optional"

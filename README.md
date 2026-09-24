@@ -1,8 +1,8 @@
 # FeynMap
 
-**A verifiable semantic map of software for humans and AI.**
+**A verifiable sparse knowledge-activation layer for software and AI.**
 
-FeynMap analyzes a repository programmatically, builds a machine-readable model of the system, records the evidence behind relationships, and exposes that model to developers and AI coding agents so they can reason about code with less guessing.
+FeynMap analyzes a repository programmatically, builds an evidence-backed semantic graph, and activates only the small grounded portion of that graph needed for the current task. The goal is to give developers and AI systems better context with less guessing, less unnecessary retrieval, and fewer downstream tokens.
 
 FeynMap now treats a repository as a **heterogeneous software system** rather than selecting one dominant language. Python, HTML, JavaScript, frameworks, routes, templates, HTTP calls, subprocesses, files, IPC and other runtime boundaries can coexist in one unified semantic graph.
 
@@ -68,13 +68,15 @@ FeynMap distinguishes between facts that are directly evidenced, relationships t
                               ▼
                     Integration Resolver
                               │
-        ┌─────────────────────┼─────────────────────┐
-        ▼                     ▼                     ▼
-  Grounded Query        AI Grounding          Migration
-       API                 Service             Planning
+                              ▼
+                 Sparse Knowledge Activation
+                 ┌────────────┼────────────┐
+                 ▼            ▼            ▼
+           Grounded Query  MCP / API   Migration
+                API         / IDE      Planning
 ```
 
-See [`docs/ARCHITECTURE_V3.md`](docs/ARCHITECTURE_V3.md) and [`docs/MULTILANGUAGE_ORCHESTRATION.md`](docs/MULTILANGUAGE_ORCHESTRATION.md).
+See [`docs/ARCHITECTURE_V3.md`](docs/ARCHITECTURE_V3.md), [`docs/SPARSE_KNOWLEDGE_SUBSTRATE.md`](docs/SPARSE_KNOWLEDGE_SUBSTRATE.md), and [`docs/MULTILANGUAGE_ORCHESTRATION.md`](docs/MULTILANGUAGE_ORCHESTRATION.md).
 
 ## Current capabilities
 
@@ -261,7 +263,11 @@ Use `feynmap evaluate graph.json annotations.json` to measure explicitly labeled
 
 ## Direction
 
-Phase 1 (framework-neutral Python) and Phase 1.5 (repository multi-language orchestration and cross-runtime resolution) are now implemented on the V3 refactor branch.
+FeynMap's product direction is now the **sparse knowledge-activation substrate**: keep the full evidence-backed graph available, but touch, activate, and deliver only the minimum grounded knowledge required for the current task. MCP, API, IDE, and agent integrations are delivery surfaces over that substrate rather than the architectural destination.
+
+The first substrate metrics are exposed through `feynmap.activation`, and the JEV-guided targeted search from PR #28 is the current activation-policy foundation. See [`docs/SPARSE_KNOWLEDGE_SUBSTRATE.md`](docs/SPARSE_KNOWLEDGE_SUBSTRATE.md) for the realigned hot path, metrics, and implementation sequence.
+
+Phase 1 (framework-neutral Python) and Phase 1.5 (repository multi-language orchestration and cross-runtime resolution) remain implemented foundations.
 
 Persistent graph snapshots, conservative incremental updates, repository identity, a transport-neutral grounding service, and approximate-token-budgeted context retrieval are implemented. A complete MCP transport remains outstanding on main.
 
@@ -276,7 +282,7 @@ mixed-language repositories. See
 
 ## Mission
 
-> **FeynMap builds a verifiable machine-readable model of a software system so humans and AI can reason about code without guessing.**
+> **FeynMap keeps a verifiable model of the software system available, then activates the minimum grounded knowledge an AI or developer needs for the task at hand.**
 
 ## License
 
