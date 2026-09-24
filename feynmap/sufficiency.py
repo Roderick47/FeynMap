@@ -116,6 +116,7 @@ class SufficiencyEvaluator:
         min_specific_novel_terms: int = 2,
         stalled_coverage_threshold: float = 0.18,
         stalled_marginal_threshold: float = 0.01,
+        direct_stop_coverage: float = 0.22,
     ) -> None:
         self.graph = graph
         self.region_index = region_index or RegionIndex(graph)
@@ -135,6 +136,55 @@ class SufficiencyEvaluator:
             0.0,
             min(1.0, float(stalled_marginal_threshold)),
         )
+        self.direct_stop_coverage = max(
+            0.0,
+            min(1.0, float(direct_stop_coverage)),
+        )
+
+    def precheck(
+        self,
+        query: str,
+        result: GuidedSearchResult,
+    ) -> Optional[SufficiencyResult]:
+        """Return an immediate sufficient result when local coverage is strong.
+
+        This deliberately avoids computing a global route. It is a latency
+        shortcut only; ambiguous local results fall through to full region-aware
+        sufficiency.
+        """
+        query_terms, activated_terms, query_coverage, uncovered, weight = (
+            self._local_coverage(query, result)
+        )
+        marginal_gain_by_depth = self._marginal_gain_by_depth(
+            query_terms,
+            result,
+            weight,
+        )
+        marginal_gain = (
+            marginal_gain_by_depth[max(marginal_gain_by_depth)]
+            if marginal_gain_by_depth
+            else 0.0
+        )
+        if query_coverage < self.direct_stop_coverage:
+            return None
+
+        frontier_pressure = self._frontier_pressure(result)
+        return SufficiencyResult(
+            sufficient=True,
+            score=query_coverage,
+            query_coverage=query_coverage,
+            novel_region_gain=0.0,
+            novel_specific_term_count=0,
+            novel_max_specificity=0.0,
+            actionable_query_terms=len(query_terms),
+            region_coverage=0.0,
+            marginal_gain=marginal_gain,
+            marginal_gain_by_depth=marginal_gain_by_depth,
+            frontier_pressure=frontier_pressure,
+            reasons=(),
+            uncovered_query_terms=tuple(sorted(uncovered)),
+            novel_region_terms=(),
+        )
 
     def evaluate(
         self,
@@ -143,41 +193,16 @@ class SufficiencyEvaluator:
         route: RegionRouteResult,
         representative_ids: Optional[Sequence[str]] = None,
     ) -> SufficiencyResult:
-        raw_query_terms = _tokens(query)
-        # A prose token is only actionable if it occurs somewhere in the
-        # grounded region index. This removes language-specific stop-word
-        # assumptions and prevents ordinary connective prose from being scored
-        # as missing repository knowledge.
-        query_terms = {
-            token
-            for token in raw_query_terms
-            if self.region_index.document_frequency.get(token, 0) > 0
-        }
-        activated_terms: Set[str] = set()
+        query_terms, activated_terms, query_coverage, uncovered, weight = (
+            self._local_coverage(query, result)
+        )
         activated_regions: Set[str] = set()
         for hit in result.hits:
-            cached_terms = self.region_index.node_terms.get(hit.node.id)
-            activated_terms.update(
-                cached_terms
-                if cached_terms is not None
-                else frozenset(_node_terms(hit.node))
-            )
             region = self.region_index.region_for_node(hit.node.id)
             if region:
                 activated_regions.add(region)
 
-        def weight(term: str) -> float:
-            return self.region_index._idf(term)
-
         total_weight = sum(weight(term) for term in query_terms)
-        covered = query_terms & activated_terms
-        uncovered = query_terms - activated_terms
-        covered_weight = sum(weight(term) for term in covered)
-        query_coverage = (
-            covered_weight / total_weight
-            if total_weight > 0.0
-            else 1.0
-        )
 
         selected_regions = list(route.selected_regions)
         region_coverage = (
@@ -300,6 +325,36 @@ class SufficiencyEvaluator:
             uncovered_query_terms=tuple(sorted(uncovered)),
             novel_region_terms=tuple(sorted(novel_terms)),
         )
+
+    def _local_coverage(self, query: str, result: GuidedSearchResult):
+        raw_query_terms = _tokens(query)
+        query_terms = {
+            token
+            for token in raw_query_terms
+            if self.region_index.document_frequency.get(token, 0) > 0
+        }
+        activated_terms: Set[str] = set()
+        for hit in result.hits:
+            cached_terms = self.region_index.node_terms.get(hit.node.id)
+            activated_terms.update(
+                cached_terms
+                if cached_terms is not None
+                else frozenset(_node_terms(hit.node))
+            )
+
+        def weight(term: str) -> float:
+            return self.region_index._idf(term)
+
+        total_weight = sum(weight(term) for term in query_terms)
+        covered = query_terms & activated_terms
+        uncovered = query_terms - activated_terms
+        covered_weight = sum(weight(term) for term in covered)
+        query_coverage = (
+            covered_weight / total_weight
+            if total_weight > 0.0
+            else 1.0
+        )
+        return query_terms, activated_terms, query_coverage, uncovered, weight
 
     @staticmethod
     def _marginal_gain_by_depth(
