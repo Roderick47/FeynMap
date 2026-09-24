@@ -123,7 +123,12 @@ def _shortest_graph_path(graph, start_id: str, target_ids: Set[str], max_depth: 
     return {"reachable": False, "depth": None, "nodes": [], "edges": []}
 
 
-def _essential_file_diagnostics(graph, task: Mapping[str, Any], files: Sequence[str]) -> Dict[str, Any]:
+def _essential_file_diagnostics(
+    graph,
+    task: Mapping[str, Any],
+    files: Sequence[str],
+    search_result=None,
+) -> Dict[str, Any]:
     root_id = None
     if task.get("mode", "concept") == "node" and task.get("root"):
         try:
@@ -138,11 +143,24 @@ def _essential_file_diagnostics(graph, task: Mapping[str, Any], files: Sequence[
             "graph_node_ids": [node.id for node in nodes],
             "present_in_graph": bool(nodes),
         }
+        target_ids = {node.id for node in nodes}
+        if search_result is not None and target_ids:
+            payload["search_trace"] = [
+                {
+                    "depth": step.depth,
+                    "candidate": bool(target_ids.intersection(step.candidates)),
+                    "selected": bool(target_ids.intersection(step.selected)),
+                    "candidate_count": len(step.candidates),
+                    "selected_count": len(step.selected),
+                }
+                for step in search_result.trace
+                if target_ids.intersection(step.candidates) or target_ids.intersection(step.selected)
+            ]
         if root_id and nodes:
             payload["path_from_root"] = _shortest_graph_path(
                 graph,
                 root_id,
-                {node.id for node in nodes},
+                target_ids,
             )
         elif root_id:
             payload["path_from_root"] = {
@@ -306,7 +324,7 @@ def run_benchmark(
                 "unretrievable_essential_files": unretrievable_files,
                 "matched_essential_files": matched_files,
                 "missing_essential_files": [item for item in retrievable_files if item not in matched_files],
-                "essential_file_diagnostics": _essential_file_diagnostics(graph, task, retrievable_files),
+                "essential_file_diagnostics": _essential_file_diagnostics(graph, task, retrievable_files, result),
                 "essential_symbols": essential_symbols,
                 "matched_essential_symbols": matched_symbols,
                 "missing_essential_symbols": [item for item in essential_symbols if item not in matched_symbols],
