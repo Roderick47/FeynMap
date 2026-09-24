@@ -329,3 +329,84 @@ context", not "the downstream answer is guaranteed correct".
 Every adaptive result records the stop stage (`local`, `region`, or `jev`),
 the escalation sequence, all sufficiency signals, uncovered query terms, and
 the specific reason(s) for escalation.
+
+
+## S2 benchmark outcome — 24 September 2026
+
+S2 is evaluated recursively on FeynMap itself and on the same five pinned
+Wikonomi v1F tasks used for S1. A new self-hosting task begins at
+`AdaptiveSparseSearch.from_node` and requires FeynMap to recover its own
+sufficiency and routing implementation.
+
+Accepted reference: GitHub Actions `substrate-baseline` run **35958839100**.
+
+| Repository | Strategy | Candidate touch | Knowledge activation | Routing | Active context | Essential recall | Adaptive decisions |
+|---|---|---:|---:|---:|---:|---:|---|
+| FeynMap | flat | 7.13% | 1.91% | 7.26 ms | 3,913 tokens | 100% (5/5) | — |
+| FeynMap | always-on region | 7.75% | 2.14% | 9.32 ms | 4,247 tokens | 100% (5/5) | — |
+| FeynMap | **adaptive** | **7.13%** | **1.91%** | **8.57 ms** | **3,913 tokens** | **100% (5/5)** | **5 local / 0 region** |
+| Wikonomi v1F | flat | 9.09% | 0.93% | 10.02 ms | 2,395 tokens | 85% (3/5) | — |
+| Wikonomi v1F | always-on region | 9.41% | 1.32% | 13.96 ms | 3,324 tokens | 100% (5/5) | — |
+| Wikonomi v1F | **adaptive** | **9.16%** | **1.08%** | **12.76 ms** | **2,762 tokens** | **100% (5/5)** | **3 local / 2 region** |
+
+CI latency is comparative evidence, not a production SLA. In this run adaptive
+Wikonomi retrieval used about **17% fewer active-context tokens** than the
+always-on S1 hybrid while preserving its full recall, and it was about **8.6%
+faster** on the same runner.
+
+### Accepted S2 policy
+
+The effort controller now makes a provider-neutral three-way decision:
+
+```text
+local grounded search
+        ↓
+local precheck
+   ┌────┼─────────────┐
+ strong │ uncertain   │ clearly insufficient
+   ↓    ↓             ↓
+ FAST   cheap route   route + region activation
+ stop      ↓                   ↓
+        full sufficiency      NORMAL
+          ┌──┴──┐              ↓
+        stop   region      still insufficient
+                            + provider available
+                                  ↓
+                                DEEP
+                         judgment provider / JEV
+```
+
+The precheck can conclude either **sufficient**, **insufficient**, or
+**uncertain**. Strong grounded coverage stops without constructing a global
+route. Low grounded coverage combined with stalled marginal information gain
+escalates directly. Only ambiguous cases pay for the fuller route-aware
+sufficiency calculation.
+
+Task vocabulary is graph-grounded and IDF-weighted. Ordinary prose that does
+not occur in the substrate is not treated as missing knowledge. Region novelty
+is computed from the representative nodes that would actually be activated,
+rather than from every token in an entire file.
+
+The runtime exposes effort as:
+
+- **fast** — local grounded search only; no global route/provider;
+- **normal** — bounded deterministic region activation when local evidence is
+  insufficient;
+- **deep** — a configured judgment provider only after deterministic local and
+  region stages remain insufficient.
+
+These are selected by evidence/sufficiency, not by a user-facing fixed mode.
+
+### Rejected S2 policies
+
+- Raw query-word coverage: it treated prose such as “the”, “should”, and
+  “people” as missing repository knowledge and escalated almost everything.
+- Any-novel-region-term escalation: preserved recall but sent all five
+  Wikonomi tasks through the expensive path.
+- Rarity alone: reduced context substantially but falsely stopped on the
+  map-history task (95% mean recall).
+- Re-evaluating sufficiency after region activation when no further provider
+  exists: it could not change the action and only added latency.
+
+The accepted policy combines **rare repository-specific novelty** with
+**low-coverage + stalled marginal gain**, plus the direct local fast path.
