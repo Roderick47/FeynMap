@@ -1,5 +1,6 @@
 """FeynMap: evidence-backed sparse knowledge activation for AI systems."""
 from .activation import ActivationMetrics, measure_guided_search
+from .adaptive import AdaptiveSearchResult, AdaptiveSparseSearch
 from .context import ContextBudget, StoredSnapshotContext, estimate_tokens
 from .core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 from .diff import diff_file_inventories, diff_graphs, diff_snapshots, diff_store_snapshots
@@ -9,6 +10,8 @@ from .grounding import GROUNDING_TOOL_CONTRACT_VERSION, GROUNDING_TOOLS, Groundi
 from .incremental import IncrementalPlan, analyze_incrementally, incremental_snapshot, plan_incremental_analysis
 from .integration import IntegrationResolver, add_contract, contracts
 from .migration import MigrationPlanner
+from .minimal_context import MinimalContextBudget, MinimalContextPacker, MinimalContextResult
+from .context_pipeline import SparseContextPipeline, SparseContextResult
 from .query import FeynMapQuery
 from .snapshots import FileFingerprint, RepositorySnapshot, SnapshotStore, capture_and_store, capture_repository_snapshot
 
@@ -27,10 +30,12 @@ def __getattr__(name):
 
 
 __all__ = [
-    "ActivationMetrics", "ContextBudget", "EdgeKind", "Evidence", "EvidenceKind", "FeynMapEngine", "FeynMapQuery",
+    "ActivationMetrics", "AdaptiveSearchResult", "AdaptiveSparseSearch", "ContextBudget", "EdgeKind", "Evidence", "EvidenceKind", "FeynMapEngine", "FeynMapQuery",
     "FileFingerprint", "GROUNDING_TOOL_CONTRACT_VERSION", "GROUNDING_TOOLS", "GroundingService",
-    "GroundingTool", "IncrementalPlan", "IntegrationResolver", "MigrationPlanner", "NodeKind",
+    "GroundingTool", "IncrementalPlan", "IntegrationResolver", "MigrationPlanner", "MinimalContextBudget",
+    "MinimalContextPacker", "MinimalContextResult", "NodeKind",
     "RepositorySnapshot", "SemanticEdge", "SemanticGraph", "SemanticNode", "SnapshotStore",
+    "SparseContextPipeline", "SparseContextResult",
     "SourceLocation", "StoredSnapshotContext", "add_contract", "analyze_incrementally",
     "capture_and_store", "capture_repository_snapshot", "contracts", "diff_file_inventories",
     "diff_graphs", "diff_snapshots", "diff_store_snapshots", "estimate_tokens",
