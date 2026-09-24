@@ -145,7 +145,7 @@ class AdaptiveSparseSearch:
         started = time.perf_counter()
         precheck = self.sufficiency.precheck(goal, local)
         timings["precheck"] = (time.perf_counter() - started) * 1000.0
-        if precheck is not None:
+        if precheck is not None and precheck.sufficient:
             return AdaptiveSearchResult(
                 search=local,
                 route=None,
@@ -155,6 +155,11 @@ class AdaptiveSparseSearch:
                 final_sufficiency=precheck,
                 timings_ms=timings,
             )
+        precheck_insufficient = (
+            precheck
+            if precheck is not None and not precheck.sufficient
+            else None
+        )
 
         started = time.perf_counter()
         route = self.index.route(
@@ -176,13 +181,21 @@ class AdaptiveSparseSearch:
                 max(1, len(route.selected_regions)),
             ),
         )
-        local_sufficiency = self.sufficiency.evaluate(
-            goal,
-            local,
-            route,
-            representative_ids=region_seeds,
-        )
-        timings["sufficiency"] = (time.perf_counter() - started) * 1000.0
+        if precheck_insufficient is not None:
+            local_sufficiency = precheck_insufficient
+            timings["region_seed_selection"] = (
+                time.perf_counter() - started
+            ) * 1000.0
+        else:
+            local_sufficiency = self.sufficiency.evaluate(
+                goal,
+                local,
+                route,
+                representative_ids=region_seeds,
+            )
+            timings["sufficiency"] = (
+                time.perf_counter() - started
+            ) * 1000.0
         if local_sufficiency.sufficient:
             return AdaptiveSearchResult(
                 search=local,
@@ -298,7 +311,7 @@ class AdaptiveSparseSearch:
         started = time.perf_counter()
         precheck = self.sufficiency.precheck(concept, local)
         timings["precheck"] = (time.perf_counter() - started) * 1000.0
-        if precheck is not None:
+        if precheck is not None and precheck.sufficient:
             return AdaptiveSearchResult(
                 search=local,
                 route=None,
@@ -308,6 +321,11 @@ class AdaptiveSparseSearch:
                 final_sufficiency=precheck,
                 timings_ms=timings,
             )
+        precheck_insufficient = (
+            precheck
+            if precheck is not None and not precheck.sufficient
+            else None
+        )
 
         started = time.perf_counter()
         route = self.index.route(concept, limit=self.region_limit)
@@ -322,13 +340,21 @@ class AdaptiveSparseSearch:
                 max(1, len(route.selected_regions)),
             ),
         )
-        local_sufficiency = self.sufficiency.evaluate(
-            concept,
-            local,
-            route,
-            representative_ids=region_seeds,
-        )
-        timings["sufficiency"] = (time.perf_counter() - started) * 1000.0
+        if precheck_insufficient is not None:
+            local_sufficiency = precheck_insufficient
+            timings["region_seed_selection"] = (
+                time.perf_counter() - started
+            ) * 1000.0
+        else:
+            local_sufficiency = self.sufficiency.evaluate(
+                concept,
+                local,
+                route,
+                representative_ids=region_seeds,
+            )
+            timings["sufficiency"] = (
+                time.perf_counter() - started
+            ) * 1000.0
 
         if local_sufficiency.sufficient or self.provider_searcher is None:
             return AdaptiveSearchResult(
