@@ -69,7 +69,7 @@ def test_sufficiency_escalates_when_unopened_region_contains_missing_query_term(
     )
     result = AdaptiveSparseSearch(
         graph,
-        region_limit=2,
+        region_limit=1,
         sufficiency=evaluator,
     ).from_node(
         "root",
@@ -187,8 +187,8 @@ class _FakeProvider:
 def test_adaptive_search_escalates_to_provider_only_after_deterministic_stages():
     root = _node("jev-root", "root", "app.py")
     alpha = _node("jev-alpha", "alpha", "alpha.py")
-    beta = _node("jev-beta", "beta", "beta.py")
-    target = _node("jev-target", "target", "target.py")
+    beta = _node("jev-beta", "target_noise", "beta.py")
+    target = _node("jev-target", "target_reconciliation", "target.py")
     graph = SemanticGraph(
         nodes=[root, alpha, beta, target],
         edges=[
