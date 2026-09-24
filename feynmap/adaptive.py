@@ -28,7 +28,7 @@ class AdaptiveSearchResult:
     stage: str
     escalations: Sequence[str]
     local_sufficiency: SufficiencyResult
-    final_sufficiency: SufficiencyResult
+    final_sufficiency: Optional[SufficiencyResult]
     timings_ms: Mapping[str, float]
 
     def to_dict(self) -> Dict[str, Any]:
@@ -37,7 +37,11 @@ class AdaptiveSearchResult:
             "escalations": list(self.escalations),
             "route": self.route.to_dict() if self.route is not None else None,
             "local_sufficiency": self.local_sufficiency.to_dict(),
-            "final_sufficiency": self.final_sufficiency.to_dict(),
+            "final_sufficiency": (
+                self.final_sufficiency.to_dict()
+                if self.final_sufficiency is not None
+                else None
+            ),
             "timings_ms": {
                 key: float(value)
                 for key, value in self.timings_ms.items()
@@ -203,6 +207,17 @@ class AdaptiveSparseSearch:
         )
         timings["region_search"] = (time.perf_counter() - started) * 1000.0
 
+        if self.provider_searcher is None:
+            return AdaptiveSearchResult(
+                search=region_search,
+                route=route,
+                stage="region",
+                escalations=("region",),
+                local_sufficiency=local_sufficiency,
+                final_sufficiency=None,
+                timings_ms=timings,
+            )
+
         started = time.perf_counter()
         region_sufficiency = self.sufficiency.evaluate(
             goal,
@@ -213,7 +228,7 @@ class AdaptiveSparseSearch:
         timings["post_region_sufficiency"] = (
             time.perf_counter() - started
         ) * 1000.0
-        if region_sufficiency.sufficient or self.provider_searcher is None:
+        if region_sufficiency.sufficient:
             return AdaptiveSearchResult(
                 search=region_search,
                 route=route,
