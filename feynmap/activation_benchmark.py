@@ -308,12 +308,17 @@ def run_benchmark(
             if adaptive_searcher is not None:
                 adaptive_result = adaptive_searcher.concept(query, **kwargs)
                 result = adaptive_result.search
-                route_payload = adaptive_result.route.to_dict()
+                route_payload = (
+                    adaptive_result.route.to_dict()
+                    if adaptive_result.route is not None
+                    else None
+                )
                 adaptive_payload = {
                     "stage": adaptive_result.stage,
                     "escalations": list(adaptive_result.escalations),
                     "local_sufficiency": adaptive_result.local_sufficiency.to_dict(),
                     "final_sufficiency": adaptive_result.final_sufficiency.to_dict(),
+                    "timings_ms": dict(adaptive_result.timings_ms),
                 }
             elif region_searcher is not None:
                 region_result = region_searcher.concept(query, **kwargs)
