@@ -197,16 +197,19 @@ jobs:
                   "",
                   "## S4 active-state long-horizon comparison",
                   "",
-                  "| Steps | Active-state reuse | Re-expansions | Essential recall | Fresh context accumulated | Final active context | Growth avoided |",
-                  "|---:|---:|---:|---:|---:|---:|---:|",
-                  "| %d | %d | %d | %.3f | %d | %d | %.1f%% |"
+                  "| Steps | Active-state reuse | Re-expansions | Essential recall | Fresh-context retention | Fresh context accumulated | Compact carried state | Full rehydrated active context | Carried growth avoided | Rehydrated growth avoided |",
+                  "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+                  "| %d | %d | %d | %.3f | %.3f | %d | %d | %d | %.1f%% | %.1f%% |"
                   % (
                       active_state["step_count"],
                       s4["reuse_steps"],
                       s4["reexpanded_steps"],
                       s4["mean_active_essential_recall"],
+                      s4["mean_fresh_context_retention"],
                       s4["cumulative_fresh_context_tokens"],
+                      s4["final_compact_state_tokens"],
                       s4["final_active_working_context_tokens"],
+                      100.0 * s4["carried_state_growth_avoided_ratio"],
                       100.0 * s4["retained_context_growth_avoided_ratio"],
                   ),
               ])
