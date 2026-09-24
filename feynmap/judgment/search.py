@@ -356,14 +356,48 @@ class JevGuidedSearch:
                 )
                 for node_id in candidates
             }
-            chosen, probabilities, judgment = self._select_candidates(
-                query=query,
-                anchor=frontier,
-                candidates=list(candidates.values()),
-                limit=limit,
-                phase="frontier",
-                deterministic_scores=structural_scores,
-            )
+            protected: List[SemanticNode] = []
+            remaining_candidates = list(candidates.values())
+            remaining_limit = limit
+
+            # In deterministic/offline mode, reserve part of the fixed beam
+            # for strong application-boundary continuations. These are the
+            # graph equivalents of sparse-attention positions that should not
+            # be crowded out by a high-degree module neighborhood.
+            if self.provider is None and limit > 1:
+                critical_budget = min(limit, max(2, limit // 2))
+                critical = [
+                    node
+                    for node in remaining_candidates
+                    if _edge_search_priority(parents[node.id][1]) >= 0.95
+                ]
+                critical.sort(
+                    key=lambda node: (
+                        -structural_scores[node.id],
+                        -self._query_relevance(query, node),
+                        -float(node.confidence),
+                        node.id,
+                    )
+                )
+                protected = critical[:critical_budget]
+                protected_ids = {node.id for node in protected}
+                remaining_candidates = [
+                    node for node in remaining_candidates if node.id not in protected_ids
+                ]
+                remaining_limit = max(0, limit - len(protected))
+
+            if remaining_limit > 0:
+                selected_tail, probabilities, judgment = self._select_candidates(
+                    query=query,
+                    anchor=frontier,
+                    candidates=remaining_candidates,
+                    limit=remaining_limit,
+                    phase="frontier",
+                    deterministic_scores=structural_scores,
+                )
+            else:
+                selected_tail, probabilities, judgment = [], {}, None
+            chosen = protected + selected_tail
             if judgment is not None:
                 last_model = judgment.model or last_model
 
