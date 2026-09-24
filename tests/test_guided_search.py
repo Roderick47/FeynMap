@@ -178,3 +178,39 @@ def test_sparse_search_does_not_use_repository_root_as_global_shortcut():
 
     assert "repository:root" not in {hit.node.id for hit in result.hits}
     assert "unrelated" not in {hit.node.id for hit in result.hits}
+
+
+
+def test_semantic_path_continuity_preserves_high_value_chain():
+    root = SemanticNode(id="chain-root", name="home", kind=NodeKind.FUNCTION)
+    template = SemanticNode(id="chain-template", name="home.html", kind=NodeKind.UI_SURFACE)
+    base = SemanticNode(id="chain-base", name="base.html", kind=NodeKind.UI_SURFACE)
+    target = SemanticNode(id="chain-target", name="onboarding.js", kind=NodeKind.MODULE)
+    noise1 = SemanticNode(id="noise-call", name="helper", kind=NodeKind.FUNCTION)
+    noise2 = SemanticNode(id="noise-import", name="utility", kind=NodeKind.MODULE)
+
+    graph = SemanticGraph(
+        nodes=[root, template, base, target, noise1, noise2],
+        edges=[
+            SemanticEdge(id="r1", source="chain-root", target="chain-template", kind=EdgeKind.RENDERS, confidence=1.0),
+            SemanticEdge(id="r2", source="chain-template", target="chain-base", kind=EdgeKind.EXTENDS, confidence=1.0),
+            SemanticEdge(id="r3", source="chain-base", target="chain-target", kind=EdgeKind.LOADS, confidence=1.0),
+            SemanticEdge(id="n1", source="chain-root", target="noise-call", kind=EdgeKind.CALLS, confidence=1.0),
+            SemanticEdge(id="n2", source="noise-call", target="noise-import", kind=EdgeKind.IMPORTS, confidence=1.0),
+        ],
+    )
+
+    result = JevGuidedSearch(graph).from_node(
+        "chain-root",
+        "improve the homepage experience",
+        max_depth=3,
+        beam_width=1,
+    )
+
+    assert [hit.node.id for hit in result.hits] == [
+        "chain-root",
+        "chain-template",
+        "chain-base",
+        "chain-target",
+    ]
+    assert result.hits[-1].path_score > result.hits[1].path_score
