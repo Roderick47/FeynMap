@@ -212,3 +212,71 @@ substrate rather than separate product directions.
 > preserving the same essential retrieval/repair quality?
 
 That is the first concrete test of the new product thesis.
+
+
+## S0/S1 benchmark record — 24 September 2026
+
+The first substrate benchmark uses FeynMap self-hosting plus five pinned
+Wikonomi V2 tasks from the earlier v1F context-ranking experiment. Wikonomi
+tasks are checked out at their original pre-fix revisions so retrieval is not
+scored against files that moved later. Files created by the repair itself are
+reported as unretrievable/new-file gold and excluded from retrieval recall.
+
+Latest accepted S1 run: GitHub Actions `substrate-baseline` run 35947449021.
+
+| Repository | Strategy | Candidate touch | Knowledge activation | Routing | Active context | Essential recall |
+|---|---|---:|---:|---:|---:|---:|
+| FeynMap | flat | 7.38% | 1.94% | 7.1 ms | 3,859 tokens | 100% |
+| FeynMap | region hybrid | 8.02% | 2.09% | 10.2 ms | 4,066 tokens | 100% |
+| Wikonomi v1F | flat | 9.09% | 0.93% | 8.8 ms | 2,395 tokens | 85% |
+| Wikonomi v1F | region hybrid | 9.41% | 1.32% | 18.6 ms | 3,324 tokens | **100%** |
+
+Timing is a CI reference measurement, not a production latency guarantee.
+
+### Decisions from S1
+
+**Keep:**
+
+- local evidence-backed semantic traversal as the primary hot path;
+- query-aware deterministic routing when no judgment provider is present;
+- edge priority for application boundaries such as `RENDERS`, `EXTENDS`,
+  `LOADS`, requests and invocations;
+- semantic path-continuity scoring across multiple hops;
+- a small global region channel as an escape hatch for knowledge outside the
+  local search horizon;
+- one representative activation per selected region;
+- explicit diagnostics separating extraction, graph reachability and pruning
+  failures.
+
+**Reject:**
+
+- hard region filtering before graph search: it reduced candidate touch but
+  collapsed recall on Wikonomi;
+- treating repository-root containment as a semantic traversal path: it turns
+  the ownership root into a high-degree shortcut and adds noise;
+- scoring a repair-created file as a retrieval miss when that file did not
+  exist in the pre-fix tree.
+
+### Next optimization target
+
+S1 establishes a high-recall path, but the region channel is still always-on.
+S2 should add provider-neutral **sufficiency and adaptive escalation**:
+
+```text
+local sparse traversal
+        ↓
+sufficient?
+  yes ──┴──→ pack context
+  no
+  ↓
+region activation
+        ↓
+sufficient?
+  yes ──┴──→ pack context
+  no
+  ↓
+JEV / optional expensive judgment
+```
+
+The target is to retain the S1 100% benchmark recall while moving average
+latency/context cost closer to the flat-search path.

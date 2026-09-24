@@ -20,6 +20,40 @@ from .contracts import JudgmentProvider, JudgmentQuestion, JudgmentResult
 
 _DIRECTION_VALUES = {"both", "outgoing", "incoming"}
 
+_EDGE_SEARCH_PRIORITY = {
+    EdgeKind.RENDERS: 1.00,
+    EdgeKind.EXTENDS: 1.00,
+    EdgeKind.LOADS: 1.00,
+    EdgeKind.REQUESTS: 1.00,
+    EdgeKind.INVOKES: 0.95,
+    EdgeKind.CONNECTS_TO: 0.95,
+    EdgeKind.FLOWS_TO: 0.95,
+    EdgeKind.ROUTES_TO: 0.95,
+    EdgeKind.SPAWNS: 0.95,
+    EdgeKind.EMITS: 0.90,
+    EdgeKind.SUBSCRIBES: 0.90,
+    EdgeKind.CALLS: 0.85,
+    EdgeKind.DEPENDS_ON: 0.75,
+    EdgeKind.USES_DATA: 0.75,
+    EdgeKind.READS: 0.75,
+    EdgeKind.WRITES: 0.75,
+    EdgeKind.MUTATES: 0.75,
+    EdgeKind.PERSISTS: 0.75,
+    EdgeKind.VALIDATES: 0.70,
+    EdgeKind.SERIALIZES: 0.70,
+    EdgeKind.CREATES: 0.65,
+    EdgeKind.DELETES: 0.65,
+    EdgeKind.AWAITS: 0.65,
+    EdgeKind.IMPORTS: 0.35,
+    EdgeKind.CONTAINS: 0.15,
+    EdgeKind.OWNS: 0.15,
+}
+
+
+def _edge_search_priority(edge: SemanticEdge) -> float:
+    return float(_EDGE_SEARCH_PRIORITY.get(edge.kind, 0.50))
+
+
 
 @dataclass(frozen=True)
 class SearchHit:
@@ -29,6 +63,7 @@ class SearchHit:
     via_edge_id: Optional[str] = None
     search_probability: Optional[float] = None
     seed_score: Optional[float] = None
+    path_score: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -43,6 +78,8 @@ class SearchHit:
             payload["search_probability"] = float(self.search_probability)
         if self.seed_score is not None:
             payload["seed_score"] = float(self.seed_score)
+        if self.path_score is not None:
+            payload["path_score"] = float(self.path_score)
         return payload
 
 
@@ -124,6 +161,7 @@ class JevGuidedSearch:
         max_nodes: int = 64,
         direction: str = "both",
         relationship_kinds: Optional[Sequence[EdgeKind]] = None,
+        allowed_node_ids: Optional[Iterable[str]] = None,
     ) -> GuidedSearchResult:
         """Search outward from one grounded node toward a task/concept goal."""
         root = self.query.resolve(node)
@@ -136,6 +174,35 @@ class JevGuidedSearch:
             max_nodes=max_nodes,
             direction=direction,
             relationship_kinds=relationship_kinds,
+            allowed_node_ids=set(allowed_node_ids) if allowed_node_ids is not None else None,
+        )
+
+    def from_roots(
+        self,
+        nodes: Sequence[str],
+        goal: str,
+        *,
+        max_depth: int = 4,
+        beam_width: int = 8,
+        max_nodes: int = 64,
+        direction: str = "both",
+        relationship_kinds: Optional[Sequence[EdgeKind]] = None,
+        allowed_node_ids: Optional[Iterable[str]] = None,
+    ) -> GuidedSearchResult:
+        """Search from multiple grounded roots, useful for hierarchical routing."""
+        roots = [self.query.resolve(node) for node in nodes]
+        if not roots:
+            raise ValueError("nodes must contain at least one grounded root")
+        return self._adaptive_search(
+            mode="seeded",
+            query=goal,
+            roots=roots,
+            max_depth=max_depth,
+            beam_width=beam_width,
+            max_nodes=max_nodes,
+            direction=direction,
+            relationship_kinds=relationship_kinds,
+            allowed_node_ids=set(allowed_node_ids) if allowed_node_ids is not None else None,
         )
 
     def concept(
@@ -149,13 +216,15 @@ class JevGuidedSearch:
         max_nodes: int = 64,
         direction: str = "both",
         relationship_kinds: Optional[Sequence[EdgeKind]] = None,
+        allowed_node_ids: Optional[Iterable[str]] = None,
     ) -> GuidedSearchResult:
         """Find graph seeds for a concept, then adaptively explore from them."""
         concept = self._require_text(concept, "concept")
         candidate_limit = max(1, int(candidate_limit))
         seed_limit = max(1, int(seed_limit))
 
-        lexical = self._concept_candidates(concept, candidate_limit)
+        allowed = set(allowed_node_ids) if allowed_node_ids is not None else None
+        lexical = self._concept_candidates(concept, candidate_limit, allowed_node_ids=allowed)
         if not lexical:
             return GuidedSearchResult(
                 mode="concept",
@@ -187,6 +256,7 @@ class JevGuidedSearch:
             max_nodes=max_nodes,
             direction=direction,
             relationship_kinds=relationship_kinds,
+            allowed_node_ids=allowed,
             seed_scores={item[1].id: item[0] for item in lexical},
             seed_probabilities=seed_probabilities,
         )
@@ -225,6 +295,7 @@ class JevGuidedSearch:
         max_nodes: int,
         direction: str,
         relationship_kinds: Optional[Sequence[EdgeKind]],
+        allowed_node_ids: Optional[Set[str]] = None,
         seed_scores: Optional[Mapping[str, float]] = None,
         seed_probabilities: Optional[Mapping[str, float]] = None,
     ) -> GuidedSearchResult:
@@ -238,6 +309,9 @@ class JevGuidedSearch:
 
         kind_filter = set(relationship_kinds) if relationship_kinds is not None else None
         visited: Set[str] = set(node.id for node in roots)
+        path_scores: Dict[str, float] = {node.id: 0.0 for node in roots}
+        if allowed_node_ids is not None:
+            allowed_node_ids.update(visited)
         hits: List[SearchHit] = []
         for node in roots:
             hits.append(
@@ -246,6 +320,7 @@ class JevGuidedSearch:
                     depth=0,
                     search_probability=(seed_probabilities or {}).get(node.id),
                     seed_score=(seed_scores or {}).get(node.id),
+                    path_score=0.0,
                 )
             )
 
@@ -262,7 +337,7 @@ class JevGuidedSearch:
             parents: Dict[str, Tuple[str, SemanticEdge]] = {}
             candidates: Dict[str, SemanticNode] = {}
             for parent in frontier:
-                for edge, neighbor in self._neighbors(parent.id, direction, kind_filter):
+                for edge, neighbor in self._neighbors(parent.id, direction, kind_filter, allowed_node_ids):
                     if neighbor.id in visited or neighbor.id in candidates:
                         continue
                     candidates[neighbor.id] = neighbor
@@ -274,13 +349,81 @@ class JevGuidedSearch:
 
             available = max_nodes - len(hits)
             limit = min(beam_width, available, len(candidates))
-            chosen, probabilities, judgment = self._select_candidates(
-                query=query,
-                anchor=frontier,
-                candidates=list(candidates.values()),
-                limit=limit,
-                phase="frontier",
-            )
+            structural_scores = {
+                node_id: (
+                    _edge_search_priority(parents[node_id][1])
+                    + (0.5 * path_scores.get(parents[node_id][0], 0.0))
+                )
+                for node_id in candidates
+            }
+            protected: List[SemanticNode] = []
+            remaining_candidates = list(candidates.values())
+            remaining_limit = limit
+
+            # In deterministic/offline mode, reserve part of the fixed beam
+            # for strong application-boundary continuations. These are the
+            # graph equivalents of sparse-attention positions that should not
+            # be crowded out by a high-degree module neighborhood.
+            if self.provider is None and limit > 1:
+                critical_budget = min(limit, max(3, (limit * 3) // 4))
+                by_parent: Dict[str, List[SemanticNode]] = {}
+                for node in remaining_candidates:
+                    parent_id, edge = parents[node.id]
+                    # Protect forward application-boundary fan-out. Reverse
+                    # traversal over incoming integration edges remains useful
+                    # but should compete normally rather than monopolize the
+                    # reserve.
+                    if edge.source != parent_id:
+                        continue
+                    if _edge_search_priority(edge) < 0.95:
+                        continue
+                    by_parent.setdefault(parent_id, []).append(node)
+
+                parent_order = sorted(
+                    by_parent,
+                    key=lambda parent_id: (
+                        -path_scores.get(parent_id, 0.0),
+                        -max(structural_scores[node.id] for node in by_parent[parent_id]),
+                        parent_id,
+                    ),
+                )
+                for parent_id in parent_order:
+                    group = sorted(
+                        by_parent[parent_id],
+                        key=lambda node: (
+                            -structural_scores[node.id],
+                            -self._query_relevance(query, node),
+                            -float(node.confidence),
+                            node.id,
+                        ),
+                    )
+                    # A small direct fan-out is cheap enough to preserve in
+                    # full. Larger fan-outs remain sparse.
+                    for node in group[:3]:
+                        if len(protected) >= critical_budget:
+                            break
+                        protected.append(node)
+                    if len(protected) >= critical_budget:
+                        break
+
+                protected_ids = {node.id for node in protected}
+                remaining_candidates = [
+                    node for node in remaining_candidates if node.id not in protected_ids
+                ]
+                remaining_limit = max(0, limit - len(protected))
+
+            if remaining_limit > 0:
+                selected_tail, probabilities, judgment = self._select_candidates(
+                    query=query,
+                    anchor=frontier,
+                    candidates=remaining_candidates,
+                    limit=remaining_limit,
+                    phase="frontier",
+                    deterministic_scores=structural_scores,
+                )
+            else:
+                selected_tail, probabilities, judgment = [], {}, None
+            chosen = protected + selected_tail
             if judgment is not None:
                 last_model = judgment.model or last_model
 
@@ -304,6 +447,11 @@ class JevGuidedSearch:
                 parent_id, edge = parents[chosen_node.id]
                 visited.add(chosen_node.id)
                 selected_edges[edge.id] = edge
+                path_score = structural_scores.get(
+                    chosen_node.id,
+                    _edge_search_priority(edge),
+                )
+                path_scores[chosen_node.id] = path_score
                 hits.append(
                     SearchHit(
                         node=chosen_node,
@@ -311,6 +459,7 @@ class JevGuidedSearch:
                         parent_id=parent_id,
                         via_edge_id=edge.id,
                         search_probability=probabilities.get(chosen_node.id),
+                        path_score=path_score,
                     )
                 )
                 next_frontier.append(chosen_node)
@@ -346,15 +495,54 @@ class JevGuidedSearch:
         if not candidates or limit <= 0:
             return [], {}, None
 
+        structural_scores = {
+            node.id: float((deterministic_scores or {}).get(node.id, 0.0))
+            for node in candidates
+        }
+        fallback_scores = {
+            node.id: self._query_relevance(query, node) + structural_scores[node.id]
+            for node in candidates
+        }
         fallback = sorted(
             candidates,
             key=lambda node: (
-                -float((deterministic_scores or {}).get(node.id, 0.0)),
+                -fallback_scores[node.id],
                 -float(node.confidence),
                 node.id,
             ),
         )
         if self.provider is None:
+            if phase == "frontier" and limit > 1:
+                structural = sorted(
+                    candidates,
+                    key=lambda node: (
+                        -structural_scores[node.id],
+                        -float(node.confidence),
+                        node.id,
+                    ),
+                )
+                diversified: List[SemanticNode] = []
+                seen: Set[str] = set()
+                relevant_index = 0
+                structural_index = 0
+                while len(diversified) < limit and (
+                    relevant_index < len(fallback) or structural_index < len(structural)
+                ):
+                    if relevant_index < len(fallback):
+                        node = fallback[relevant_index]
+                        relevant_index += 1
+                        if node.id not in seen:
+                            diversified.append(node)
+                            seen.add(node.id)
+                            if len(diversified) >= limit:
+                                break
+                    if structural_index < len(structural):
+                        node = structural[structural_index]
+                        structural_index += 1
+                        if node.id not in seen:
+                            diversified.append(node)
+                            seen.add(node.id)
+                return diversified[:limit], {}, None
             return fallback[:limit], {}, None
 
         state = {
@@ -389,7 +577,7 @@ class JevGuidedSearch:
             candidates,
             key=lambda node: (
                 -probabilities[node.id],
-                -float((deterministic_scores or {}).get(node.id, 0.0)),
+                -(self._query_relevance(query, node) + float((deterministic_scores or {}).get(node.id, 0.0))),
                 -float(node.confidence),
                 node.id,
             ),
@@ -401,6 +589,7 @@ class JevGuidedSearch:
         node_id: str,
         direction: str,
         kind_filter: Optional[Set[EdgeKind]],
+        allowed_node_ids: Optional[Set[str]] = None,
     ) -> Iterable[Tuple[SemanticEdge, SemanticNode]]:
         edges: List[SemanticEdge] = []
         if direction in {"both", "outgoing"}:
@@ -416,14 +605,34 @@ class JevGuidedSearch:
             if kind_filter is not None and edge.kind not in kind_filter:
                 continue
             neighbor_id = edge.target if edge.source == node_id else edge.source
+            if allowed_node_ids is not None and neighbor_id not in allowed_node_ids:
+                continue
             neighbor = self.graph.node(neighbor_id)
-            if neighbor is not None:
-                yield edge, neighbor
+            if neighbor is None:
+                continue
+            # Repository ownership is an indexing/container relationship, not
+            # an application-semantic path. Walking upward into the repository
+            # root turns it into a giant hub and defeats sparse activation.
+            # Searching *from* a repository node still permits walking down.
+            if (
+                edge.kind == EdgeKind.CONTAINS
+                and neighbor.kind.value == "repository"
+                and node_id != neighbor.id
+            ):
+                continue
+            yield edge, neighbor
 
-    def _concept_candidates(self, concept: str, limit: int) -> List[Tuple[float, SemanticNode]]:
+    def _concept_candidates(
+        self,
+        concept: str,
+        limit: int,
+        allowed_node_ids: Optional[Set[str]] = None,
+    ) -> List[Tuple[float, SemanticNode]]:
         tokens = self._tokens(concept)
         scored: List[Tuple[float, SemanticNode]] = []
         for node in self.graph.nodes:
+            if allowed_node_ids is not None and node.id not in allowed_node_ids:
+                continue
             haystack = " ".join(
                 [
                     node.id,
@@ -451,6 +660,30 @@ class JevGuidedSearch:
 
         scored.sort(key=lambda item: (-item[0], -item[1].confidence, item[1].id))
         return scored[:limit]
+
+    def _query_relevance(self, query: str, node: SemanticNode) -> float:
+        tokens = self._tokens(query)
+        if not tokens:
+            return 0.0
+        haystack = " ".join(
+            [
+                node.id,
+                node.name,
+                node.qualified_name or "",
+                node.kind.value,
+                node.language or "",
+                node.framework or "",
+                node.location.path if node.location else "",
+                " ".join(
+                    str(value)
+                    for value in node.attributes.values()
+                    if isinstance(value, (str, int, float, bool))
+                ),
+            ]
+        ).casefold()
+        matches = sum(1 for token in tokens if token in haystack)
+        phrase_bonus = 1.0 if query.casefold() in haystack else 0.0
+        return (matches / float(len(tokens))) + phrase_bonus
 
     @staticmethod
     def _tokens(value: str) -> List[str]:
