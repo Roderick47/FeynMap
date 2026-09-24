@@ -64,3 +64,22 @@ def test_region_first_search_activates_seed_from_disconnected_relevant_region():
     assert "root" in activated
     assert "signal" in activated
     assert result.route.region_touch_ratio <= 1.0
+
+
+
+def test_region_router_reserves_slot_for_rare_direct_path_match():
+    nodes = [
+        _node("root3", "guide_detail", "guides/views.py", "guides.views.guide_detail"),
+        _node("broad1", "format_guide_summary", "guides/views.py", "guides.views.format_guide_summary"),
+        _node("broad2", "render_guide_list", "guides/list.py", "guides.list.render_guide_list"),
+        _node("target3", "_formatting_help.html", "guides/templates/_formatting_help.html", "guides/templates/_formatting_help.html"),
+    ]
+    graph = SemanticGraph(nodes=nodes)
+
+    route = RegionIndex(graph).route(
+        "guide formatting headings lists links code quotes",
+        anchor_node_id="root3",
+        limit=2,
+    )
+
+    assert "guides/templates/_formatting_help.html" in route.selected_regions
