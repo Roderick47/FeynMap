@@ -20,17 +20,26 @@ See `docs/SPARSE_KNOWLEDGE_SUBSTRATE.md` for the architecture and definitions.
 - [x] Provider-neutral JEV judgment layer
 - [x] JEV-guided bounded node/concept search (PR #28)
 - [x] Candidate-touch and knowledge-activation metrics
-- [ ] Baseline the metrics on FeynMap itself
-- [ ] Baseline the metrics on a substantially larger real repository
-- [ ] Add routing-latency and context-token instrumentation
+- [x] Baseline the metrics on FeynMap itself
+- [x] Baseline the metrics on a substantially larger real repository
+- [x] Add routing-latency and context-token instrumentation
 
 ### S1 — Region-first sparse routing
 
-- [ ] Stable region/cluster summaries over the canonical graph
-- [ ] Route to regions before individual nodes
-- [ ] Reuse region selections within one task
-- [ ] Compare flat vs region-first recall, activation ratio, and latency
-- [ ] Preserve deterministic routing when JEV is unavailable
+- [x] Stable file/module region summaries over the canonical graph
+- [x] Add a bounded global region route alongside local semantic traversal
+- [x] Reuse one region selection within each task invocation
+- [x] Compare flat vs region-hybrid recall, activation ratio, context, and latency
+- [x] Preserve deterministic routing when JEV is unavailable
+
+
+S1 benchmark outcome on the five pinned Wikonomi v1F tasks: flat deterministic
+search retained 85% mean essential recall; the accepted local + region hybrid
+reached 100% (5/5 full-recall tasks) while keeping mean knowledge activation at
+about 1.3% of the graph. The hybrid currently costs more latency/context than
+flat search, so S2 should make the global channel conditional on sufficiency
+rather than always-on. Hard region filtering was tested and rejected because it
+damaged recall.
 
 ### S2 — Adaptive sufficiency and effort
 
