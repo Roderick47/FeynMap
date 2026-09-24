@@ -214,3 +214,48 @@ def test_semantic_path_continuity_preserves_high_value_chain():
         "chain-target",
     ]
     assert result.hits[-1].path_score > result.hits[1].path_score
+
+
+
+def test_cross_boundary_reserve_keeps_multiple_template_dependencies_in_fixed_beam():
+    root = SemanticNode(id="reserve-root", name="home", kind=NodeKind.FUNCTION)
+    template = SemanticNode(id="reserve-template", name="home.html", kind=NodeKind.UI_SURFACE)
+    base = SemanticNode(id="reserve-base", name="base.html", kind=NodeKind.UI_SURFACE)
+    include = SemanticNode(id="reserve-include", name="_onboarding.html", kind=NodeKind.UI_SURFACE)
+    script = SemanticNode(id="reserve-script", name="onboarding.js", kind=NodeKind.MODULE)
+    validation = SemanticNode(id="reserve-validation", name="form-validation.js", kind=NodeKind.MODULE)
+    noises = [
+        SemanticNode(id="reserve-noise-%d" % index, name="noise%d" % index, kind=NodeKind.FUNCTION)
+        for index in range(12)
+    ]
+
+    nodes = [root, template, base, include, script, validation] + noises
+    edges = [
+        SemanticEdge(id="rr1", source=root.id, target=template.id, kind=EdgeKind.RENDERS, confidence=1.0),
+        SemanticEdge(id="rr2", source=template.id, target=base.id, kind=EdgeKind.EXTENDS, confidence=1.0),
+        SemanticEdge(id="rr3", source=base.id, target=include.id, kind=EdgeKind.RENDERS, confidence=1.0),
+        SemanticEdge(id="rr4", source=base.id, target=script.id, kind=EdgeKind.LOADS, confidence=1.0),
+        SemanticEdge(id="rr5", source=base.id, target=validation.id, kind=EdgeKind.LOADS, confidence=1.0),
+    ]
+    for index, noise in enumerate(noises):
+        edges.append(
+            SemanticEdge(
+                id="rn%d" % index,
+                source=base.id if index < 6 else template.id,
+                target=noise.id,
+                kind=EdgeKind.CALLS,
+                confidence=1.0,
+            )
+        )
+
+    result = JevGuidedSearch(SemanticGraph(nodes=nodes, edges=edges)).from_node(
+        root.id,
+        "improve homepage price discovery",
+        max_depth=3,
+        beam_width=8,
+    )
+
+    activated = {hit.node.id for hit in result.hits}
+    assert include.id in activated
+    assert script.id in activated
+    assert validation.id in activated
