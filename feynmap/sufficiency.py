@@ -141,6 +141,7 @@ class SufficiencyEvaluator:
         query: str,
         result: GuidedSearchResult,
         route: RegionRouteResult,
+        representative_ids: Optional[Sequence[str]] = None,
     ) -> SufficiencyResult:
         raw_query_terms = _tokens(query)
         # A prose token is only actionable if it occurs somewhere in the
@@ -155,7 +156,12 @@ class SufficiencyEvaluator:
         activated_terms: Set[str] = set()
         activated_regions: Set[str] = set()
         for hit in result.hits:
-            activated_terms.update(_node_terms(hit.node))
+            activated_terms.update(
+                self.region_index.node_terms.get(
+                    hit.node.id,
+                    frozenset(_node_terms(hit.node)),
+                )
+            )
             region = self.region_index.region_for_node(hit.node.id)
             if region:
                 activated_regions.add(region)
@@ -183,12 +189,13 @@ class SufficiencyEvaluator:
 
         # Estimate marginal global value from the actual representative nodes
         # that would be activated, not the union of every term in a whole file.
-        representative_ids = self.region_index.seed_nodes(
-            query,
-            route,
-            per_region=1,
-            total_limit=max(1, len(selected_regions)),
-        )
+        if representative_ids is None:
+            representative_ids = self.region_index.seed_nodes(
+                query,
+                route,
+                per_region=1,
+                total_limit=max(1, len(selected_regions)),
+            )
         novel_terms: Set[str] = set()
         for node_id in representative_ids:
             region_id = self.region_index.region_for_node(node_id)
@@ -197,7 +204,15 @@ class SufficiencyEvaluator:
             node = self.graph.node(node_id)
             if node is None:
                 continue
-            novel_terms.update(uncovered & _node_terms(node))
+            novel_terms.update(
+                uncovered
+                & set(
+                    self.region_index.node_terms.get(
+                        node_id,
+                        frozenset(_node_terms(node)),
+                    )
+                )
+            )
         novel_weight = sum(weight(term) for term in novel_terms)
         novel_region_gain = (
             novel_weight / total_weight
