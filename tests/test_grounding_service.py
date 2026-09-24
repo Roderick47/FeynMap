@@ -53,10 +53,11 @@ def test_tool_catalog_is_deterministic_json_schema_contract():
     catalog = GroundingService.tool_catalog()
 
     assert [item["name"] for item in catalog] == [tool.name for tool in GROUNDING_TOOLS]
-    assert catalog[0]["contract_version"] == "2.0.0"
+    assert catalog[0]["contract_version"] == "2.1.0"
     assert all(item["read_only"] is True for item in catalog)
     assert all(item["input_schema"]["$schema"].endswith("2020-12/schema") for item in catalog)
     assert "context_bundle" in {item["name"] for item in catalog}
+    assert "minimal_context" in {item["name"] for item in catalog}
     assert "semantic_diff" in {item["name"] for item in catalog}
 
 
@@ -148,3 +149,32 @@ def test_current_snapshot_constructor_uses_store_pointer(tmp_path: Path):
     current = GroundingService.from_current(store, snapshot.repository_key)
 
     assert current.snapshot.snapshot_id == service.snapshot.snapshot_id
+
+
+
+def test_minimal_context_tool_runs_from_immutable_snapshot(tmp_path: Path):
+    service, snapshot, _ = _service(tmp_path)
+
+    payload = service.call(
+        "minimal_context",
+        {
+            "symbol": "app.run",
+            "goal": "find helper dependency",
+            "max_depth": 2,
+            "beam_width": 4,
+            "max_nodes": 8,
+            "max_tokens": 900,
+            "max_context_nodes": 6,
+            "max_context_edges": 6,
+        },
+    )
+
+    assert payload["snapshot_id"] == snapshot.snapshot_id
+    assert payload["activation"]["search"]["hits"]
+    assert payload["context"]["selected_node_ids"]
+    assert payload["context"]["metrics"]["delivered_tokens"] <= 900
+    assert any(
+        node["qualified_name"] == "lib.helper"
+        for node in payload["context"]["payload"]["nodes"]
+        if node.get("qualified_name")
+    )
