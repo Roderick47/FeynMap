@@ -95,15 +95,20 @@ def _node_terms(node: SemanticNode) -> Set[str]:
 
 @dataclass(frozen=True)
 class MinimalContextBudget:
-    max_tokens: int = 1800
+    max_tokens: int = 3200
     max_nodes: int = 24
     max_edges: int = 24
+    initial_tokens: int = 900
+    step_tokens: int = 350
 
     def normalized(self) -> "MinimalContextBudget":
+        max_tokens = max(128, int(self.max_tokens))
         return MinimalContextBudget(
-            max_tokens=max(128, int(self.max_tokens)),
+            max_tokens=max_tokens,
             max_nodes=max(1, int(self.max_nodes)),
             max_edges=max(0, int(self.max_edges)),
+            initial_tokens=max(128, min(max_tokens, int(self.initial_tokens))),
+            step_tokens=max(64, int(self.step_tokens)),
         )
 
 
@@ -116,6 +121,10 @@ class MinimalContextResult:
     delivered_tokens: int
     activated_nodes: int
     delivered_nodes: int
+    critical_node_ids: Sequence[str] = ()
+    sufficient: bool = True
+    selected_budget_tokens: int = 0
+    packing_iterations: int = 1
 
     @property
     def token_compression_ratio(self) -> float:
@@ -142,6 +151,21 @@ class MinimalContextResult:
                 "activated_nodes": int(self.activated_nodes),
                 "delivered_nodes": int(self.delivered_nodes),
                 "node_compression_ratio": self.node_compression_ratio,
+                "critical_node_count": len(self.critical_node_ids),
+                "critical_nodes_retained": sum(
+                    1 for node_id in self.critical_node_ids
+                    if node_id in set(self.selected_node_ids)
+                ),
+                "critical_coverage": (
+                    float(sum(
+                        1 for node_id in self.critical_node_ids
+                        if node_id in set(self.selected_node_ids)
+                    )) / float(len(self.critical_node_ids))
+                    if self.critical_node_ids else 1.0
+                ),
+                "sufficient": bool(self.sufficient),
+                "selected_budget_tokens": int(self.selected_budget_tokens),
+                "packing_iterations": int(self.packing_iterations),
             },
         }
 
@@ -158,7 +182,161 @@ class MinimalContextPacker:
         *,
         budget: Optional[MinimalContextBudget] = None,
     ) -> MinimalContextResult:
-        budget = (budget or MinimalContextBudget()).normalized()
+        requested = (budget or MinimalContextBudget()).normalized()
+        critical = self._critical_node_ids(result)
+
+        caps: List[int] = []
+        cap = requested.initial_tokens
+        while cap < requested.max_tokens:
+            caps.append(cap)
+            cap += requested.step_tokens
+        if not caps or caps[-1] != requested.max_tokens:
+            caps.append(requested.max_tokens)
+
+        last: Optional[MinimalContextResult] = None
+        for iteration, cap in enumerate(caps, start=1):
+            current_budget = MinimalContextBudget(
+                max_tokens=cap,
+                max_nodes=requested.max_nodes,
+                max_edges=requested.max_edges,
+                initial_tokens=cap,
+                step_tokens=requested.step_tokens,
+            )
+            packed = self._pack_once(
+                result,
+                budget=current_budget,
+                critical_node_ids=critical,
+            )
+            packed = MinimalContextResult(
+                payload=packed.payload,
+                selected_node_ids=packed.selected_node_ids,
+                selected_edge_ids=packed.selected_edge_ids,
+                activated_tokens=packed.activated_tokens,
+                delivered_tokens=packed.delivered_tokens,
+                activated_nodes=packed.activated_nodes,
+                delivered_nodes=packed.delivered_nodes,
+                critical_node_ids=packed.critical_node_ids,
+                sufficient=packed.sufficient,
+                selected_budget_tokens=cap,
+                packing_iterations=iteration,
+            )
+            last = packed
+            if packed.sufficient:
+                return packed
+        assert last is not None
+        return last
+
+    def _critical_node_ids(
+        self,
+        result: GuidedSearchResult,
+    ) -> Tuple[str, ...]:
+        if not result.hits:
+            return ()
+
+        hit_by_id = {hit.node.id: hit for hit in result.hits}
+        activated_ids = set(hit_by_id)
+        activated_edges = [
+            edge for edge in result.edges
+            if edge.source in activated_ids and edge.target in activated_ids
+        ]
+        node_scores = self._node_scores(result, hit_by_id, activated_edges)
+        critical: Set[str] = set()
+
+        # Primary grounded root is always required.
+        if result.roots and result.roots[0].id in activated_ids:
+            critical.add(result.roots[0].id)
+        else:
+            critical.add(result.hits[0].node.id)
+
+        # Preserve the best activated witness for each task term that actually
+        # appears in the semantic substrate.
+        query_terms = _tokens(result.query)
+        terms_by_id = {
+            node_id: _node_terms(hit.node)
+            for node_id, hit in hit_by_id.items()
+        }
+        for term in sorted(query_terms):
+            candidates = [
+                node_id for node_id, terms in terms_by_id.items()
+                if term in terms
+            ]
+            if not candidates:
+                continue
+            critical.add(max(
+                candidates,
+                key=lambda item: (node_scores.get(item, 0.0), item),
+            ))
+
+        # Preserve search-parent continuations that cross strong application
+        # boundaries. Generic inheritance/containment are intentionally absent
+        # from the >=0.90 delivery frontier.
+        edge_by_id = {edge.id: edge for edge in activated_edges}
+        for hit in result.hits:
+            edge = edge_by_id.get(hit.via_edge_id or "")
+            if edge is not None and _delivery_edge_priority(edge) >= 0.90:
+                critical.add(hit.node.id)
+
+        # Preserve a bounded set of high-value distinct source-file witnesses.
+        file_groups: Dict[str, List[str]] = {}
+        hit_order = {hit.node.id: index for index, hit in enumerate(result.hits)}
+        for node_id, hit in hit_by_id.items():
+            node = hit.node
+            if node.location is None or not node.location.path:
+                continue
+            file_groups.setdefault(node.location.path, []).append(node_id)
+
+        file_rank: List[Tuple[float, str, str]] = []
+        total_hits = max(1, len(result.hits))
+        for path, node_ids in file_groups.items():
+            representative = max(
+                node_ids,
+                key=lambda item: (
+                    node_scores.get(item, 0.0),
+                    -hit_order.get(item, total_hits),
+                    item,
+                ),
+            )
+            file_terms: Set[str] = set()
+            for item in node_ids:
+                file_terms.update(terms_by_id.get(item, set()))
+            overlap = (
+                float(len(query_terms & file_terms)) / float(len(query_terms))
+                if query_terms else 0.0
+            )
+            boundary = 0.0
+            for edge in activated_edges:
+                if representative in {edge.source, edge.target}:
+                    boundary = max(boundary, _delivery_edge_priority(edge))
+            order_bonus = 1.0 - (
+                float(hit_order.get(representative, total_hits))
+                / float(total_hits)
+            )
+            score = (
+                node_scores.get(representative, 0.0)
+                + 2.5 * overlap
+                + 0.7 * boundary
+                + 0.35 * order_bonus
+            )
+            file_rank.append((score, path, representative))
+
+        file_rank.sort(key=lambda item: (-item[0], item[1], item[2]))
+        file_slots = min(6, max(3, int(math.ceil(math.sqrt(len(file_rank) or 1)))))
+        for _, _, representative in file_rank[:file_slots]:
+            critical.add(representative)
+
+        # Preserve deterministic order by activated hit order.
+        return tuple(
+            hit.node.id for hit in result.hits
+            if hit.node.id in critical
+        )
+
+    def _pack_once(
+        self,
+        result: GuidedSearchResult,
+        *,
+        budget: MinimalContextBudget,
+        critical_node_ids: Sequence[str] = (),
+    ) -> MinimalContextResult:
         hit_by_id: Dict[str, SearchHit] = {hit.node.id: hit for hit in result.hits}
         activated_ids = set(hit_by_id)
         edge_by_id = {edge.id: edge for edge in result.edges}
@@ -187,6 +365,10 @@ class MinimalContextPacker:
                 delivered_tokens=delivered_tokens,
                 activated_nodes=0,
                 delivered_nodes=0,
+                critical_node_ids=tuple(critical_node_ids),
+                sufficient=not critical_node_ids,
+                selected_budget_tokens=budget.max_tokens,
+                packing_iterations=1,
             )
 
         node_scores = self._node_scores(result, hit_by_id, activated_edges)
@@ -217,6 +399,32 @@ class MinimalContextPacker:
             # The compact root should fit all supported budgets; fail clearly
             # rather than returning a misleading empty context.
             raise ValueError("minimal context budget is too small for the primary grounded root")
+
+        # Critical activated facts are derived without gold labels. Admit them
+        # before optional enrichment so the budget grows around evidence that
+        # made the activated result semantically/structurally distinctive.
+        for node_id in critical_node_ids:
+            if node_id in selected_nodes or node_id not in activated_ids:
+                continue
+            closure_nodes, closure_edges, anchor_candidate = self._path_closure(
+                node_id,
+                hit_by_id,
+                edge_by_id,
+                selected_nodes,
+            )
+            candidate_anchors = list(anchors)
+            if anchor_candidate and anchor_candidate not in candidate_anchors:
+                candidate_anchors.append(anchor_candidate)
+            if self._fits(
+                result,
+                budget,
+                selected_nodes | set(closure_nodes),
+                selected_edges | set(closure_edges),
+                candidate_anchors,
+            ):
+                selected_nodes.update(closure_nodes)
+                selected_edges.update(closure_edges)
+                anchors[:] = candidate_anchors
 
         # Reserve a few delivery-critical boundary continuations. Unlike
         # search-time priority, delivery priority demotes generic inheritance
@@ -466,6 +674,10 @@ class MinimalContextPacker:
             delivered_tokens=delivered_tokens,
             activated_nodes=len(activated_ids),
             delivered_nodes=len(selected_nodes),
+            critical_node_ids=tuple(critical_node_ids),
+            sufficient=set(critical_node_ids).issubset(selected_nodes),
+            selected_budget_tokens=budget.max_tokens,
+            packing_iterations=1,
         )
 
     def _node_scores(
