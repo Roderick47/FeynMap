@@ -124,6 +124,7 @@ class JevGuidedSearch:
         max_nodes: int = 64,
         direction: str = "both",
         relationship_kinds: Optional[Sequence[EdgeKind]] = None,
+        allowed_node_ids: Optional[Iterable[str]] = None,
     ) -> GuidedSearchResult:
         """Search outward from one grounded node toward a task/concept goal."""
         root = self.query.resolve(node)
@@ -136,6 +137,35 @@ class JevGuidedSearch:
             max_nodes=max_nodes,
             direction=direction,
             relationship_kinds=relationship_kinds,
+            allowed_node_ids=set(allowed_node_ids) if allowed_node_ids is not None else None,
+        )
+
+    def from_roots(
+        self,
+        nodes: Sequence[str],
+        goal: str,
+        *,
+        max_depth: int = 4,
+        beam_width: int = 8,
+        max_nodes: int = 64,
+        direction: str = "both",
+        relationship_kinds: Optional[Sequence[EdgeKind]] = None,
+        allowed_node_ids: Optional[Iterable[str]] = None,
+    ) -> GuidedSearchResult:
+        """Search from multiple grounded roots, useful for hierarchical routing."""
+        roots = [self.query.resolve(node) for node in nodes]
+        if not roots:
+            raise ValueError("nodes must contain at least one grounded root")
+        return self._adaptive_search(
+            mode="seeded",
+            query=goal,
+            roots=roots,
+            max_depth=max_depth,
+            beam_width=beam_width,
+            max_nodes=max_nodes,
+            direction=direction,
+            relationship_kinds=relationship_kinds,
+            allowed_node_ids=set(allowed_node_ids) if allowed_node_ids is not None else None,
         )
 
     def concept(
@@ -149,13 +179,15 @@ class JevGuidedSearch:
         max_nodes: int = 64,
         direction: str = "both",
         relationship_kinds: Optional[Sequence[EdgeKind]] = None,
+        allowed_node_ids: Optional[Iterable[str]] = None,
     ) -> GuidedSearchResult:
         """Find graph seeds for a concept, then adaptively explore from them."""
         concept = self._require_text(concept, "concept")
         candidate_limit = max(1, int(candidate_limit))
         seed_limit = max(1, int(seed_limit))
 
-        lexical = self._concept_candidates(concept, candidate_limit)
+        allowed = set(allowed_node_ids) if allowed_node_ids is not None else None
+        lexical = self._concept_candidates(concept, candidate_limit, allowed_node_ids=allowed)
         if not lexical:
             return GuidedSearchResult(
                 mode="concept",
@@ -187,6 +219,7 @@ class JevGuidedSearch:
             max_nodes=max_nodes,
             direction=direction,
             relationship_kinds=relationship_kinds,
+            allowed_node_ids=allowed,
             seed_scores={item[1].id: item[0] for item in lexical},
             seed_probabilities=seed_probabilities,
         )
@@ -225,6 +258,7 @@ class JevGuidedSearch:
         max_nodes: int,
         direction: str,
         relationship_kinds: Optional[Sequence[EdgeKind]],
+        allowed_node_ids: Optional[Set[str]] = None,
         seed_scores: Optional[Mapping[str, float]] = None,
         seed_probabilities: Optional[Mapping[str, float]] = None,
     ) -> GuidedSearchResult:
@@ -238,6 +272,8 @@ class JevGuidedSearch:
 
         kind_filter = set(relationship_kinds) if relationship_kinds is not None else None
         visited: Set[str] = set(node.id for node in roots)
+        if allowed_node_ids is not None:
+            allowed_node_ids.update(visited)
         hits: List[SearchHit] = []
         for node in roots:
             hits.append(
@@ -262,7 +298,7 @@ class JevGuidedSearch:
             parents: Dict[str, Tuple[str, SemanticEdge]] = {}
             candidates: Dict[str, SemanticNode] = {}
             for parent in frontier:
-                for edge, neighbor in self._neighbors(parent.id, direction, kind_filter):
+                for edge, neighbor in self._neighbors(parent.id, direction, kind_filter, allowed_node_ids):
                     if neighbor.id in visited or neighbor.id in candidates:
                         continue
                     candidates[neighbor.id] = neighbor
@@ -346,10 +382,14 @@ class JevGuidedSearch:
         if not candidates or limit <= 0:
             return [], {}, None
 
+        fallback_scores = {
+            node.id: float((deterministic_scores or {}).get(node.id, self._query_relevance(query, node)))
+            for node in candidates
+        }
         fallback = sorted(
             candidates,
             key=lambda node: (
-                -float((deterministic_scores or {}).get(node.id, 0.0)),
+                -fallback_scores[node.id],
                 -float(node.confidence),
                 node.id,
             ),
@@ -389,7 +429,7 @@ class JevGuidedSearch:
             candidates,
             key=lambda node: (
                 -probabilities[node.id],
-                -float((deterministic_scores or {}).get(node.id, 0.0)),
+                -float((deterministic_scores or {}).get(node.id, self._query_relevance(query, node))),
                 -float(node.confidence),
                 node.id,
             ),
@@ -401,6 +441,7 @@ class JevGuidedSearch:
         node_id: str,
         direction: str,
         kind_filter: Optional[Set[EdgeKind]],
+        allowed_node_ids: Optional[Set[str]] = None,
     ) -> Iterable[Tuple[SemanticEdge, SemanticNode]]:
         edges: List[SemanticEdge] = []
         if direction in {"both", "outgoing"}:
@@ -416,14 +457,23 @@ class JevGuidedSearch:
             if kind_filter is not None and edge.kind not in kind_filter:
                 continue
             neighbor_id = edge.target if edge.source == node_id else edge.source
+            if allowed_node_ids is not None and neighbor_id not in allowed_node_ids:
+                continue
             neighbor = self.graph.node(neighbor_id)
             if neighbor is not None:
                 yield edge, neighbor
 
-    def _concept_candidates(self, concept: str, limit: int) -> List[Tuple[float, SemanticNode]]:
+    def _concept_candidates(
+        self,
+        concept: str,
+        limit: int,
+        allowed_node_ids: Optional[Set[str]] = None,
+    ) -> List[Tuple[float, SemanticNode]]:
         tokens = self._tokens(concept)
         scored: List[Tuple[float, SemanticNode]] = []
         for node in self.graph.nodes:
+            if allowed_node_ids is not None and node.id not in allowed_node_ids:
+                continue
             haystack = " ".join(
                 [
                     node.id,
@@ -451,6 +501,30 @@ class JevGuidedSearch:
 
         scored.sort(key=lambda item: (-item[0], -item[1].confidence, item[1].id))
         return scored[:limit]
+
+    def _query_relevance(self, query: str, node: SemanticNode) -> float:
+        tokens = self._tokens(query)
+        if not tokens:
+            return 0.0
+        haystack = " ".join(
+            [
+                node.id,
+                node.name,
+                node.qualified_name or "",
+                node.kind.value,
+                node.language or "",
+                node.framework or "",
+                node.location.path if node.location else "",
+                " ".join(
+                    str(value)
+                    for value in node.attributes.values()
+                    if isinstance(value, (str, int, float, bool))
+                ),
+            ]
+        ).casefold()
+        matches = sum(1 for token in tokens if token in haystack)
+        phrase_bonus = 1.0 if query.casefold() in haystack else 0.0
+        return (matches / float(len(tokens))) + phrase_bonus
 
     @staticmethod
     def _tokens(value: str) -> List[str]:
