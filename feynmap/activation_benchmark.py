@@ -292,6 +292,7 @@ def run_benchmark(
                     "escalations": list(adaptive_result.escalations),
                     "local_sufficiency": adaptive_result.local_sufficiency.to_dict(),
                     "final_sufficiency": adaptive_result.final_sufficiency.to_dict(),
+                    "timings_ms": dict(adaptive_result.timings_ms),
                 }
             elif region_searcher is not None:
                 region_result = region_searcher.from_node(str(task["root"]), query, **node_kwargs)
