@@ -295,7 +295,11 @@ def run_benchmark(
                     "stage": adaptive_result.stage,
                     "escalations": list(adaptive_result.escalations),
                     "local_sufficiency": adaptive_result.local_sufficiency.to_dict(),
-                    "final_sufficiency": adaptive_result.final_sufficiency.to_dict(),
+                    "final_sufficiency": (
+                        adaptive_result.final_sufficiency.to_dict()
+                        if adaptive_result.final_sufficiency is not None
+                        else None
+                    ),
                     "timings_ms": dict(adaptive_result.timings_ms),
                 }
             elif region_searcher is not None:
@@ -317,7 +321,11 @@ def run_benchmark(
                     "stage": adaptive_result.stage,
                     "escalations": list(adaptive_result.escalations),
                     "local_sufficiency": adaptive_result.local_sufficiency.to_dict(),
-                    "final_sufficiency": adaptive_result.final_sufficiency.to_dict(),
+                    "final_sufficiency": (
+                        adaptive_result.final_sufficiency.to_dict()
+                        if adaptive_result.final_sufficiency is not None
+                        else None
+                    ),
                     "timings_ms": dict(adaptive_result.timings_ms),
                 }
             elif region_searcher is not None:
