@@ -5,12 +5,13 @@ on:
     branches:
       - feature/sparse-knowledge-substrate
       - feature/region-first-activation
+      - feature/adaptive-sufficiency
   workflow_dispatch:
 
 jobs:
   substrate-comparison:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout FeynMap
         uses: actions/checkout@v4
@@ -35,16 +36,13 @@ jobs:
 
       - name: Run FeynMap self comparison
         run: |
-          python -m feynmap.activation_benchmark \
-            feynmap-src/experiments/sparse_activation_feynmap_s0.json \
-            feynmap-src \
-            --strategy flat \
-            --output baseline-results/feynmap-flat.json
-          python -m feynmap.activation_benchmark \
-            feynmap-src/experiments/sparse_activation_feynmap_s0.json \
-            feynmap-src \
-            --strategy region \
-            --output baseline-results/feynmap-region.json
+          for strategy in flat region adaptive; do
+            python -m feynmap.activation_benchmark \
+              feynmap-src/experiments/sparse_activation_feynmap_s0.json \
+              feynmap-src \
+              --strategy "$strategy" \
+              --output "baseline-results/feynmap-$strategy.json"
+          done
 
       - name: Run pinned Wikonomi v1F comparison
         run: |
@@ -59,18 +57,14 @@ jobs:
           while IFS=$'\t' read -r task revision; do
             echo "Benchmarking $task at $revision"
             git -C wikonomi-v2 checkout --force --detach "$revision"
-            python -m feynmap.activation_benchmark \
-              feynmap-src/experiments/sparse_activation_wikonomi_s0.json \
-              wikonomi-v2 \
-              --task "$task" \
-              --strategy flat \
-              --output "baseline-results/wikonomi-$task-flat.json"
-            python -m feynmap.activation_benchmark \
-              feynmap-src/experiments/sparse_activation_wikonomi_s0.json \
-              wikonomi-v2 \
-              --task "$task" \
-              --strategy region \
-              --output "baseline-results/wikonomi-$task-region.json"
+            for strategy in flat region adaptive; do
+              python -m feynmap.activation_benchmark \
+                feynmap-src/experiments/sparse_activation_wikonomi_s0.json \
+                wikonomi-v2 \
+                --task "$task" \
+                --strategy "$strategy" \
+                --output "baseline-results/wikonomi-$task-$strategy.json"
+            done
           done < /tmp/wikonomi_tasks.tsv
 
       - name: Write benchmark summary
@@ -98,14 +92,18 @@ jobs:
                   "recall": s["mean_essential_recall"],
                   "full": s["full_recall_tasks"],
                   "count": data["task_count"],
+                  "local_stops": s.get("local_stop_tasks", 0),
+                  "region_escalations": s.get("region_escalation_tasks", 0),
+                  "jev_escalations": s.get("jev_escalation_tasks", 0),
               }
 
           rows = [
               row_from_result("FeynMap", "flat", load("baseline-results/feynmap-flat.json")),
               row_from_result("FeynMap", "region-hybrid", load("baseline-results/feynmap-region.json")),
+              row_from_result("FeynMap", "adaptive", load("baseline-results/feynmap-adaptive.json")),
           ]
 
-          for strategy in ("flat", "region"):
+          for strategy in ("flat", "region", "adaptive"):
               files = sorted(glob.glob("baseline-results/wikonomi-*-%s.json" % strategy))
               results = [load(path) for path in files]
               task_rows = [result["tasks"][0] for result in results]
@@ -114,7 +112,7 @@ jobs:
               mean = lambda values: sum(values) / len(values) if values else None
               rows.append({
                   "label": "Wikonomi v1F",
-                  "strategy": "region-hybrid" if strategy == "region" else "flat",
+                  "strategy": "region-hybrid" if strategy == "region" else strategy,
                   "nodes": mean([result["analysis"]["graph_nodes"] for result in results]),
                   "touch": mean([m["candidate_touch_ratio"] for m in metrics]),
                   "activation": mean([m["knowledge_activation_ratio"] for m in metrics]),
@@ -124,29 +122,38 @@ jobs:
                   "recall": mean([task["essential_recall"] for task in task_rows]),
                   "full": sum(1 for task in task_rows if task["essential_full_recall"]),
                   "count": len(task_rows),
+                  "local_stops": sum(1 for task in task_rows if (task.get("adaptive") or {}).get("stage") == "local"),
+                  "region_escalations": sum(
+                      1 for task in task_rows
+                      if "region" in ((task.get("adaptive") or {}).get("escalations") or [])
+                  ),
+                  "jev_escalations": sum(
+                      1 for task in task_rows
+                      if "jev" in ((task.get("adaptive") or {}).get("escalations") or [])
+                  ),
               })
 
           lines = [
               "## FeynMap sparse activation comparison",
               "",
-              "| Repository | Strategy | Nodes | Candidate touch | Knowledge activation | Region touch | Routing ms | Active ctx tokens | Essential recall | Full recall |",
+              "| Repository | Strategy | Candidate touch | Activation | Routing ms | Active ctx tokens | Recall | Full recall | Local stops | Region escalations |",
               "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
           ]
           for row in rows:
               lines.append(
-                  "| %s | %s | %.0f | %.4f | %.4f | %s | %.3f | %.1f | %.3f | %d/%d |"
+                  "| %s | %s | %.4f | %.4f | %.3f | %.1f | %.3f | %d/%d | %d | %d |"
                   % (
                       row["label"],
                       row["strategy"],
-                      row["nodes"] or 0.0,
                       row["touch"] or 0.0,
                       row["activation"] or 0.0,
-                      ("%.4f" % row["region_touch"]) if row["region_touch"] is not None else "-",
                       row["latency"] or 0.0,
                       row["tokens"] or 0.0,
                       row["recall"] or 0.0,
                       row["full"],
                       row["count"],
+                      row["local_stops"],
+                      row["region_escalations"],
                   )
               )
 
