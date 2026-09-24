@@ -430,7 +430,13 @@ Accepted reference: GitHub Actions `substrate-baseline` run **35962742536** at
 | Wikonomi v1F | ~6,313 tokens | ~2,686 tokens | ~57.4% | 100% (5/5) |
 
 The activated/delivered comparison uses the same model-facing payload
-representation, not debug metadata.
+representation, not debug metadata. S3 therefore establishes the first
+evidence that FeynMap can preserve the accepted retrieval quality while
+substantially shrinking what the downstream model actually sees.
+
+The next phase, S4, keeps that compact context as a bounded working set across
+multi-step tasks while the immutable snapshot remains the persistent source of
+truth.
 
 ## S4 active-state outcome — 25 September 2026
 
