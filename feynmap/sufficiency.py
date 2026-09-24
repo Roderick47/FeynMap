@@ -112,7 +112,7 @@ class SufficiencyEvaluator:
         min_query_coverage: float = 0.0,
         max_novel_region_gain: float = 1.0,
         min_score: float = 0.0,
-        specific_term_threshold: float = 0.72,
+        specific_term_threshold: float = 0.65,
         min_specific_novel_terms: int = 2,
     ) -> None:
         self.graph = graph
@@ -195,7 +195,6 @@ class SufficiencyEvaluator:
             else 0.0
         )
 
-        region_count = max(1, len(self.region_index.regions))
         max_idf = self.region_index._idf("__term_absent_from_all_regions__")
         novel_specificities = {
             term: (
