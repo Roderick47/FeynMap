@@ -365,21 +365,47 @@ class JevGuidedSearch:
             # graph equivalents of sparse-attention positions that should not
             # be crowded out by a high-degree module neighborhood.
             if self.provider is None and limit > 1:
-                critical_budget = min(limit, max(2, limit // 2))
-                critical = [
-                    node
-                    for node in remaining_candidates
-                    if _edge_search_priority(parents[node.id][1]) >= 0.95
-                ]
-                critical.sort(
-                    key=lambda node: (
-                        -structural_scores[node.id],
-                        -self._query_relevance(query, node),
-                        -float(node.confidence),
-                        node.id,
-                    )
+                critical_budget = min(limit, max(3, (limit * 3) // 4))
+                by_parent: Dict[str, List[SemanticNode]] = {}
+                for node in remaining_candidates:
+                    parent_id, edge = parents[node.id]
+                    # Protect forward application-boundary fan-out. Reverse
+                    # traversal over incoming integration edges remains useful
+                    # but should compete normally rather than monopolize the
+                    # reserve.
+                    if edge.source != parent_id:
+                        continue
+                    if _edge_search_priority(edge) < 0.95:
+                        continue
+                    by_parent.setdefault(parent_id, []).append(node)
+
+                parent_order = sorted(
+                    by_parent,
+                    key=lambda parent_id: (
+                        -path_scores.get(parent_id, 0.0),
+                        -max(structural_scores[node.id] for node in by_parent[parent_id]),
+                        parent_id,
+                    ),
                 )
-                protected = critical[:critical_budget]
+                for parent_id in parent_order:
+                    group = sorted(
+                        by_parent[parent_id],
+                        key=lambda node: (
+                            -structural_scores[node.id],
+                            -self._query_relevance(query, node),
+                            -float(node.confidence),
+                            node.id,
+                        ),
+                    )
+                    # A small direct fan-out is cheap enough to preserve in
+                    # full. Larger fan-outs remain sparse.
+                    for node in group[:3]:
+                        if len(protected) >= critical_budget:
+                            break
+                        protected.append(node)
+                    if len(protected) >= critical_budget:
+                        break
+
                 protected_ids = {node.id for node in protected}
                 remaining_candidates = [
                     node for node in remaining_candidates if node.id not in protected_ids
