@@ -13,12 +13,14 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from .context import ContextBudget, StoredSnapshotContext
+from .context_pipeline import SparseContextPipeline
+from .minimal_context import MinimalContextBudget
 from .core import EdgeKind, SemanticEdge
 from .diff import diff_store_snapshots
 from .snapshots import SnapshotStore
 
 
-GROUNDING_TOOL_CONTRACT_VERSION = "2.0.0"
+GROUNDING_TOOL_CONTRACT_VERSION = "2.1.0"
 JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
 
 
@@ -139,6 +141,24 @@ GROUNDING_TOOLS: Tuple[GroundingTool, ...] = (
         ),
     ),
     GroundingTool(
+        "minimal_context",
+        "Run adaptive grounded activation on the immutable snapshot and return a minimal evidence-preserving downstream context bundle.",
+        _object_schema(
+            {
+                "symbol": _SYMBOL,
+                "goal": {"type": "string", "minLength": 1},
+                "max_depth": {"type": "integer", "minimum": 0, "maximum": 12, "default": 4},
+                "beam_width": {"type": "integer", "minimum": 1, "maximum": 64, "default": 8},
+                "max_nodes": {"type": "integer", "minimum": 1, "maximum": 256, "default": 64},
+                "max_tokens": {"type": "integer", "minimum": 128, "maximum": 100000, "default": 3200},
+                "max_context_nodes": {"type": "integer", "minimum": 1, "maximum": 256, "default": 24},
+                "max_context_edges": {"type": "integer", "minimum": 0, "maximum": 512, "default": 24},
+                "direction": {"type": "string", "enum": ["outgoing", "incoming", "both"], "default": "both"},
+            },
+            ["symbol", "goal"],
+        ),
+    ),
+    GroundingTool(
         "semantic_diff",
         "Compare two immutable snapshots of the same repository and return file plus semantic graph changes without reparsing source.",
         _object_schema({"before_snapshot": _SNAPSHOT, "after_snapshot": _SNAPSHOT}, ["before_snapshot", "after_snapshot"]),
@@ -232,6 +252,24 @@ class GroundingService:
                     max_edges=int(args.get("max_edges", 120)),
                 ),
             )
+        if name == "minimal_context":
+            pipeline = SparseContextPipeline(self.graph)
+            result = pipeline.from_node(
+                self._required(args, "symbol"),
+                self._required(args, "goal"),
+                max_depth=int(args.get("max_depth", 4)),
+                beam_width=int(args.get("beam_width", 8)),
+                max_nodes=int(args.get("max_nodes", 64)),
+                direction=str(args.get("direction", "both")),
+                context_budget=MinimalContextBudget(
+                    max_tokens=int(args.get("max_tokens", 3200)),
+                    max_nodes=int(args.get("max_context_nodes", 24)),
+                    max_edges=int(args.get("max_context_edges", 24)),
+                ),
+            )
+            payload = result.to_dict()
+            payload["snapshot_id"] = self.snapshot.snapshot_id
+            return payload
         if name == "semantic_diff":
             return diff_store_snapshots(
                 self.store,

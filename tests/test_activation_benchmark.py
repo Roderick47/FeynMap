@@ -175,3 +175,56 @@ def test_sparse_activation_benchmark_supports_adaptive_strategy(tmp_path):
     assert result["tasks"][0]["adaptive"] is not None
     assert result["tasks"][0]["adaptive"]["stage"] in {"local", "region", "jev"}
     assert result["summary"]["mean_local_sufficiency_score"] is not None
+
+
+
+def test_sparse_activation_benchmark_reports_minimal_context_retention(tmp_path):
+    (tmp_path / "app.py").write_text(
+        "def helper():\n"
+        "    return 1\n\n"
+        "def noise():\n"
+        "    return 2\n\n"
+        "def run():\n"
+        "    return helper() + noise()\n",
+        encoding="utf-8",
+    )
+
+    dataset = {
+        "schema": BENCHMARK_SCHEMA,
+        "name": "minimal-context-tiny",
+        "analysis": {"language": "python", "framework": "none"},
+        "tasks": [
+            {
+                "id": "find-helper",
+                "mode": "node",
+                "root": "app.run",
+                "query": "find helper used by run",
+                "essential_files": ["app.py"],
+                "essential_symbols": ["app.helper"],
+                "search": {
+                    "max_depth": 2,
+                    "beam_width": 4,
+                    "max_nodes": 8,
+                },
+            }
+        ],
+    }
+
+    result = run_benchmark(
+        str(tmp_path),
+        dataset,
+        strategy="adaptive",
+        context_strategy="minimal",
+        context_token_ratio=0.70,
+    )
+
+    task = result["tasks"][0]
+    assert result["context_strategy"] == "minimal"
+    assert task["context"] is not None
+    assert task["activation_essential_recall"] == 1.0
+    assert task["essential_recall"] == 1.0
+    assert task["quality_retention_ratio"] == 1.0
+    assert task["metrics"]["delivered_nodes"] <= task["metrics"]["activated_nodes"]
+    assert task["delivered_context_tokens"] <= task["context"]["metrics"]["activated_tokens"]
+    assert 0 < task["token_compression_ratio"] <= 1.0
+    assert result["summary"]["mean_quality_retention_ratio"] == 1.0

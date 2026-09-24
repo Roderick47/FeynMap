@@ -6,12 +6,13 @@ on:
       - feature/sparse-knowledge-substrate
       - feature/region-first-activation
       - feature/adaptive-sufficiency
+      - feature/minimal-sufficient-context
   workflow_dispatch:
 
 jobs:
   substrate-comparison:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout FeynMap
         uses: actions/checkout@v4
@@ -43,6 +44,12 @@ jobs:
               --strategy "$strategy" \
               --output "baseline-results/feynmap-$strategy.json"
           done
+          python -m feynmap.activation_benchmark \
+            feynmap-src/experiments/sparse_activation_feynmap_s0.json \
+            feynmap-src \
+            --strategy adaptive \
+            --context-strategy minimal \
+            --output baseline-results/feynmap-adaptive-minimal.json
 
       - name: Run pinned Wikonomi v1F comparison
         run: |
@@ -65,6 +72,13 @@ jobs:
                 --strategy "$strategy" \
                 --output "baseline-results/wikonomi-$task-$strategy.json"
             done
+            python -m feynmap.activation_benchmark \
+              feynmap-src/experiments/sparse_activation_wikonomi_s0.json \
+              wikonomi-v2 \
+              --task "$task" \
+              --strategy adaptive \
+              --context-strategy minimal \
+              --output "baseline-results/wikonomi-$task-adaptive-minimal.json"
           done < /tmp/wikonomi_tasks.tsv
 
       - name: Write benchmark summary
@@ -78,82 +92,92 @@ jobs:
               with open(path, "r", encoding="utf-8") as handle:
                   return json.load(handle)
 
-          def row_from_result(label, strategy, data):
-              s = data["summary"]
+          def mean(values):
+              values = [value for value in values if value is not None]
+              return sum(values) / len(values) if values else None
+
+          def aggregate(label, strategy, results):
+              task_rows = [task for result in results for task in result["tasks"]]
+              metrics = [task["metrics"] for task in task_rows]
               return {
                   "label": label,
                   "strategy": strategy,
-                  "nodes": data["analysis"]["graph_nodes"],
-                  "touch": s["mean_candidate_touch_ratio"],
-                  "activation": s["mean_knowledge_activation_ratio"],
-                  "region_touch": s["mean_region_touch_ratio"],
-                  "latency": s["mean_routing_elapsed_ms"],
-                  "tokens": s["mean_activated_context_tokens"],
-                  "recall": s["mean_essential_recall"],
-                  "full": s["full_recall_tasks"],
-                  "count": data["task_count"],
-                  "local_stops": s.get("local_stop_tasks", 0),
-                  "region_escalations": s.get("region_escalation_tasks", 0),
-                  "jev_escalations": s.get("jev_escalation_tasks", 0),
-              }
-
-          rows = [
-              row_from_result("FeynMap", "flat", load("baseline-results/feynmap-flat.json")),
-              row_from_result("FeynMap", "region-hybrid", load("baseline-results/feynmap-region.json")),
-              row_from_result("FeynMap", "adaptive", load("baseline-results/feynmap-adaptive.json")),
-          ]
-
-          for strategy in ("flat", "region", "adaptive"):
-              files = sorted(glob.glob("baseline-results/wikonomi-*-%s.json" % strategy))
-              results = [load(path) for path in files]
-              task_rows = [result["tasks"][0] for result in results]
-              metrics = [task["metrics"] for task in task_rows]
-              region_routes = [task["region_route"] for task in task_rows if task.get("region_route")]
-              mean = lambda values: sum(values) / len(values) if values else None
-              rows.append({
-                  "label": "Wikonomi v1F",
-                  "strategy": "region-hybrid" if strategy == "region" else strategy,
-                  "nodes": mean([result["analysis"]["graph_nodes"] for result in results]),
                   "touch": mean([m["candidate_touch_ratio"] for m in metrics]),
                   "activation": mean([m["knowledge_activation_ratio"] for m in metrics]),
-                  "region_touch": mean([r["region_touch_ratio"] for r in region_routes]) if region_routes else None,
+                  "delivery": mean([m["delivery_to_activation_ratio"] for m in metrics]),
                   "latency": mean([m["routing_elapsed_ms"] for m in metrics]),
-                  "tokens": mean([m["activated_context_tokens"] for m in metrics]),
+                  "compact_active_tokens": mean([m["activated_context_tokens"] for m in metrics]),
+                  "model_active_tokens": mean([task.get("model_activated_context_tokens") for task in task_rows]),
+                  "delivered_tokens": mean([task.get("delivered_context_tokens") for task in task_rows]),
+                  "compression": mean([task.get("token_compression_ratio") for task in task_rows]),
+                  "activation_recall": mean([task.get("activation_essential_recall") for task in task_rows]),
                   "recall": mean([task["essential_recall"] for task in task_rows]),
+                  "retention": mean([task.get("quality_retention_ratio") for task in task_rows]),
                   "full": sum(1 for task in task_rows if task["essential_full_recall"]),
                   "count": len(task_rows),
-                  "local_stops": sum(1 for task in task_rows if (task.get("adaptive") or {}).get("stage") == "local"),
+                  "local_stops": sum(
+                      1 for task in task_rows
+                      if (task.get("adaptive") or {}).get("stage") == "local"
+                  ),
                   "region_escalations": sum(
                       1 for task in task_rows
                       if "region" in ((task.get("adaptive") or {}).get("escalations") or [])
                   ),
-                  "jev_escalations": sum(
-                      1 for task in task_rows
-                      if "jev" in ((task.get("adaptive") or {}).get("escalations") or [])
-                  ),
-              })
+              }
+
+          rows = []
+          for strategy in ("flat", "region", "adaptive"):
+              rows.append(aggregate(
+                  "FeynMap",
+                  "region-hybrid" if strategy == "region" else strategy,
+                  [load("baseline-results/feynmap-%s.json" % strategy)],
+              ))
+          rows.append(aggregate(
+              "FeynMap",
+              "adaptive+minimal",
+              [load("baseline-results/feynmap-adaptive-minimal.json")],
+          ))
+
+          for strategy in ("flat", "region", "adaptive"):
+              files = sorted(glob.glob("baseline-results/wikonomi-*-%s.json" % strategy))
+              # Exclude adaptive-minimal files from the plain adaptive glob.
+              files = [path for path in files if "adaptive-minimal" not in path]
+              rows.append(aggregate(
+                  "Wikonomi v1F",
+                  "region-hybrid" if strategy == "region" else strategy,
+                  [load(path) for path in files],
+              ))
+          minimal_files = sorted(glob.glob("baseline-results/wikonomi-*-adaptive-minimal.json"))
+          rows.append(aggregate(
+              "Wikonomi v1F",
+              "adaptive+minimal",
+              [load(path) for path in minimal_files],
+          ))
 
           lines = [
-              "## FeynMap sparse activation comparison",
+              "## FeynMap sparse activation + minimal context comparison",
               "",
-              "| Repository | Strategy | Candidate touch | Activation | Routing ms | Active ctx tokens | Recall | Full recall | Local stops | Region escalations |",
-              "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+              "| Repository | Strategy | Candidate touch | Activation | Delivery/activation | Routing ms | Model ctx before | Model ctx delivered | Token ratio | Activated recall | Delivered recall | Quality retention | Full recall |",
+              "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
           ]
           for row in rows:
               lines.append(
-                  "| %s | %s | %.4f | %.4f | %.3f | %.1f | %.3f | %d/%d | %d | %d |"
+                  "| %s | %s | %.4f | %.4f | %.4f | %.3f | %.1f | %.1f | %.3f | %.3f | %.3f | %.3f | %d/%d |"
                   % (
                       row["label"],
                       row["strategy"],
                       row["touch"] or 0.0,
                       row["activation"] or 0.0,
+                      row["delivery"] or 0.0,
                       row["latency"] or 0.0,
-                      row["tokens"] or 0.0,
+                      row["model_active_tokens"] or 0.0,
+                      row["delivered_tokens"] or 0.0,
+                      row["compression"] or 0.0,
+                      row["activation_recall"] or 0.0,
                       row["recall"] or 0.0,
+                      row["retention"] or 0.0,
                       row["full"],
                       row["count"],
-                      row["local_stops"],
-                      row["region_escalations"],
                   )
               )
 

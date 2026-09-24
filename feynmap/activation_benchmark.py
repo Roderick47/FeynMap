@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import time
 from collections import deque
@@ -22,6 +23,7 @@ from .activation import measure_guided_search
 from .adaptive import AdaptiveSparseSearch
 from .engine import FeynMapEngine
 from .judgment.search import JevGuidedSearch
+from .minimal_context import MinimalContextBudget, MinimalContextPacker
 from .query import FeynMapQuery
 from .routing import RegionFirstSearch
 
@@ -44,6 +46,28 @@ def _node_names(result) -> Set[str]:
     names: Set[str] = set()
     for hit in result.hits:
         node = hit.node
+        names.add(node.id)
+        names.add(node.name)
+        if node.qualified_name:
+            names.add(node.qualified_name)
+    return names
+
+
+def _paths_for_node_ids(graph, node_ids: Iterable[str]) -> Set[str]:
+    paths: Set[str] = set()
+    for node_id in node_ids:
+        node = graph.node(str(node_id))
+        if node is not None and node.location and node.location.path:
+            paths.add(_normalize_path(node.location.path))
+    return paths
+
+
+def _names_for_node_ids(graph, node_ids: Iterable[str]) -> Set[str]:
+    names: Set[str] = set()
+    for node_id in node_ids:
+        node = graph.node(str(node_id))
+        if node is None:
+            continue
         names.add(node.id)
         names.add(node.name)
         if node.qualified_name:
@@ -224,6 +248,9 @@ def run_benchmark(
     strategy: str = "flat",
     region_limit: int = 8,
     region_seed_limit: int = 12,
+    context_strategy: str = "activated",
+    context_token_ratio: float = 0.70,
+    context_max_tokens: Optional[int] = None,
 ) -> Dict[str, Any]:
     validate_dataset(dataset)
     analysis = dataset.get("analysis") or {}
@@ -240,6 +267,10 @@ def run_benchmark(
     strategy = str(strategy).strip().lower()
     if strategy not in {"flat", "region", "adaptive"}:
         raise ValueError("strategy must be flat, region, or adaptive")
+    context_strategy = str(context_strategy).strip().lower()
+    if context_strategy not in {"activated", "minimal"}:
+        raise ValueError("context_strategy must be activated or minimal")
+    context_token_ratio = max(0.10, min(1.0, float(context_token_ratio)))
 
     searcher = JevGuidedSearch(graph, provider=provider)
     region_searcher = (
@@ -338,14 +369,69 @@ def run_benchmark(
                 result = searcher.concept(query, **kwargs)
         routing_elapsed_ms = (time.perf_counter() - search_started) * 1000.0
 
-        metrics = measure_guided_search(
+        activation_metrics = measure_guided_search(
             graph,
             result,
             routing_elapsed_seconds=routing_elapsed_ms / 1000.0,
         )
 
-        actual_paths = _node_paths(result)
-        actual_names = _node_names(result)
+        activated_paths = _node_paths(result)
+        activated_names = _node_names(result)
+        context_packer = MinimalContextPacker(graph)
+        model_activated_context_tokens = context_packer.activated_tokens(result)
+        context_payload = None
+        delivered_ids = [hit.node.id for hit in result.hits]
+        delivered_context_tokens = model_activated_context_tokens
+        token_compression_ratio = 1.0
+        if context_strategy == "minimal":
+            initial_tokens = max(
+                700,
+                min(
+                    1800,
+                    int(math.ceil(
+                        activation_metrics.activated_context_tokens
+                        * context_token_ratio
+                    )),
+                ),
+            )
+            max_tokens = (
+                int(context_max_tokens)
+                if context_max_tokens is not None
+                else max(
+                    initial_tokens,
+                    min(
+                        3200,
+                        int(math.ceil(
+                            activation_metrics.activated_context_tokens
+                            * 1.20
+                        )),
+                    ),
+                )
+            )
+            packed = context_packer.pack(
+                result,
+                budget=MinimalContextBudget(
+                    max_tokens=max_tokens,
+                    max_nodes=max(4, min(24, len(result.hits))),
+                    max_edges=max(4, min(24, len(result.edges))),
+                    initial_tokens=initial_tokens,
+                    step_tokens=350,
+                ),
+            )
+            context_payload = packed.to_dict()
+            delivered_ids = list(packed.selected_node_ids)
+            delivered_context_tokens = packed.delivered_tokens
+            token_compression_ratio = packed.token_compression_ratio
+
+        metrics = measure_guided_search(
+            graph,
+            result,
+            delivered_node_ids=delivered_ids,
+            routing_elapsed_seconds=routing_elapsed_ms / 1000.0,
+        )
+
+        actual_paths = _paths_for_node_ids(graph, delivered_ids)
+        actual_names = _names_for_node_ids(graph, delivered_ids)
         essential_files = [_normalize_path(item) for item in task.get("essential_files") or []]
         essential_symbols = [str(item) for item in task.get("essential_symbols") or []]
         retrievable_files = [
@@ -357,11 +443,34 @@ def run_benchmark(
             if item not in retrievable_files
         ]
 
+        activated_matched_files = [
+            item for item in retrievable_files
+            if _matches_file(activated_paths, item)
+        ]
+        activated_matched_symbols = [
+            item for item in essential_symbols
+            if _matches_symbol(activated_names, item)
+        ]
+        activated_total_matched = (
+            len(activated_matched_files) + len(activated_matched_symbols)
+        )
+
         matched_files = [item for item in retrievable_files if _matches_file(actual_paths, item)]
         matched_symbols = [item for item in essential_symbols if _matches_symbol(actual_names, item)]
         total_essential = len(retrievable_files) + len(essential_symbols)
         total_matched = len(matched_files) + len(matched_symbols)
         essential_recall = (float(total_matched) / float(total_essential)) if total_essential else None
+        activation_essential_recall = (
+            float(activated_total_matched) / float(total_essential)
+            if total_essential
+            else None
+        )
+        quality_retention_ratio = (
+            essential_recall / activation_essential_recall
+            if essential_recall is not None
+            and activation_essential_recall not in {None, 0.0}
+            else None
+        )
 
         task_rows.append(
             {
@@ -371,9 +480,16 @@ def run_benchmark(
                 "root": task.get("root"),
                 "revision": task.get("revision"),
                 "strategy": strategy,
+                "context_strategy": context_strategy,
                 "region_route": route_payload,
                 "adaptive": adaptive_payload,
                 "metrics": metrics.to_dict(),
+                "context": context_payload,
+                "model_activated_context_tokens": model_activated_context_tokens,
+                "delivered_context_tokens": delivered_context_tokens,
+                "token_compression_ratio": token_compression_ratio,
+                "activation_essential_recall": activation_essential_recall,
+                "quality_retention_ratio": quality_retention_ratio,
                 "essential_recall": essential_recall,
                 "essential_full_recall": bool(total_essential and total_matched == total_essential),
                 "essential_files": essential_files,
@@ -385,8 +501,10 @@ def run_benchmark(
                 "essential_symbols": essential_symbols,
                 "matched_essential_symbols": matched_symbols,
                 "missing_essential_symbols": [item for item in essential_symbols if item not in matched_symbols],
-                "activated_files": sorted(actual_paths),
+                "activated_files": sorted(activated_paths),
                 "activated_node_ids": [hit.node.id for hit in result.hits],
+                "delivered_files": sorted(actual_paths),
+                "delivered_node_ids": list(delivered_ids),
             }
         )
 
@@ -397,6 +515,11 @@ def run_benchmark(
         "repository": dataset.get("repository"),
         "project_root": os.path.basename(os.path.abspath(project_root)),
         "strategy": strategy,
+        "context_strategy": context_strategy,
+        "context_config": {
+            "token_ratio": context_token_ratio if context_strategy == "minimal" else None,
+            "max_tokens": context_max_tokens if context_strategy == "minimal" else None,
+        },
         "routing_config": {
             "region_limit": int(region_limit) if strategy == "region" else None,
             "region_seed_limit": int(region_seed_limit) if strategy == "region" else None,
@@ -415,6 +538,11 @@ def run_benchmark(
             "mean_knowledge_activation_ratio": _average(metric_rows, "knowledge_activation_ratio"),
             "mean_routing_elapsed_ms": _average(metric_rows, "routing_elapsed_ms"),
             "mean_activated_context_tokens": _average(metric_rows, "activated_context_tokens"),
+            "mean_model_activated_context_tokens": _average(task_rows, "model_activated_context_tokens"),
+            "mean_delivered_context_tokens": _average(task_rows, "delivered_context_tokens"),
+            "mean_token_compression_ratio": _average(task_rows, "token_compression_ratio"),
+            "mean_activation_essential_recall": _average(task_rows, "activation_essential_recall"),
+            "mean_quality_retention_ratio": _average(task_rows, "quality_retention_ratio"),
             "mean_essential_recall": _average(task_rows, "essential_recall"),
             "full_recall_tasks": sum(1 for row in task_rows if row["essential_full_recall"]),
             "mean_region_touch_ratio": _average(
@@ -458,6 +586,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--strategy", choices=("flat", "region", "adaptive"), default="flat")
     parser.add_argument("--region-limit", type=int, default=8)
     parser.add_argument("--region-seed-limit", type=int, default=12)
+    parser.add_argument("--context-strategy", choices=("activated", "minimal"), default="activated")
+    parser.add_argument("--context-token-ratio", type=float, default=0.70)
+    parser.add_argument("--context-max-tokens", type=int)
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
     args = parser.parse_args(argv)
 
@@ -481,6 +612,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         strategy=args.strategy,
         region_limit=args.region_limit,
         region_seed_limit=args.region_seed_limit,
+        context_strategy=args.context_strategy,
+        context_token_ratio=args.context_token_ratio,
+        context_max_tokens=args.context_max_tokens,
     )
     rendered = json.dumps(result, indent=2 if args.pretty else None, sort_keys=True)
 
