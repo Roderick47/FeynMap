@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .activation import measure_guided_search
+from .adaptive import AdaptiveSparseSearch
 from .engine import FeynMapEngine
 from .judgment.search import JevGuidedSearch
 from .query import FeynMapQuery
@@ -237,8 +238,8 @@ def run_benchmark(
     analysis_elapsed_ms = (time.perf_counter() - analysis_started) * 1000.0
 
     strategy = str(strategy).strip().lower()
-    if strategy not in {"flat", "region"}:
-        raise ValueError("strategy must be flat or region")
+    if strategy not in {"flat", "region", "adaptive"}:
+        raise ValueError("strategy must be flat, region, or adaptive")
 
     searcher = JevGuidedSearch(graph, provider=provider)
     region_searcher = (
@@ -251,6 +252,16 @@ def run_benchmark(
         if strategy == "region"
         else None
     )
+    adaptive_searcher = (
+        AdaptiveSparseSearch(
+            graph,
+            provider=provider,
+            region_limit=region_limit,
+            region_seed_limit=region_seed_limit,
+        )
+        if strategy == "adaptive"
+        else None
+    )
     task_rows: List[Dict[str, Any]] = []
 
     for task in dataset["tasks"]:
@@ -260,6 +271,7 @@ def run_benchmark(
 
         search_started = time.perf_counter()
         route_payload = None
+        adaptive_payload = None
         if mode == "node":
             # seed_limit/candidate_limit apply only to concept mode.
             node_kwargs = {
@@ -267,14 +279,38 @@ def run_benchmark(
                 for key, value in kwargs.items()
                 if key not in {"seed_limit", "candidate_limit"}
             }
-            if region_searcher is not None:
+            if adaptive_searcher is not None:
+                adaptive_result = adaptive_searcher.from_node(
+                    str(task["root"]),
+                    query,
+                    **node_kwargs
+                )
+                result = adaptive_result.search
+                route_payload = adaptive_result.route.to_dict()
+                adaptive_payload = {
+                    "stage": adaptive_result.stage,
+                    "escalations": list(adaptive_result.escalations),
+                    "local_sufficiency": adaptive_result.local_sufficiency.to_dict(),
+                    "final_sufficiency": adaptive_result.final_sufficiency.to_dict(),
+                }
+            elif region_searcher is not None:
                 region_result = region_searcher.from_node(str(task["root"]), query, **node_kwargs)
                 result = region_result.search
                 route_payload = region_result.route.to_dict()
             else:
                 result = searcher.from_node(str(task["root"]), query, **node_kwargs)
         else:
-            if region_searcher is not None:
+            if adaptive_searcher is not None:
+                adaptive_result = adaptive_searcher.concept(query, **kwargs)
+                result = adaptive_result.search
+                route_payload = adaptive_result.route.to_dict()
+                adaptive_payload = {
+                    "stage": adaptive_result.stage,
+                    "escalations": list(adaptive_result.escalations),
+                    "local_sufficiency": adaptive_result.local_sufficiency.to_dict(),
+                    "final_sufficiency": adaptive_result.final_sufficiency.to_dict(),
+                }
+            elif region_searcher is not None:
                 region_result = region_searcher.concept(query, **kwargs)
                 result = region_result.search
                 route_payload = region_result.route.to_dict()
@@ -316,6 +352,7 @@ def run_benchmark(
                 "revision": task.get("revision"),
                 "strategy": strategy,
                 "region_route": route_payload,
+                "adaptive": adaptive_payload,
                 "metrics": metrics.to_dict(),
                 "essential_recall": essential_recall,
                 "essential_full_recall": bool(total_essential and total_matched == total_essential),
@@ -364,6 +401,29 @@ def run_benchmark(
                 [row["region_route"] for row in task_rows if row.get("region_route")],
                 "region_touch_ratio",
             ),
+            "local_stop_tasks": sum(
+                1
+                for row in task_rows
+                if (row.get("adaptive") or {}).get("stage") == "local"
+            ),
+            "region_escalation_tasks": sum(
+                1
+                for row in task_rows
+                if "region" in ((row.get("adaptive") or {}).get("escalations") or [])
+            ),
+            "jev_escalation_tasks": sum(
+                1
+                for row in task_rows
+                if "jev" in ((row.get("adaptive") or {}).get("escalations") or [])
+            ),
+            "mean_local_sufficiency_score": _average(
+                [
+                    row["adaptive"]["local_sufficiency"]
+                    for row in task_rows
+                    if row.get("adaptive")
+                ],
+                "score",
+            ),
         },
         "tasks": task_rows,
     }
@@ -375,7 +435,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("project_root", help="Repository root to analyze")
     parser.add_argument("--output", help="Optional path for the JSON result")
     parser.add_argument("--task", action="append", dest="tasks", help="Run only the named task id; repeatable")
-    parser.add_argument("--strategy", choices=("flat", "region"), default="flat")
+    parser.add_argument("--strategy", choices=("flat", "region", "adaptive"), default="flat")
     parser.add_argument("--region-limit", type=int, default=8)
     parser.add_argument("--region-seed-limit", type=int, default=12)
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
