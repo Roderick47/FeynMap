@@ -1,0 +1,462 @@
+"""Minimal sufficient downstream context over an activated FeynMap search.
+
+S2 decides what knowledge to activate. S3 decides what subset of that activated,
+grounded subgraph should be delivered to a downstream model.
+
+The packer never invents facts. Selected relationships are stored semantic
+edges and are admitted together with their endpoints. Node/edge evidence is
+compacted using the same transport-neutral representation as stored context.
+"""
+from __future__ import annotations
+
+import json
+import math
+from dataclasses import dataclass
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+
+from .context import _compact_edge, _compact_node, estimate_tokens
+from .core import SemanticEdge, SemanticGraph, SemanticNode
+from .core.model import TIER_RANK
+from .judgment.search import GuidedSearchResult, SearchHit, _edge_search_priority
+
+
+def _tokens(value: str) -> Set[str]:
+    cleaned = "".join(
+        character.casefold() if character.isalnum() else " "
+        for character in str(value or "")
+    )
+    return {token for token in cleaned.split() if len(token) >= 3}
+
+
+def _flatten(value: Any, depth: int = 0) -> Iterable[str]:
+    if depth > 2:
+        return
+    if isinstance(value, (str, int, float, bool)):
+        yield str(value)
+        return
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            yield str(key)
+            for text in _flatten(item, depth + 1):
+                yield text
+        return
+    if isinstance(value, (list, tuple, set)):
+        for item in list(value)[:24]:
+            for text in _flatten(item, depth + 1):
+                yield text
+
+
+def _node_terms(node: SemanticNode) -> Set[str]:
+    values = [
+        node.id,
+        node.name,
+        node.qualified_name or "",
+        node.kind.value,
+        node.language or "",
+        node.framework or "",
+        node.location.path if node.location else "",
+    ]
+    values.extend(_flatten(node.attributes))
+    return _tokens(" ".join(values))
+
+
+@dataclass(frozen=True)
+class MinimalContextBudget:
+    max_tokens: int = 1800
+    max_nodes: int = 24
+    max_edges: int = 24
+
+    def normalized(self) -> "MinimalContextBudget":
+        return MinimalContextBudget(
+            max_tokens=max(128, int(self.max_tokens)),
+            max_nodes=max(1, int(self.max_nodes)),
+            max_edges=max(0, int(self.max_edges)),
+        )
+
+
+@dataclass(frozen=True)
+class MinimalContextResult:
+    payload: Mapping[str, Any]
+    selected_node_ids: Sequence[str]
+    selected_edge_ids: Sequence[str]
+    activated_tokens: int
+    delivered_tokens: int
+    activated_nodes: int
+    delivered_nodes: int
+
+    @property
+    def token_compression_ratio(self) -> float:
+        if self.activated_tokens <= 0:
+            return 1.0
+        return float(self.delivered_tokens) / float(self.activated_tokens)
+
+    @property
+    def node_compression_ratio(self) -> float:
+        if self.activated_nodes <= 0:
+            return 1.0
+        return float(self.delivered_nodes) / float(self.activated_nodes)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "payload": dict(self.payload),
+            "selected_node_ids": list(self.selected_node_ids),
+            "selected_edge_ids": list(self.selected_edge_ids),
+            "metrics": {
+                "activated_tokens": int(self.activated_tokens),
+                "delivered_tokens": int(self.delivered_tokens),
+                "token_compression_ratio": self.token_compression_ratio,
+                "tokens_saved": max(0, int(self.activated_tokens - self.delivered_tokens)),
+                "activated_nodes": int(self.activated_nodes),
+                "delivered_nodes": int(self.delivered_nodes),
+                "node_compression_ratio": self.node_compression_ratio,
+            },
+        }
+
+
+class MinimalContextPacker:
+    """Select a compact, evidence-preserving subgraph from activated knowledge."""
+
+    def __init__(self, graph: SemanticGraph) -> None:
+        self.graph = graph
+
+    def pack(
+        self,
+        result: GuidedSearchResult,
+        *,
+        budget: Optional[MinimalContextBudget] = None,
+    ) -> MinimalContextResult:
+        budget = (budget or MinimalContextBudget()).normalized()
+        hit_by_id: Dict[str, SearchHit] = {hit.node.id: hit for hit in result.hits}
+        activated_ids = set(hit_by_id)
+        edge_by_id = {edge.id: edge for edge in result.edges}
+        activated_edges = [
+            edge
+            for edge in result.edges
+            if edge.source in activated_ids and edge.target in activated_ids
+        ]
+
+        activated_payload = {
+            "nodes": [_compact_node(hit.node) for hit in result.hits],
+            "relationships": [_compact_edge(edge) for edge in activated_edges],
+        }
+        activated_tokens = estimate_tokens(activated_payload)
+
+        if not result.hits:
+            payload = self._payload(result, [], [], [], budget, activated_tokens)
+            delivered_tokens = estimate_tokens(payload)
+            return MinimalContextResult(
+                payload=payload,
+                selected_node_ids=(),
+                selected_edge_ids=(),
+                activated_tokens=activated_tokens,
+                delivered_tokens=delivered_tokens,
+                activated_nodes=0,
+                delivered_nodes=0,
+            )
+
+        node_scores = self._node_scores(result, hit_by_id, activated_edges)
+        edge_scores = self._edge_scores(activated_edges, node_scores)
+
+        primary_roots = [node.id for node in result.roots if node.id in activated_ids]
+        if not primary_roots:
+            primary_roots = [result.hits[0].node.id]
+
+        selected_nodes: Set[str] = set()
+        selected_edges: Set[str] = set()
+        anchors: List[str] = []
+
+        # Preserve the strongest original root. Additional roots/region seeds
+        # compete normally and are delivered only if they add useful evidence.
+        first_root = primary_roots[0]
+        if self._try_add(
+            result,
+            budget,
+            selected_nodes,
+            selected_edges,
+            anchors,
+            [first_root],
+            [],
+            activated_tokens,
+        ):
+            anchors.append(first_root)
+        else:
+            # The compact root should fit all supported budgets; fail clearly
+            # rather than returning a misleading empty context.
+            raise ValueError("minimal context budget is too small for the primary grounded root")
+
+        ranked_nodes = sorted(
+            activated_ids - selected_nodes,
+            key=lambda node_id: (-node_scores.get(node_id, 0.0), node_id),
+        )
+
+        # First admit high-value nodes with their search-parent path. This keeps
+        # the explanation/evidence chain whenever the search result records one.
+        for node_id in ranked_nodes:
+            closure_nodes, closure_edges, anchor_candidate = self._path_closure(
+                node_id,
+                hit_by_id,
+                edge_by_id,
+                selected_nodes,
+            )
+            candidate_anchors = list(anchors)
+            if anchor_candidate and anchor_candidate not in candidate_anchors:
+                candidate_anchors.append(anchor_candidate)
+            if self._fits(
+                result,
+                budget,
+                selected_nodes | set(closure_nodes),
+                selected_edges | set(closure_edges),
+                candidate_anchors,
+                activated_tokens,
+            ):
+                selected_nodes.update(closure_nodes)
+                selected_edges.update(closure_edges)
+                anchors[:] = candidate_anchors
+
+        # Then add high-value relationships atomically with endpoints. This can
+        # preserve a useful cross-boundary fact even if one endpoint ranked just
+        # below the node cutoff.
+        ranked_edges = sorted(
+            activated_edges,
+            key=lambda edge: (-edge_scores.get(edge.id, 0.0), edge.id),
+        )
+        for edge in ranked_edges:
+            if edge.id in selected_edges:
+                continue
+            nodes = {edge.source, edge.target}
+            if len(selected_nodes | nodes) > budget.max_nodes:
+                continue
+            if len(selected_edges) + 1 > budget.max_edges:
+                break
+            candidate_anchors = list(anchors)
+            # If neither endpoint connects to existing selected context, retain
+            # the stronger endpoint as an explicit secondary grounded anchor.
+            if not nodes.intersection(selected_nodes):
+                anchor_id = max(nodes, key=lambda item: (node_scores.get(item, 0.0), item))
+                if anchor_id not in candidate_anchors:
+                    candidate_anchors.append(anchor_id)
+            if self._fits(
+                result,
+                budget,
+                selected_nodes | nodes,
+                selected_edges | {edge.id},
+                candidate_anchors,
+                activated_tokens,
+            ):
+                selected_nodes.update(nodes)
+                selected_edges.add(edge.id)
+                anchors[:] = candidate_anchors
+
+        payload = self._payload(
+            result,
+            sorted(selected_nodes, key=lambda item: (-node_scores.get(item, 0.0), item)),
+            sorted(selected_edges, key=lambda item: (-edge_scores.get(item, 0.0), item)),
+            anchors,
+            budget,
+            activated_tokens,
+        )
+        delivered_tokens = estimate_tokens(payload)
+        return MinimalContextResult(
+            payload=payload,
+            selected_node_ids=tuple(payload["selection"]["node_ids"]),
+            selected_edge_ids=tuple(payload["selection"]["edge_ids"]),
+            activated_tokens=activated_tokens,
+            delivered_tokens=delivered_tokens,
+            activated_nodes=len(activated_ids),
+            delivered_nodes=len(payload["selection"]["node_ids"]),
+        )
+
+    def _node_scores(
+        self,
+        result: GuidedSearchResult,
+        hit_by_id: Mapping[str, SearchHit],
+        edges: Sequence[SemanticEdge],
+    ) -> Dict[str, float]:
+        query_terms = _tokens(result.query)
+        document_frequency: Dict[str, int] = {}
+        terms_by_id: Dict[str, Set[str]] = {}
+        for node_id, hit in hit_by_id.items():
+            terms = _node_terms(hit.node)
+            terms_by_id[node_id] = terms
+            for term in terms:
+                document_frequency[term] = document_frequency.get(term, 0) + 1
+
+        count = max(1, len(hit_by_id))
+
+        def idf(term: str) -> float:
+            return math.log((count + 1.0) / (document_frequency.get(term, 0) + 1.0)) + 1.0
+
+        denominator = sum(idf(term) for term in query_terms) or 1.0
+        degree: Dict[str, float] = {node_id: 0.0 for node_id in hit_by_id}
+        for edge in edges:
+            weight = _edge_search_priority(edge)
+            degree[edge.source] = degree.get(edge.source, 0.0) + weight
+            degree[edge.target] = degree.get(edge.target, 0.0) + weight
+        max_degree = max(degree.values(), default=1.0) or 1.0
+
+        roots = {node.id for node in result.roots}
+        scores: Dict[str, float] = {}
+        for node_id, hit in hit_by_id.items():
+            overlap = sum(
+                idf(term)
+                for term in query_terms
+                if term in terms_by_id.get(node_id, set())
+            ) / denominator
+            probability = max(0.0, min(1.0, float(hit.search_probability or 0.0)))
+            seed = max(0.0, min(1.0, float(hit.seed_score or 0.0)))
+            path = max(0.0, min(1.0, float(hit.path_score or 0.0)))
+            confidence = TIER_RANK.get(hit.node.confidence_tier, 0) / 3.0
+            structural = degree.get(node_id, 0.0) / max_degree
+            depth = max(0, int(hit.depth))
+            score = (
+                (2.6 * overlap)
+                + (0.8 * structural)
+                + (0.5 * confidence)
+                + (0.5 * probability)
+                + (0.3 * seed)
+                + (0.3 * path)
+                + (0.35 / (1.0 + depth))
+                + (0.8 if node_id in roots else 0.0)
+            )
+            scores[node_id] = score
+        return scores
+
+    @staticmethod
+    def _edge_scores(
+        edges: Sequence[SemanticEdge],
+        node_scores: Mapping[str, float],
+    ) -> Dict[str, float]:
+        scores: Dict[str, float] = {}
+        for edge in edges:
+            endpoint = 0.5 * (
+                node_scores.get(edge.source, 0.0)
+                + node_scores.get(edge.target, 0.0)
+            )
+            evidence = TIER_RANK.get(edge.confidence_tier, 0) / 3.0
+            scores[edge.id] = (
+                1.6 * _edge_search_priority(edge)
+                + 0.5 * endpoint
+                + 0.5 * evidence
+                + 0.25 * float(edge.confidence)
+            )
+        return scores
+
+    def _path_closure(
+        self,
+        node_id: str,
+        hit_by_id: Mapping[str, SearchHit],
+        edge_by_id: Mapping[str, SemanticEdge],
+        selected_nodes: Set[str],
+    ) -> Tuple[List[str], List[str], Optional[str]]:
+        nodes: List[str] = []
+        edges: List[str] = []
+        current = node_id
+        seen: Set[str] = set()
+        anchor: Optional[str] = None
+        while current not in seen and current not in selected_nodes:
+            seen.add(current)
+            hit = hit_by_id.get(current)
+            if hit is None:
+                break
+            nodes.append(current)
+            if hit.parent_id is None:
+                anchor = current
+                break
+            if hit.via_edge_id and hit.via_edge_id in edge_by_id:
+                edges.append(hit.via_edge_id)
+            current = hit.parent_id
+        return nodes, edges, anchor
+
+    def _try_add(
+        self,
+        result: GuidedSearchResult,
+        budget: MinimalContextBudget,
+        selected_nodes: Set[str],
+        selected_edges: Set[str],
+        anchors: Sequence[str],
+        nodes: Sequence[str],
+        edges: Sequence[str],
+        activated_tokens: int,
+    ) -> bool:
+        next_nodes = selected_nodes | set(nodes)
+        next_edges = selected_edges | set(edges)
+        if len(next_nodes) > budget.max_nodes or len(next_edges) > budget.max_edges:
+            return False
+        return self._fits(
+            result,
+            budget,
+            next_nodes,
+            next_edges,
+            anchors,
+            activated_tokens,
+        )
+
+    def _fits(
+        self,
+        result: GuidedSearchResult,
+        budget: MinimalContextBudget,
+        node_ids: Set[str],
+        edge_ids: Set[str],
+        anchors: Sequence[str],
+        activated_tokens: int,
+    ) -> bool:
+        if len(node_ids) > budget.max_nodes or len(edge_ids) > budget.max_edges:
+            return False
+        payload = self._payload(
+            result,
+            sorted(node_ids),
+            sorted(edge_ids),
+            list(anchors),
+            budget,
+            activated_tokens,
+        )
+        return estimate_tokens(payload) <= budget.max_tokens
+
+    def _payload(
+        self,
+        result: GuidedSearchResult,
+        node_ids: Sequence[str],
+        edge_ids: Sequence[str],
+        anchors: Sequence[str],
+        budget: MinimalContextBudget,
+        activated_tokens: int,
+    ) -> Dict[str, Any]:
+        nodes = [
+            self.graph.node(node_id)
+            for node_id in node_ids
+            if self.graph.node(node_id) is not None
+        ]
+        edge_map = {edge.id: edge for edge in result.edges}
+        edges = [edge_map[edge_id] for edge_id in edge_ids if edge_id in edge_map]
+        payload: Dict[str, Any] = {
+            "query": result.query,
+            "anchors": list(anchors),
+            "nodes": [_compact_node(node) for node in nodes],
+            "relationships": [_compact_edge(edge) for edge in edges],
+            "grounding": {
+                "known": "Every included node and relationship comes from the activated FeynMap semantic graph.",
+                "unknown": "Omitted activated facts are not false; they were excluded by minimal-context selection.",
+                "selection": "Post-activation relevance + structural scoring with atomic relationship/endpoints and search-parent path preservation.",
+            },
+            "selection": {
+                "node_ids": list(node_ids),
+                "edge_ids": list(edge_ids),
+                "activated_nodes": len(result.hits),
+                "activated_relationships": len(result.edges),
+                "omitted_nodes": max(0, len(result.hits) - len(node_ids)),
+                "omitted_relationships": max(0, len(result.edges) - len(edge_ids)),
+                "max_tokens": int(budget.max_tokens),
+                "max_nodes": int(budget.max_nodes),
+                "max_edges": int(budget.max_edges),
+                "activated_tokens": int(activated_tokens),
+            },
+        }
+        # Fixed-point token estimate because the metric itself contributes a few
+        # characters to the serialized payload.
+        payload["selection"]["estimated_tokens"] = 0
+        while True:
+            size = estimate_tokens(payload)
+            if payload["selection"]["estimated_tokens"] == size:
+                break
+            payload["selection"]["estimated_tokens"] = size
+        return payload
