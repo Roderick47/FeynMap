@@ -63,6 +63,8 @@ class SufficiencyResult:
     score: float
     query_coverage: float
     novel_region_gain: float
+    novel_specific_term_count: int
+    novel_max_specificity: float
     actionable_query_terms: int
     region_coverage: float
     marginal_gain: float
@@ -78,6 +80,8 @@ class SufficiencyResult:
             "score": float(self.score),
             "query_coverage": float(self.query_coverage),
             "novel_region_gain": float(self.novel_region_gain),
+            "novel_specific_term_count": int(self.novel_specific_term_count),
+            "novel_max_specificity": float(self.novel_max_specificity),
             "actionable_query_terms": int(self.actionable_query_terms),
             "region_coverage": float(self.region_coverage),
             "marginal_gain": float(self.marginal_gain),
@@ -105,15 +109,22 @@ class SufficiencyEvaluator:
         graph: SemanticGraph,
         region_index: Optional[RegionIndex] = None,
         *,
-        min_query_coverage: float = 0.60,
-        max_novel_region_gain: float = 0.0,
-        min_score: float = 0.62,
+        min_query_coverage: float = 0.0,
+        max_novel_region_gain: float = 1.0,
+        min_score: float = 0.0,
+        specific_term_threshold: float = 0.72,
+        min_specific_novel_terms: int = 2,
     ) -> None:
         self.graph = graph
         self.region_index = region_index or RegionIndex(graph)
         self.min_query_coverage = max(0.0, min(1.0, float(min_query_coverage)))
         self.max_novel_region_gain = max(0.0, min(1.0, float(max_novel_region_gain)))
         self.min_score = max(0.0, min(1.0, float(min_score)))
+        self.specific_term_threshold = max(
+            0.0,
+            min(1.0, float(specific_term_threshold)),
+        )
+        self.min_specific_novel_terms = max(1, int(min_specific_novel_terms))
 
     def evaluate(
         self,
@@ -184,6 +195,26 @@ class SufficiencyEvaluator:
             else 0.0
         )
 
+        region_count = max(1, len(self.region_index.regions))
+        max_idf = self.region_index._idf("__term_absent_from_all_regions__")
+        novel_specificities = {
+            term: (
+                weight(term) / max_idf
+                if max_idf > 0.0
+                else 0.0
+            )
+            for term in novel_terms
+        }
+        novel_specific_term_count = sum(
+            1
+            for value in novel_specificities.values()
+            if value >= self.specific_term_threshold
+        )
+        novel_max_specificity = max(
+            novel_specificities.values(),
+            default=0.0,
+        )
+
         marginal_gain_by_depth = self._marginal_gain_by_depth(
             query_terms,
             result,
@@ -206,11 +237,23 @@ class SufficiencyEvaluator:
         )
 
         reasons: List[str] = []
-        if query_coverage < self.min_query_coverage:
+        # Exact lexical coverage is diagnostic, not a hard gate: FeynMap nodes
+        # are intentionally compact and do not repeat all source prose.
+        if (
+            novel_specific_term_count >= self.min_specific_novel_terms
+        ):
+            reasons.append("specific_novel_region_information")
+        if (
+            self.min_query_coverage > 0.0
+            and query_coverage < self.min_query_coverage
+        ):
             reasons.append("query_coverage")
-        if novel_region_gain > self.max_novel_region_gain:
+        if (
+            self.max_novel_region_gain < 1.0
+            and novel_region_gain > self.max_novel_region_gain
+        ):
             reasons.append("novel_region_information")
-        if score < self.min_score:
+        if self.min_score > 0.0 and score < self.min_score:
             reasons.append("combined_score")
 
         sufficient = not reasons
@@ -219,6 +262,8 @@ class SufficiencyEvaluator:
             score=score,
             query_coverage=query_coverage,
             novel_region_gain=novel_region_gain,
+            novel_specific_term_count=novel_specific_term_count,
+            novel_max_specificity=novel_max_specificity,
             actionable_query_terms=len(query_terms),
             region_coverage=region_coverage,
             marginal_gain=marginal_gain,
