@@ -60,7 +60,16 @@ def test_sufficiency_escalates_when_unopened_region_contains_missing_query_term(
         ],
     )
 
-    result = AdaptiveSparseSearch(graph, region_limit=2).from_node(
+    evaluator = SufficiencyEvaluator(
+        graph,
+        region_index=RegionIndex(graph),
+        specific_term_threshold=0.60,
+    )
+    result = AdaptiveSparseSearch(
+        graph,
+        region_limit=2,
+        sufficiency=evaluator,
+    ).from_node(
         "root",
         "price stale history",
         max_depth=1,
