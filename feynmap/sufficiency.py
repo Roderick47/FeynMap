@@ -112,8 +112,10 @@ class SufficiencyEvaluator:
         min_query_coverage: float = 0.0,
         max_novel_region_gain: float = 1.0,
         min_score: float = 0.0,
-        specific_term_threshold: float = 0.65,
+        specific_term_threshold: float = 0.72,
         min_specific_novel_terms: int = 2,
+        stalled_coverage_threshold: float = 0.18,
+        stalled_marginal_threshold: float = 0.01,
     ) -> None:
         self.graph = graph
         self.region_index = region_index or RegionIndex(graph)
@@ -125,6 +127,14 @@ class SufficiencyEvaluator:
             min(1.0, float(specific_term_threshold)),
         )
         self.min_specific_novel_terms = max(1, int(min_specific_novel_terms))
+        self.stalled_coverage_threshold = max(
+            0.0,
+            min(1.0, float(stalled_coverage_threshold)),
+        )
+        self.stalled_marginal_threshold = max(
+            0.0,
+            min(1.0, float(stalled_marginal_threshold)),
+        )
 
     def evaluate(
         self,
@@ -242,6 +252,11 @@ class SufficiencyEvaluator:
             novel_specific_term_count >= self.min_specific_novel_terms
         ):
             reasons.append("specific_novel_region_information")
+        if (
+            query_coverage < self.stalled_coverage_threshold
+            and marginal_gain <= self.stalled_marginal_threshold
+        ):
+            reasons.append("low_coverage_stalled")
         if (
             self.min_query_coverage > 0.0
             and query_coverage < self.min_query_coverage
