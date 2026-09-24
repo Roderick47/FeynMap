@@ -20,6 +20,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, 
 from .activation import measure_guided_search
 from .engine import FeynMapEngine
 from .judgment.search import JevGuidedSearch
+from .routing import RegionFirstSearch
 
 BENCHMARK_SCHEMA = "feynmap.sparse_activation_benchmark.v1"
 
@@ -106,6 +107,10 @@ def run_benchmark(
     project_root: str,
     dataset: Mapping[str, Any],
     provider=None,
+    *,
+    strategy: str = "flat",
+    region_limit: int = 8,
+    region_seed_limit: int = 12,
 ) -> Dict[str, Any]:
     validate_dataset(dataset)
     analysis = dataset.get("analysis") or {}
@@ -119,7 +124,21 @@ def run_benchmark(
     graph = FeynMapEngine().analyze(project_root, language=language, framework=framework)
     analysis_elapsed_ms = (time.perf_counter() - analysis_started) * 1000.0
 
+    strategy = str(strategy).strip().lower()
+    if strategy not in {"flat", "region"}:
+        raise ValueError("strategy must be flat or region")
+
     searcher = JevGuidedSearch(graph, provider=provider)
+    region_searcher = (
+        RegionFirstSearch(
+            graph,
+            provider=provider,
+            region_limit=region_limit,
+            seed_limit=region_seed_limit,
+        )
+        if strategy == "region"
+        else None
+    )
     task_rows: List[Dict[str, Any]] = []
 
     for task in dataset["tasks"]:
@@ -128,6 +147,7 @@ def run_benchmark(
         kwargs = _search_kwargs(task)
 
         search_started = time.perf_counter()
+        route_payload = None
         if mode == "node":
             # seed_limit/candidate_limit apply only to concept mode.
             node_kwargs = {
@@ -135,9 +155,19 @@ def run_benchmark(
                 for key, value in kwargs.items()
                 if key not in {"seed_limit", "candidate_limit"}
             }
-            result = searcher.from_node(str(task["root"]), query, **node_kwargs)
+            if region_searcher is not None:
+                region_result = region_searcher.from_node(str(task["root"]), query, **node_kwargs)
+                result = region_result.search
+                route_payload = region_result.route.to_dict()
+            else:
+                result = searcher.from_node(str(task["root"]), query, **node_kwargs)
         else:
-            result = searcher.concept(query, **kwargs)
+            if region_searcher is not None:
+                region_result = region_searcher.concept(query, **kwargs)
+                result = region_result.search
+                route_payload = region_result.route.to_dict()
+            else:
+                result = searcher.concept(query, **kwargs)
         routing_elapsed_ms = (time.perf_counter() - search_started) * 1000.0
 
         metrics = measure_guided_search(
@@ -163,6 +193,8 @@ def run_benchmark(
                 "mode": mode,
                 "query": query,
                 "root": task.get("root"),
+                "strategy": strategy,
+                "region_route": route_payload,
                 "metrics": metrics.to_dict(),
                 "essential_recall": essential_recall,
                 "essential_full_recall": bool(total_essential and total_matched == total_essential),
@@ -183,6 +215,11 @@ def run_benchmark(
         "name": dataset.get("name"),
         "repository": dataset.get("repository"),
         "project_root": os.path.basename(os.path.abspath(project_root)),
+        "strategy": strategy,
+        "routing_config": {
+            "region_limit": int(region_limit) if strategy == "region" else None,
+            "region_seed_limit": int(region_seed_limit) if strategy == "region" else None,
+        },
         "analysis": {
             "language": language,
             "framework": framework,
@@ -199,6 +236,10 @@ def run_benchmark(
             "mean_activated_context_tokens": _average(metric_rows, "activated_context_tokens"),
             "mean_essential_recall": _average(task_rows, "essential_recall"),
             "full_recall_tasks": sum(1 for row in task_rows if row["essential_full_recall"]),
+            "mean_region_touch_ratio": _average(
+                [row["region_route"] for row in task_rows if row.get("region_route")],
+                "region_touch_ratio",
+            ),
         },
         "tasks": task_rows,
     }
@@ -209,13 +250,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("dataset", help="Path to feynmap.sparse_activation_benchmark.v1 JSON")
     parser.add_argument("project_root", help="Repository root to analyze")
     parser.add_argument("--output", help="Optional path for the JSON result")
+    parser.add_argument("--strategy", choices=("flat", "region"), default="flat")
+    parser.add_argument("--region-limit", type=int, default=8)
+    parser.add_argument("--region-seed-limit", type=int, default=12)
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
     args = parser.parse_args(argv)
 
     with open(args.dataset, "r", encoding="utf-8") as handle:
         dataset = json.load(handle)
 
-    result = run_benchmark(args.project_root, dataset)
+    result = run_benchmark(
+        args.project_root,
+        dataset,
+        strategy=args.strategy,
+        region_limit=args.region_limit,
+        region_seed_limit=args.region_seed_limit,
+    )
     rendered = json.dumps(result, indent=2 if args.pretty else None, sort_keys=True)
 
     if args.output:
