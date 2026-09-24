@@ -88,6 +88,12 @@ def _shortest_graph_path(graph, start_id: str, target_ids: Set[str], max_depth: 
         edges = list(graph.outgoing(current)) + list(graph.incoming(current))
         edges.sort(key=lambda edge: (edge.kind.value, edge.source, edge.target, edge.id))
         for edge in edges:
+            # Repository-root containment is useful for graph ownership but is
+            # not evidence that two application concepts are semantically
+            # related. Exclude it from reachability diagnosis so the reported
+            # path reflects actual calls/imports/integration/composition.
+            if edge.kind.value == "contains" and "repository:root" in {edge.source, edge.target}:
+                continue
             neighbor = edge.target if edge.source == current else edge.source
             if neighbor in seen:
                 continue
