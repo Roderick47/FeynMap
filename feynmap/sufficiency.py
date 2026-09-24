@@ -66,6 +66,7 @@ class SufficiencyResult:
     actionable_query_terms: int
     region_coverage: float
     marginal_gain: float
+    marginal_gain_by_depth: Mapping[int, float]
     frontier_pressure: float
     reasons: Sequence[str]
     uncovered_query_terms: Sequence[str]
@@ -80,6 +81,10 @@ class SufficiencyResult:
             "actionable_query_terms": int(self.actionable_query_terms),
             "region_coverage": float(self.region_coverage),
             "marginal_gain": float(self.marginal_gain),
+            "marginal_gain_by_depth": {
+                str(depth): float(value)
+                for depth, value in self.marginal_gain_by_depth.items()
+            },
             "frontier_pressure": float(self.frontier_pressure),
             "reasons": list(self.reasons),
             "uncovered_query_terms": list(self.uncovered_query_terms),
@@ -179,7 +184,16 @@ class SufficiencyEvaluator:
             else 0.0
         )
 
-        marginal_gain = self._marginal_gain(query_terms, result, weight)
+        marginal_gain_by_depth = self._marginal_gain_by_depth(
+            query_terms,
+            result,
+            weight,
+        )
+        marginal_gain = (
+            marginal_gain_by_depth[max(marginal_gain_by_depth)]
+            if marginal_gain_by_depth
+            else 0.0
+        )
         frontier_pressure = self._frontier_pressure(result)
 
         # Weighted confidence-like sufficiency score. Query coverage and the
@@ -208,6 +222,7 @@ class SufficiencyEvaluator:
             actionable_query_terms=len(query_terms),
             region_coverage=region_coverage,
             marginal_gain=marginal_gain,
+            marginal_gain_by_depth=marginal_gain_by_depth,
             frontier_pressure=frontier_pressure,
             reasons=tuple(reasons),
             uncovered_query_terms=tuple(sorted(uncovered)),
@@ -215,21 +230,31 @@ class SufficiencyEvaluator:
         )
 
     @staticmethod
-    def _marginal_gain(query_terms: Set[str], result: GuidedSearchResult, weight) -> float:
+    def _marginal_gain_by_depth(
+        query_terms: Set[str],
+        result: GuidedSearchResult,
+        weight,
+    ) -> Dict[int, float]:
         if not query_terms or not result.hits:
-            return 0.0
-        max_depth = max(hit.depth for hit in result.hits)
-        before_terms: Set[str] = set()
-        last_terms: Set[str] = set()
-        for hit in result.hits:
-            if hit.depth < max_depth:
-                before_terms.update(_node_terms(hit.node))
-            elif hit.depth == max_depth:
-                last_terms.update(_node_terms(hit.node))
-        new_terms = (last_terms - before_terms) & query_terms
+            return {}
         denominator = sum(weight(term) for term in query_terms)
-        numerator = sum(weight(term) for term in new_terms)
-        return numerator / denominator if denominator > 0.0 else 0.0
+        if denominator <= 0.0:
+            return {}
+
+        cumulative: Set[str] = set()
+        gains: Dict[int, float] = {}
+        depths = sorted({hit.depth for hit in result.hits})
+        for depth in depths:
+            depth_terms: Set[str] = set()
+            for hit in result.hits:
+                if hit.depth == depth:
+                    depth_terms.update(_node_terms(hit.node))
+            new_terms = (depth_terms - cumulative) & query_terms
+            gains[depth] = (
+                sum(weight(term) for term in new_terms) / denominator
+            )
+            cumulative.update(depth_terms)
+        return gains
 
     @staticmethod
     def _frontier_pressure(result: GuidedSearchResult) -> float:
