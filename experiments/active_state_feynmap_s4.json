@@ -1,0 +1,132 @@
+{
+  "schema": "feynmap.active_state_benchmark.v1",
+  "name": "S4 active-state long-horizon self-hosting benchmark",
+  "analysis": {
+    "language": "auto",
+    "framework": "auto"
+  },
+  "context": {
+    "max_tokens": 2600,
+    "max_nodes": 22,
+    "max_edges": 24,
+    "initial_tokens": 900,
+    "step_tokens": 350
+  },
+  "active_state": {
+    "max_nodes": 28,
+    "max_edges": 40,
+    "max_regions": 8,
+    "max_retrievals": 10,
+    "max_concepts": 40
+  },
+  "sequences": [
+    {
+      "id": "sparse-context-lifecycle",
+      "task": "Trace sparse activation, sufficiency, minimal delivery, and active-state reuse across an agent loop.",
+      "steps": [
+        {
+          "id": "adaptive-sufficiency",
+          "root": "feynmap.adaptive.AdaptiveSparseSearch.from_node",
+          "goal": "adaptive sparse search sufficiency query coverage region activation",
+          "essential_symbols": [
+            "feynmap.routing.RegionIndex.route"
+          ]
+        },
+        {
+          "id": "adaptive-followup",
+          "root": "feynmap.adaptive.AdaptiveSparseSearch.from_node",
+          "goal": "sufficiency query coverage region activation",
+          "essential_symbols": [
+            "feynmap.routing.RegionIndex.route"
+          ]
+        },
+        {
+          "id": "minimal-delivery",
+          "root": "feynmap.context_pipeline.SparseContextPipeline.from_node",
+          "goal": "minimal context pack evidence preserving downstream delivery",
+          "essential_symbols": [
+            "feynmap.minimal_context.MinimalContextPacker.pack"
+          ]
+        },
+        {
+          "id": "minimal-followup",
+          "root": "feynmap.context_pipeline.SparseContextPipeline.from_node",
+          "goal": "minimal context pack critical evidence token budget",
+          "essential_symbols": [
+            "feynmap.minimal_context.MinimalContextPacker.pack"
+          ]
+        },
+        {
+          "id": "active-reuse",
+          "root": "feynmap.active_state.ActiveStateRuntime.continue_from_node",
+          "goal": "active state reuse current grounded working set before fresh graph search",
+          "essential_symbols": [
+            "feynmap.active_state.ActiveStateRuntime.continue_from_node"
+          ]
+        },
+        {
+          "id": "active-reuse-followup",
+          "root": "feynmap.active_state.ActiveStateRuntime.continue_from_node",
+          "goal": "active state reuse sufficient context followup",
+          "essential_symbols": [
+            "feynmap.active_state.ActiveStateRuntime.continue_from_node"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "snapshot-grounding-loop",
+      "task": "Follow stored grounding and snapshot evidence across repeated agent questions.",
+      "steps": [
+        {
+          "id": "grounding-minimal-context",
+          "root": "feynmap.grounding.GroundingService.call",
+          "goal": "stored snapshot minimal context adaptive sparse context pipeline",
+          "essential_symbols": [
+            "feynmap.minimal_context.MinimalContextBudget"
+          ]
+        },
+        {
+          "id": "grounding-followup",
+          "root": "feynmap.grounding.GroundingService.call",
+          "goal": "stored snapshot minimal context pipeline",
+          "essential_symbols": [
+            "feynmap.minimal_context.MinimalContextBudget"
+          ]
+        },
+        {
+          "id": "snapshot-load",
+          "root": "feynmap.snapshots.SnapshotStore.load",
+          "goal": "immutable snapshot graph hash verification load",
+          "essential_symbols": [
+            "feynmap.snapshots.SnapshotStore.load"
+          ]
+        },
+        {
+          "id": "snapshot-followup",
+          "root": "feynmap.snapshots.SnapshotStore.load",
+          "goal": "snapshot graph hash verification",
+          "essential_symbols": [
+            "feynmap.snapshots.SnapshotStore.load"
+          ]
+        },
+        {
+          "id": "active-rehydrate",
+          "root": "feynmap.active_state.ActiveStateRuntime.rehydrate",
+          "goal": "rehydrate exact canonical graph evidence from active references",
+          "essential_symbols": [
+            "feynmap.active_state.ActiveStateRuntime.rehydrate"
+          ]
+        },
+        {
+          "id": "active-invalidation",
+          "root": "feynmap.active_state.ActiveStateRuntime.rehydrate",
+          "goal": "snapshot bound active state invalidation canonical graph evidence",
+          "essential_symbols": [
+            "feynmap.active_state.ActiveStateRuntime.rehydrate"
+          ]
+        }
+      ]
+    }
+  ]
+}
