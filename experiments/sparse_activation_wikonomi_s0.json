@@ -4,7 +4,7 @@
   "repository": {
     "name": "Roderick47/wikonomi-v2",
     "source_dataset": "experiments/context_ranker_v1f.json",
-    "policy": "Reuse v1F task descriptions, grounded roots, and gold changed files against one fixed current checkout. This S0 run measures retrieval sparsity/recall, not historical repair correctness."
+    "policy": "Run each task against its pinned v1F pre-fix revision. Gold changed files are evaluated only on the revision they belong to."
   },
   "analysis": {
     "language": "auto",
@@ -25,7 +25,8 @@
         "beam_width": 8,
         "max_nodes": 64,
         "direction": "both"
-      }
+      },
+      "revision": "688a6f19030403bc496d4f284be389c13082f1df"
     },
     {
       "id": "wikonomi-map-history",
@@ -43,7 +44,8 @@
         "beam_width": 8,
         "max_nodes": 64,
         "direction": "both"
-      }
+      },
+      "revision": "71a15400216c5b9b6d5ce94ddcc347158f0e879a"
     },
     {
       "id": "wikonomi-location-first",
@@ -58,7 +60,8 @@
         "beam_width": 8,
         "max_nodes": 64,
         "direction": "both"
-      }
+      },
+      "revision": "3819c0d7c1397ce4d434a2d62931ba0dd1994574"
     },
     {
       "id": "wikonomi-price-accuracy",
@@ -74,7 +77,8 @@
         "beam_width": 8,
         "max_nodes": 64,
         "direction": "both"
-      }
+      },
+      "revision": "f55e52e49bf0dce9fb622146d3782b5b4cdcdf32"
     },
     {
       "id": "wikonomi-guide-formatting",
@@ -90,7 +94,8 @@
         "beam_width": 8,
         "max_nodes": 64,
         "direction": "both"
-      }
+      },
+      "revision": "1f428086614fbc33363171c0e4d603f1b19cfd59"
     }
   ]
 }
