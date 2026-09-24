@@ -29,7 +29,7 @@
           "root": "feynmap.adaptive.AdaptiveSparseSearch.from_node",
           "goal": "adaptive sparse search sufficiency query coverage region activation",
           "essential_symbols": [
-            "feynmap.sufficiency.SufficiencyEvaluator.precheck"
+            "feynmap.routing.RegionIndex.route"
           ]
         },
         {
@@ -37,7 +37,7 @@
           "root": "feynmap.adaptive.AdaptiveSparseSearch.from_node",
           "goal": "sufficiency query coverage region activation",
           "essential_symbols": [
-            "feynmap.sufficiency.SufficiencyEvaluator.precheck"
+            "feynmap.routing.RegionIndex.route"
           ]
         },
         {
@@ -61,7 +61,7 @@
           "root": "feynmap.active_state.ActiveStateRuntime.continue_from_node",
           "goal": "active state reuse current grounded working set before fresh graph search",
           "essential_symbols": [
-            "feynmap.active_state.ActiveStateRuntime._reuse_retrieval"
+            "feynmap.active_state.ActiveStateRuntime.continue_from_node"
           ]
         },
         {
@@ -69,7 +69,7 @@
           "root": "feynmap.active_state.ActiveStateRuntime.continue_from_node",
           "goal": "active state reuse sufficient context followup",
           "essential_symbols": [
-            "feynmap.active_state.ActiveStateRuntime._reuse_retrieval"
+            "feynmap.active_state.ActiveStateRuntime.continue_from_node"
           ]
         }
       ]
@@ -83,7 +83,7 @@
           "root": "feynmap.grounding.GroundingService.call",
           "goal": "stored snapshot minimal context adaptive sparse context pipeline",
           "essential_symbols": [
-            "feynmap.context_pipeline.SparseContextPipeline.from_node"
+            "feynmap.minimal_context.MinimalContextBudget"
           ]
         },
         {
@@ -91,7 +91,7 @@
           "root": "feynmap.grounding.GroundingService.call",
           "goal": "stored snapshot minimal context pipeline",
           "essential_symbols": [
-            "feynmap.context_pipeline.SparseContextPipeline.from_node"
+            "feynmap.minimal_context.MinimalContextBudget"
           ]
         },
         {
@@ -123,7 +123,7 @@
           "root": "feynmap.active_state.ActiveStateRuntime.rehydrate",
           "goal": "snapshot bound active state invalidation canonical graph evidence",
           "essential_symbols": [
-            "feynmap.active_state.ActiveStateRuntime._require_fresh"
+            "feynmap.active_state.ActiveStateRuntime.rehydrate"
           ]
         }
       ]
