@@ -2,6 +2,7 @@ from feynmap.adaptive import AdaptiveSparseSearch
 from feynmap.core import EdgeKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 from feynmap.routing import RegionIndex
 from feynmap.sufficiency import SufficiencyEvaluator
+from feynmap.judgment import JudgmentAnswer, JudgmentKind, JudgmentResult
 
 
 def _node(node_id, name, path, kind=NodeKind.FUNCTION):
@@ -156,3 +157,87 @@ def test_sufficiency_tracks_marginal_information_gain_by_depth():
     assert set(gains) == {0, 1, 2}
     assert gains[1] > 0
     assert gains[2] > 0
+
+
+
+class _FakeProvider:
+    name = "fake-jev"
+
+    def __init__(self):
+        self.calls = []
+
+    def evaluate(self, state, questions):
+        self.calls.append((state, questions))
+        answers = {}
+        for key, question in questions.items():
+            candidate_id = state["candidates"][int(key.split("_")[-1])]["id"]
+            score = 1.0 if "target" in candidate_id or "alpha" in candidate_id else 0.0
+            answers[key] = JudgmentAnswer(
+                kind=JudgmentKind.NOUL,
+                value=score,
+            )
+        return JudgmentResult(
+            provider=self.name,
+            model="jev-test",
+            answers=answers,
+            request_id="adaptive-%d" % len(self.calls),
+        )
+
+
+def test_adaptive_search_escalates_to_provider_only_after_deterministic_stages():
+    root = _node("jev-root", "root", "app.py")
+    alpha = _node("jev-alpha", "alpha", "alpha.py")
+    beta = _node("jev-beta", "beta", "beta.py")
+    target = _node("jev-target", "target", "target.py")
+    graph = SemanticGraph(
+        nodes=[root, alpha, beta, target],
+        edges=[
+            SemanticEdge(
+                id="jev-a",
+                source=root.id,
+                target=alpha.id,
+                kind=EdgeKind.CALLS,
+                confidence=1.0,
+            ),
+            SemanticEdge(
+                id="jev-b",
+                source=root.id,
+                target=beta.id,
+                kind=EdgeKind.CALLS,
+                confidence=1.0,
+            ),
+            SemanticEdge(
+                id="jev-target-edge",
+                source=alpha.id,
+                target=target.id,
+                kind=EdgeKind.DEPENDS_ON,
+                confidence=1.0,
+            ),
+        ],
+    )
+    provider = _FakeProvider()
+    evaluator = SufficiencyEvaluator(
+        graph,
+        region_index=RegionIndex(graph),
+        direct_stop_coverage=1.0,
+        min_query_coverage=1.0,
+        min_score=1.0,
+    )
+
+    result = AdaptiveSparseSearch(
+        graph,
+        provider=provider,
+        region_limit=2,
+        sufficiency=evaluator,
+    ).from_node(
+        root.id,
+        "target reconciliation",
+        max_depth=2,
+        beam_width=1,
+        max_nodes=8,
+    )
+
+    assert result.stage == "jev"
+    assert result.escalations == ("region", "jev")
+    assert provider.calls
+    assert result.search.provider == "fake-jev"
