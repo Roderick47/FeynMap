@@ -148,6 +148,10 @@ def run_sequence(
             fresh.context.selected_node_ids,
             essential_ids,
         )
+        fresh_context_retention = _recall(
+            state.active_node_ids,
+            fresh.context.selected_node_ids,
+        )
 
         step_rows.append({
             "index": index,
@@ -173,6 +177,7 @@ def run_sequence(
                 "introduced_nodes": len(transition.introduced_node_ids),
                 "dropped_nodes": len(transition.dropped_node_ids),
                 "essential_recall": active_recall,
+                "fresh_context_retention": fresh_context_retention,
             },
             "essential_symbols": essential_symbols,
             "essential_ids": essential_ids,
@@ -193,6 +198,10 @@ def run_sequence(
     reexpanded_steps = len(step_rows) - reuse_steps
     active_recalls = [row["active"]["essential_recall"] for row in step_rows]
     fresh_recalls = [row["fresh"]["essential_recall"] for row in step_rows]
+    context_retentions = [
+        row["active"]["fresh_context_retention"]
+        for row in step_rows
+    ]
     missing_symbols = [
         symbol
         for row in step_rows
@@ -225,6 +234,10 @@ def run_sequence(
                 sum(active_recalls) / float(len(active_recalls))
                 if active_recalls else 1.0
             ),
+            "mean_fresh_context_retention": (
+                sum(context_retentions) / float(len(context_retentions))
+                if context_retentions else 1.0
+            ),
             "full_active_recall_steps": sum(
                 1 for value in active_recalls if value >= 1.0
             ),
@@ -235,6 +248,18 @@ def run_sequence(
             ),
             "final_compact_state_tokens": int(
                 final_metrics["compact_state_tokens"]
+            ),
+            "carried_state_growth_avoided_tokens": max(
+                0,
+                cumulative_fresh_tokens - int(final_metrics["compact_state_tokens"]),
+            ),
+            "carried_state_growth_avoided_ratio": (
+                float(max(
+                    0,
+                    cumulative_fresh_tokens - int(final_metrics["compact_state_tokens"]),
+                )) / float(cumulative_fresh_tokens)
+                if cumulative_fresh_tokens > 0
+                else 0.0
             ),
             "retained_context_growth_avoided_tokens": avoided,
             "retained_context_growth_avoided_ratio": avoided_ratio,
@@ -291,7 +316,9 @@ def run_benchmark(
     total_reuse = sum(item["reuse_steps"] for item in summaries)
     total_fresh = sum(item["cumulative_fresh_context_tokens"] for item in summaries)
     total_final_active = sum(item["final_active_working_context_tokens"] for item in summaries)
+    total_compact_state = sum(item["final_compact_state_tokens"] for item in summaries)
     total_avoided = max(0, total_fresh - total_final_active)
+    total_carried_avoided = max(0, total_fresh - total_compact_state)
 
     return {
         "schema": BENCHMARK_SCHEMA,
@@ -318,6 +345,11 @@ def run_benchmark(
                 / float(len(summaries))
                 if summaries else 1.0
             ),
+            "mean_fresh_context_retention": (
+                sum(item["mean_fresh_context_retention"] for item in summaries)
+                / float(len(summaries))
+                if summaries else 1.0
+            ),
             "full_active_recall_steps": sum(
                 item["full_active_recall_steps"] for item in summaries
             ),
@@ -328,6 +360,12 @@ def run_benchmark(
             ],
             "cumulative_fresh_context_tokens": total_fresh,
             "final_active_working_context_tokens": total_final_active,
+            "final_compact_state_tokens": total_compact_state,
+            "carried_state_growth_avoided_tokens": total_carried_avoided,
+            "carried_state_growth_avoided_ratio": (
+                float(total_carried_avoided) / float(total_fresh)
+                if total_fresh else 0.0
+            ),
             "retained_context_growth_avoided_tokens": total_avoided,
             "retained_context_growth_avoided_ratio": (
                 float(total_avoided) / float(total_fresh)
