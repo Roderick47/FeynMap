@@ -43,11 +43,19 @@ damaged recall.
 
 ### S2 — Adaptive sufficiency and effort
 
-- [ ] Provider-neutral sufficiency contract
-- [ ] Marginal information-gain tracking
-- [ ] Confidence/coverage-based early stopping
-- [ ] Escalation policy: deterministic → JEV → optional LLM
-- [ ] Fast/normal/deep budgets driven by uncertainty rather than fixed user mode
+- [x] Provider-neutral sufficiency contract
+- [x] Marginal information-gain tracking
+- [x] Confidence/coverage-based early stopping
+- [x] Escalation policy: deterministic → region → judgment provider (JEV / optional expensive provider)
+- [x] Fast/normal/deep effort levels selected by sufficiency rather than fixed user mode
+
+
+S2 accepted benchmark (pinned Wikonomi v1F + recursive FeynMap self-hosting):
+adaptive search retained 100% essential recall, stopped locally on 3/5 Wikonomi
+tasks and 5/5 FeynMap self-tasks, reduced Wikonomi active context from about
+3,324 to 2,762 tokens versus always-on region activation, and was faster than
+the always-on hybrid in the reference CI run. The controller now exposes
+`fast`, `normal`, and `deep` effort levels chosen from sufficiency signals.
 
 ### S3 — Minimal sufficient context
 
