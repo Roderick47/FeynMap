@@ -58,6 +58,17 @@ def _region_key(node: SemanticNode) -> str:
     return "node:" + node.id
 
 
+def _region_weight(region_id: str) -> float:
+    normalized = region_id.casefold()
+    if normalized.startswith(("symbol:", "node:")):
+        return 0.15
+    parts = normalized.replace("\\", "/").split("/")
+    basename = parts[-1] if parts else normalized
+    if "tests" in parts or basename.startswith("test_") or basename in {"tests.py", "test.py"}:
+        return 0.45
+    return 1.0
+
+
 @dataclass(frozen=True)
 class RegionSummary:
     id: str
@@ -181,15 +192,22 @@ class RegionIndex:
         neighbor_regions = self.adjacency.get(anchor_region, set()) if anchor_region else set()
 
         scored: List[Tuple[float, str]] = []
+        considered = 0
+        denominator = sum(self._idf(token) for token in query_tokens) if query_tokens else 1.0
         for region_id, region in self.regions.items():
+            weight = _region_weight(region_id)
+            if weight < 0.2 and region_id != anchor_region:
+                continue
+            considered += 1
             lexical = sum(self._idf(token) for token in query_tokens if token in region.terms)
             if query_tokens:
-                lexical /= sum(self._idf(token) for token in query_tokens)
+                lexical /= denominator
+            lexical *= weight
             locality = 0.0
             if region_id == anchor_region:
                 locality = 2.0
             elif region_id in neighbor_regions:
-                locality = 0.15
+                locality = 0.10
             score = lexical + locality
             if score > 0.0:
                 scored.append((score, region_id))
@@ -212,7 +230,7 @@ class RegionIndex:
         return RegionRouteResult(
             query=str(query),
             anchor_region=anchor_region,
-            candidate_regions=len(self.regions),
+            candidate_regions=considered,
             selected_regions=tuple(selected),
             scores=score_map,
         )
@@ -266,6 +284,61 @@ class RegionIndex:
         return result
 
 
+def _merge_search_results(
+    local: GuidedSearchResult,
+    global_result: GuidedSearchResult,
+    *,
+    max_nodes: int,
+) -> GuidedSearchResult:
+    max_nodes = max(1, int(max_nodes))
+    hits = []
+    seen_nodes: Set[str] = set()
+    for source in (local.hits, global_result.hits):
+        for hit in source:
+            if hit.node.id in seen_nodes:
+                continue
+            seen_nodes.add(hit.node.id)
+            hits.append(hit)
+            if len(hits) >= max_nodes:
+                break
+        if len(hits) >= max_nodes:
+            break
+
+    allowed_nodes = {hit.node.id for hit in hits}
+    edges = []
+    seen_edges: Set[str] = set()
+    for source in (local.edges, global_result.edges):
+        for edge in source:
+            if edge.id in seen_edges:
+                continue
+            if edge.source not in allowed_nodes or edge.target not in allowed_nodes:
+                continue
+            seen_edges.add(edge.id)
+            edges.append(edge)
+
+    roots = []
+    seen_roots: Set[str] = set()
+    for source in (local.roots, global_result.roots):
+        for node in source:
+            if node.id in seen_roots or node.id not in allowed_nodes:
+                continue
+            seen_roots.add(node.id)
+            roots.append(node)
+
+    return GuidedSearchResult(
+        mode="region_hybrid",
+        query=local.query,
+        roots=roots,
+        hits=hits,
+        edges=edges,
+        trace=list(local.trace) + list(global_result.trace),
+        provider=local.provider or global_result.provider,
+        model=local.model or global_result.model,
+        exhausted=local.exhausted and global_result.exhausted,
+        truncated=local.truncated or global_result.truncated or len(allowed_nodes) >= max_nodes,
+    )
+
+
 class RegionFirstSearch:
     """Route to a small set of regions before bounded graph activation."""
 
@@ -296,24 +369,36 @@ class RegionFirstSearch:
     ) -> RegionFirstSearchResult:
         root = self.query.resolve(node)
         route = self.index.route(goal, anchor_node_id=root.id, limit=self.region_limit)
-        allowed = self.index.node_ids_for_regions(route.selected_regions)
-        allowed.add(root.id)
 
-        seeds = [root.id]
-        for node_id in self.index.seed_nodes(goal, route, total_limit=self.seed_limit):
-            if node_id != root.id:
-                seeds.append(node_id)
-        seeds = seeds[: self.seed_limit]
-
-        search = self.searcher.from_roots(
-            seeds,
+        # Channel 1 preserves ordinary grounded structural traversal. Region
+        # routing must not erase a useful local path merely because lexical
+        # summaries rank another region more highly.
+        local = self.searcher.from_node(
+            root.id,
             goal,
             max_depth=max_depth,
             beam_width=beam_width,
             max_nodes=max_nodes,
             direction=direction,
+        )
+
+        # Channel 2 spends a small bounded budget on globally relevant regions.
+        # This can recover useful knowledge when the current semantic graph is
+        # missing a direct edge from the anchor path.
+        allowed = self.index.node_ids_for_regions(route.selected_regions)
+        global_budget = max(4, min(16, max(4, int(max_nodes)) // 4))
+        global_result = self.searcher.concept(
+            goal,
+            seed_limit=min(4, self.seed_limit, global_budget),
+            candidate_limit=max(8, min(32, len(allowed) or 8)),
+            max_depth=min(1, max_depth),
+            beam_width=min(4, beam_width),
+            max_nodes=global_budget,
+            direction=direction,
             allowed_node_ids=allowed,
         )
+
+        search = _merge_search_results(local, global_result, max_nodes=max_nodes)
         return RegionFirstSearchResult(search=search, route=route)
 
     def concept(
@@ -328,7 +413,9 @@ class RegionFirstSearch:
         direction: str = "both",
     ) -> RegionFirstSearchResult:
         route = self.index.route(concept, limit=self.region_limit)
-        allowed = self.index.node_ids_for_regions(route.selected_regions)
+        # Concept search is already global and lexically seeded. Keep that
+        # proven path intact for S1; the region route is recorded for analysis
+        # and becomes an optional accelerator rather than a hard filter.
         search = self.searcher.concept(
             concept,
             seed_limit=seed_limit,
@@ -337,6 +424,5 @@ class RegionFirstSearch:
             beam_width=beam_width,
             max_nodes=max_nodes,
             direction=direction,
-            allowed_node_ids=allowed,
         )
         return RegionFirstSearchResult(search=search, route=route)
