@@ -59,10 +59,18 @@ the always-on hybrid in the reference CI run. The controller now exposes
 
 ### S3 — Minimal sufficient context
 
-- [ ] Explicit post-activation context-selection stage
-- [ ] Evidence-preserving endpoint/relationship packing
-- [ ] Quality-retention benchmark against full context and baseline retrieval
-- [ ] Context-compression and downstream-cost metrics
+- [x] Explicit post-activation context-selection stage
+- [x] Evidence-preserving endpoint/relationship packing
+- [x] Quality-retention benchmark against the same model-facing activated context
+- [x] Context-compression and downstream-cost metrics
+
+S3 accepted benchmark: `substrate-baseline` run **35962742536** at
+`9781fcb0`. FeynMap self-hosting retained 100% essential recall (6/6) while
+reducing model-facing context from about 7,661 to 2,948 tokens (~61.5%).
+Pinned Wikonomi v1F retained 100% essential recall (5/5) while reducing
+model-facing context from about 6,313 to 2,686 tokens (~57.4%). The comparison
+uses the same model-facing activated payload on both sides rather than debug
+metadata.
 
 ### S4 — Active state for long-horizon agents
 
