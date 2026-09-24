@@ -143,6 +143,7 @@ class MinimalContextResult:
             "payload": dict(self.payload),
             "selected_node_ids": list(self.selected_node_ids),
             "selected_edge_ids": list(self.selected_edge_ids),
+            "critical_node_ids": list(self.critical_node_ids),
             "metrics": {
                 "activated_tokens": int(self.activated_tokens),
                 "delivered_tokens": int(self.delivered_tokens),
@@ -242,9 +243,16 @@ class MinimalContextPacker:
         node_scores = self._node_scores(result, hit_by_id, activated_edges)
         critical: Set[str] = set()
 
-        # Primary grounded root is always required.
-        if result.roots and result.roots[0].id in activated_ids:
-            critical.add(result.roots[0].id)
+        # Every activation root is required. In S2, secondary roots are
+        # deliberate region/global seeds used to recover knowledge that local
+        # traversal could not reach. S3 may compress their neighborhoods but
+        # must not erase the entry points that made the activation sufficient.
+        grounded_roots = [
+            node.id for node in result.roots
+            if node.id in activated_ids
+        ]
+        if grounded_roots:
+            critical.update(grounded_roots)
         else:
             critical.add(result.hits[0].node.id)
 
@@ -320,7 +328,7 @@ class MinimalContextPacker:
             file_rank.append((score, path, representative))
 
         file_rank.sort(key=lambda item: (-item[0], item[1], item[2]))
-        file_slots = min(6, max(3, int(math.ceil(math.sqrt(len(file_rank) or 1)))))
+        file_slots = min(4, max(2, int(math.ceil(math.sqrt(len(file_rank) or 1)))))
         for _, _, representative in file_rank[:file_slots]:
             critical.add(representative)
 
