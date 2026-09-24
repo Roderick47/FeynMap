@@ -286,7 +286,11 @@ def run_benchmark(
                     **node_kwargs
                 )
                 result = adaptive_result.search
-                route_payload = adaptive_result.route.to_dict()
+                route_payload = (
+                    adaptive_result.route.to_dict()
+                    if adaptive_result.route is not None
+                    else None
+                )
                 adaptive_payload = {
                     "stage": adaptive_result.stage,
                     "escalations": list(adaptive_result.escalations),
