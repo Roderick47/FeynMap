@@ -180,7 +180,7 @@ behavior.
 
 ### S4 — Active working state
 
-- [ ] Reuse query/task graph regions across multi-step agent/tool loops.
+- [x] Reuse query/task graph regions across multi-step agent/tool loops.
 - [x] Distinguish persistent graph memory from active context.
 - [x] Invalidate/re-expand the working set when new evidence changes the task.
 
@@ -432,24 +432,41 @@ Accepted reference: GitHub Actions `substrate-baseline` run **35962742536** at
 The activated/delivered comparison uses the same model-facing payload
 representation, not debug metadata.
 
-## S4 active-state foundation — 25 September 2026
+## S4 active-state outcome — 25 September 2026
 
-S4 introduces a separate portable working-state contract. Persistent graph
-truth stays in the immutable snapshot. The agent carries only stable references
-to the currently relevant nodes, edges, and regions plus bounded task memory
-(concepts, open questions, contradictions, and a small retrieval history).
+S4 introduces a portable snapshot-bound working-state contract. Persistent
+graph truth stays in the immutable snapshot. The agent carries stable
+node/edge/region references plus bounded task memory (concepts, open questions,
+contradictions, and compact retrieval history), not copied semantic objects.
 
-`ActiveStateRuntime` can rehydrate those references into exact canonical
-node/relationship evidence when the model needs it. Multi-step transitions
-retain a bounded connected subset of prior state, add newly activated S2/S3
-evidence, and drop stale peripheral references rather than appending every
-previous context package forever.
+`ActiveStateRuntime` rehydrates exact canonical evidence only when needed.
+For a follow-up rooted inside the current working set, FeynMap reconstructs a
+grounded active search view and runs the existing S2 provider-neutral precheck.
+If that state is sufficient, the follow-up skips a fresh graph traversal and
+global region route. If not, it falls through to normal S2 adaptive retrieval
+plus S3 minimal packing and merges the new evidence into the bounded state.
 
-A state is snapshot-bound. If repository evidence changes to a different
-snapshot, reuse is rejected and the task must re-expand from canonical truth.
-Explicit invalidation is also available for evidence changes that make the
-current working assumptions stale.
+A state is snapshot-bound. A different immutable snapshot invalidates reuse,
+and explicit invalidation is available when newly observed evidence makes the
+working assumptions stale.
 
-The remaining S4 optimization is to feed retained regions back into routing so
-repeated tool/agent steps can avoid redundant global routing, then benchmark
-cumulative context growth avoided over realistic long-horizon tasks.
+Accepted reference: GitHub Actions `substrate-baseline` run **36024684677** at
+`f78c7c77`.
+
+| S4 metric | Result |
+|---|---:|
+| Long-horizon steps | 12 |
+| Active-state reuse | 7/12 (58.3%) |
+| Re-expansions | 5/12 |
+| Essential-symbol recall | 100% (12/12) |
+| Mean fresh-S3 node retention | 78.0% |
+| Accumulated fresh S3 context | 26,119 tokens |
+| Final compact carried state | 2,439 tokens |
+| Carried-state growth avoided | 90.7% |
+| Fully rehydrated active context | 9,931 tokens |
+| Rehydrated growth avoided vs accumulated history | 62.0% |
+
+The 78% fresh-node retention is intentional rather than a quality failure:
+S4 is allowed to discard redundant fresh context as long as the task-critical
+evidence survives. The benchmark retained every declared essential symbol while
+keeping the carried state roughly one-tenth the size of accumulated context.
