@@ -141,3 +141,37 @@ def test_retrieval_recall_excludes_files_not_present_in_pre_fix_tree(tmp_path):
     assert task["unretrievable_essential_files"] == ["signals.py"]
     assert task["essential_recall"] == 1.0
     assert task["essential_full_recall"] is True
+
+
+
+def test_sparse_activation_benchmark_supports_adaptive_strategy(tmp_path):
+    (tmp_path / "app.py").write_text(
+        "def helper():\n"
+        "    return 1\n\n"
+        "def run():\n"
+        "    return helper()\n",
+        encoding="utf-8",
+    )
+
+    dataset = {
+        "schema": BENCHMARK_SCHEMA,
+        "name": "adaptive-tiny",
+        "analysis": {"language": "python", "framework": "none"},
+        "tasks": [
+            {
+                "id": "find-helper",
+                "mode": "node",
+                "root": "app.run",
+                "query": "find helper",
+                "essential_files": ["app.py"],
+                "search": {"max_depth": 2, "beam_width": 4, "max_nodes": 8},
+            }
+        ],
+    }
+
+    result = run_benchmark(str(tmp_path), dataset, strategy="adaptive")
+
+    assert result["strategy"] == "adaptive"
+    assert result["tasks"][0]["adaptive"] is not None
+    assert result["tasks"][0]["adaptive"]["stage"] in {"local", "region", "jev"}
+    assert result["summary"]["mean_local_sufficiency_score"] is not None
