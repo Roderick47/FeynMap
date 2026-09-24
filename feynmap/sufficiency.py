@@ -116,7 +116,7 @@ class SufficiencyEvaluator:
         min_specific_novel_terms: int = 2,
         stalled_coverage_threshold: float = 0.18,
         stalled_marginal_threshold: float = 0.01,
-        direct_stop_coverage: float = 0.22,
+        direct_stop_coverage: float = 0.18,
     ) -> None:
         self.graph = graph
         self.region_index = region_index or RegionIndex(graph)
