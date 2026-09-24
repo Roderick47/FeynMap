@@ -64,6 +64,7 @@ def test_sufficiency_escalates_when_unopened_region_contains_missing_query_term(
         graph,
         region_index=RegionIndex(graph),
         specific_term_threshold=0.60,
+        direct_stop_coverage=1.0,
     )
     result = AdaptiveSparseSearch(
         graph,
