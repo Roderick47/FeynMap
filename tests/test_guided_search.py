@@ -152,3 +152,29 @@ def test_sparse_beam_prefers_cross_boundary_edge_over_containment_noise():
     )
 
     assert [hit.node.id for hit in result.hits] == ["root2", "loaded"]
+
+
+
+def test_sparse_search_does_not_use_repository_root_as_global_shortcut():
+    repository = SemanticNode(id="repository:root", name="repo", kind=NodeKind.REPOSITORY)
+    module = SemanticNode(id="module", name="module", kind=NodeKind.MODULE)
+    start = SemanticNode(id="start", name="start", kind=NodeKind.FUNCTION)
+    unrelated = SemanticNode(id="unrelated", name="unrelated", kind=NodeKind.FUNCTION)
+    graph = SemanticGraph(
+        nodes=[repository, module, start, unrelated],
+        edges=[
+            SemanticEdge(id="repo-module", source="repository:root", target="module", kind=EdgeKind.CONTAINS, confidence=1.0),
+            SemanticEdge(id="module-start", source="module", target="start", kind=EdgeKind.CONTAINS, confidence=1.0),
+            SemanticEdge(id="repo-unrelated", source="repository:root", target="unrelated", kind=EdgeKind.CONTAINS, confidence=1.0),
+        ],
+    )
+
+    result = JevGuidedSearch(graph).from_node(
+        "start",
+        "find relevant application behavior",
+        max_depth=3,
+        beam_width=8,
+    )
+
+    assert "repository:root" not in {hit.node.id for hit in result.hits}
+    assert "unrelated" not in {hit.node.id for hit in result.hits}
