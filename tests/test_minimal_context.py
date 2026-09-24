@@ -204,3 +204,72 @@ def test_minimal_context_reports_insufficient_when_maximum_is_too_small():
     assert packed.sufficient is False
     assert set(packed.critical_node_ids) - set(packed.selected_node_ids)
     assert packed.to_dict()["metrics"]["critical_coverage"] < 1.0
+
+
+
+def test_minimal_context_protects_direct_cross_file_root_dependency():
+    root = SemanticNode(
+        "orchestrator",
+        "adaptive_from_node",
+        NodeKind.FUNCTION,
+        location=None,
+        evidence=_evidence(),
+    )
+    route = SemanticNode(
+        "route",
+        "route",
+        NodeKind.FUNCTION,
+        evidence=_evidence(),
+    )
+    # Give both nodes explicit different source files.
+    from feynmap.core import SourceLocation
+    root.location = SourceLocation(path="adaptive.py", line=1)
+    route.location = SourceLocation(path="routing.py", line=1)
+
+    graph = SemanticGraph(
+        [root, route],
+        [
+            SemanticEdge(
+                "route-call",
+                root.id,
+                route.id,
+                EdgeKind.CALLS,
+                1.0,
+                _evidence(),
+            )
+        ],
+    )
+    result = GuidedSearchResult(
+        mode="node",
+        query="adaptive region activation",
+        roots=[root],
+        hits=[
+            SearchHit(root, depth=0),
+            SearchHit(
+                route,
+                depth=1,
+                parent_id=root.id,
+                via_edge_id="route-call",
+            ),
+        ],
+        edges=list(graph.edges),
+        trace=[],
+        provider=None,
+        model=None,
+        exhausted=False,
+        truncated=False,
+    )
+
+    packed = MinimalContextPacker(graph).pack(
+        result,
+        budget=MinimalContextBudget(
+            max_tokens=900,
+            initial_tokens=500,
+            step_tokens=200,
+            max_nodes=3,
+            max_edges=2,
+        ),
+    )
+
+    assert "route" in packed.critical_node_ids
+    assert "route" in packed.selected_node_ids
