@@ -382,16 +382,26 @@ def run_benchmark(
         delivered_context_tokens = activation_metrics.activated_context_tokens
         token_compression_ratio = 1.0
         if context_strategy == "minimal":
+            initial_tokens = max(
+                700,
+                min(
+                    1800,
+                    int(math.ceil(
+                        activation_metrics.activated_context_tokens
+                        * context_token_ratio
+                    )),
+                ),
+            )
             max_tokens = (
                 int(context_max_tokens)
                 if context_max_tokens is not None
                 else max(
-                    512,
+                    initial_tokens,
                     min(
-                        1800,
+                        3200,
                         int(math.ceil(
                             activation_metrics.activated_context_tokens
-                            * context_token_ratio
+                            * 1.20
                         )),
                     ),
                 )
@@ -402,6 +412,8 @@ def run_benchmark(
                     max_tokens=max_tokens,
                     max_nodes=max(4, min(24, len(result.hits))),
                     max_edges=max(4, min(24, len(result.edges))),
+                    initial_tokens=initial_tokens,
+                    step_tokens=350,
                 ),
             )
             context_payload = packed.to_dict()
