@@ -20,6 +20,40 @@ from .contracts import JudgmentProvider, JudgmentQuestion, JudgmentResult
 
 _DIRECTION_VALUES = {"both", "outgoing", "incoming"}
 
+_EDGE_SEARCH_PRIORITY = {
+    EdgeKind.RENDERS: 1.00,
+    EdgeKind.EXTENDS: 1.00,
+    EdgeKind.LOADS: 1.00,
+    EdgeKind.REQUESTS: 1.00,
+    EdgeKind.INVOKES: 0.95,
+    EdgeKind.CONNECTS_TO: 0.95,
+    EdgeKind.FLOWS_TO: 0.95,
+    EdgeKind.ROUTES_TO: 0.95,
+    EdgeKind.SPAWNS: 0.95,
+    EdgeKind.EMITS: 0.90,
+    EdgeKind.SUBSCRIBES: 0.90,
+    EdgeKind.CALLS: 0.85,
+    EdgeKind.DEPENDS_ON: 0.75,
+    EdgeKind.USES_DATA: 0.75,
+    EdgeKind.READS: 0.75,
+    EdgeKind.WRITES: 0.75,
+    EdgeKind.MUTATES: 0.75,
+    EdgeKind.PERSISTS: 0.75,
+    EdgeKind.VALIDATES: 0.70,
+    EdgeKind.SERIALIZES: 0.70,
+    EdgeKind.CREATES: 0.65,
+    EdgeKind.DELETES: 0.65,
+    EdgeKind.AWAITS: 0.65,
+    EdgeKind.IMPORTS: 0.35,
+    EdgeKind.CONTAINS: 0.15,
+    EdgeKind.OWNS: 0.15,
+}
+
+
+def _edge_search_priority(edge: SemanticEdge) -> float:
+    return float(_EDGE_SEARCH_PRIORITY.get(edge.kind, 0.50))
+
+
 
 @dataclass(frozen=True)
 class SearchHit:
@@ -310,12 +344,17 @@ class JevGuidedSearch:
 
             available = max_nodes - len(hits)
             limit = min(beam_width, available, len(candidates))
+            structural_scores = {
+                node_id: _edge_search_priority(parents[node_id][1])
+                for node_id in candidates
+            }
             chosen, probabilities, judgment = self._select_candidates(
                 query=query,
                 anchor=frontier,
                 candidates=list(candidates.values()),
                 limit=limit,
                 phase="frontier",
+                deterministic_scores=structural_scores,
             )
             if judgment is not None:
                 last_model = judgment.model or last_model
@@ -382,8 +421,12 @@ class JevGuidedSearch:
         if not candidates or limit <= 0:
             return [], {}, None
 
+        structural_scores = {
+            node.id: float((deterministic_scores or {}).get(node.id, 0.0))
+            for node in candidates
+        }
         fallback_scores = {
-            node.id: float((deterministic_scores or {}).get(node.id, self._query_relevance(query, node)))
+            node.id: self._query_relevance(query, node) + structural_scores[node.id]
             for node in candidates
         }
         fallback = sorted(
@@ -395,10 +438,14 @@ class JevGuidedSearch:
             ),
         )
         if self.provider is None:
-            if phase == "frontier" and deterministic_scores is None and limit > 1:
+            if phase == "frontier" and limit > 1:
                 structural = sorted(
                     candidates,
-                    key=lambda node: (-float(node.confidence), node.id),
+                    key=lambda node: (
+                        -structural_scores[node.id],
+                        -float(node.confidence),
+                        node.id,
+                    ),
                 )
                 diversified: List[SemanticNode] = []
                 seen: Set[str] = set()
@@ -456,7 +503,7 @@ class JevGuidedSearch:
             candidates,
             key=lambda node: (
                 -probabilities[node.id],
-                -float((deterministic_scores or {}).get(node.id, self._query_relevance(query, node))),
+                -(self._query_relevance(query, node) + float((deterministic_scores or {}).get(node.id, 0.0))),
                 -float(node.confidence),
                 node.id,
             ),
