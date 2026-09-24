@@ -99,10 +99,6 @@ def test_sufficiency_result_is_deterministic_for_same_graph_and_query():
             )
         ],
     )
-    index = RegionIndex(graph)
-    evaluator = SufficiencyEvaluator(graph, region_index=index)
-    route = index.route("home template", anchor_node_id="root", limit=2)
-
     first = AdaptiveSparseSearch(graph, region_limit=2).from_node(
         "root",
         "home template",
@@ -117,7 +113,8 @@ def test_sufficiency_result_is_deterministic_for_same_graph_and_query():
     )
 
     assert first.local_sufficiency.to_dict() == second.local_sufficiency.to_dict()
-    assert route.selected_regions == first.route.selected_regions
+    assert first.route == second.route
+    assert first.route is None
 
 
 
