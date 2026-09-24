@@ -7,6 +7,7 @@ on:
       - feature/region-first-activation
       - feature/adaptive-sufficiency
       - feature/minimal-sufficient-context
+      - feature/active-state
   workflow_dispatch:
 
 jobs:
@@ -50,6 +51,13 @@ jobs:
             --strategy adaptive \
             --context-strategy minimal \
             --output baseline-results/feynmap-adaptive-minimal.json
+
+      - name: Run S4 active-state long-horizon self comparison
+        run: |
+          python -m feynmap.active_state_benchmark \
+            feynmap-src/experiments/active_state_feynmap_s4.json \
+            feynmap-src \
+            --output baseline-results/feynmap-active-state.json
 
       - name: Run pinned Wikonomi v1F comparison
         run: |
@@ -180,6 +188,28 @@ jobs:
                       row["count"],
                   )
               )
+
+          active_state_path = "baseline-results/feynmap-active-state.json"
+          if os.path.exists(active_state_path):
+              active_state = load(active_state_path)
+              s4 = active_state["summary"]
+              lines.extend([
+                  "",
+                  "## S4 active-state long-horizon comparison",
+                  "",
+                  "| Steps | Active-state reuse | Re-expansions | Essential recall | Fresh context accumulated | Final active context | Growth avoided |",
+                  "|---:|---:|---:|---:|---:|---:|---:|",
+                  "| %d | %d | %d | %.3f | %d | %d | %.1f%% |"
+                  % (
+                      active_state["step_count"],
+                      s4["reuse_steps"],
+                      s4["reexpanded_steps"],
+                      s4["mean_active_essential_recall"],
+                      s4["cumulative_fresh_context_tokens"],
+                      s4["final_active_working_context_tokens"],
+                      100.0 * s4["retained_context_growth_avoided_ratio"],
+                  ),
+              ])
 
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary_path:
