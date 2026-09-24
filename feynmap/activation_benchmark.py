@@ -377,9 +377,11 @@ def run_benchmark(
 
         activated_paths = _node_paths(result)
         activated_names = _node_names(result)
+        context_packer = MinimalContextPacker(graph)
+        model_activated_context_tokens = context_packer.activated_tokens(result)
         context_payload = None
         delivered_ids = [hit.node.id for hit in result.hits]
-        delivered_context_tokens = activation_metrics.activated_context_tokens
+        delivered_context_tokens = model_activated_context_tokens
         token_compression_ratio = 1.0
         if context_strategy == "minimal":
             initial_tokens = max(
@@ -406,7 +408,7 @@ def run_benchmark(
                     ),
                 )
             )
-            packed = MinimalContextPacker(graph).pack(
+            packed = context_packer.pack(
                 result,
                 budget=MinimalContextBudget(
                     max_tokens=max_tokens,
@@ -483,6 +485,7 @@ def run_benchmark(
                 "adaptive": adaptive_payload,
                 "metrics": metrics.to_dict(),
                 "context": context_payload,
+                "model_activated_context_tokens": model_activated_context_tokens,
                 "delivered_context_tokens": delivered_context_tokens,
                 "token_compression_ratio": token_compression_ratio,
                 "activation_essential_recall": activation_essential_recall,
@@ -535,6 +538,7 @@ def run_benchmark(
             "mean_knowledge_activation_ratio": _average(metric_rows, "knowledge_activation_ratio"),
             "mean_routing_elapsed_ms": _average(metric_rows, "routing_elapsed_ms"),
             "mean_activated_context_tokens": _average(metric_rows, "activated_context_tokens"),
+            "mean_model_activated_context_tokens": _average(task_rows, "model_activated_context_tokens"),
             "mean_delivered_context_tokens": _average(task_rows, "delivered_context_tokens"),
             "mean_token_compression_ratio": _average(task_rows, "token_compression_ratio"),
             "mean_activation_essential_recall": _average(task_rows, "activation_essential_recall"),
