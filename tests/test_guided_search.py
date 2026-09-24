@@ -129,3 +129,26 @@ def test_allowed_node_filter_bounds_search_candidates():
     )
     assert [hit.node.id for hit in result.hits] == ["root", "alpha", "target"]
     assert all("beta" not in step.candidates for step in result.trace)
+
+
+
+def test_sparse_beam_prefers_cross_boundary_edge_over_containment_noise():
+    root = SemanticNode(id="root2", name="Root2", kind=NodeKind.FUNCTION)
+    noise = SemanticNode(id="noise2", name="Noise", kind=NodeKind.CLASS)
+    loaded = SemanticNode(id="loaded", name="onboarding.js", kind=NodeKind.FILE)
+    graph = SemanticGraph(
+        nodes=[root, noise, loaded],
+        edges=[
+            SemanticEdge(id="contains-noise", source="root2", target="noise2", kind=EdgeKind.CONTAINS, confidence=1.0),
+            SemanticEdge(id="loads-script", source="root2", target="loaded", kind=EdgeKind.LOADS, confidence=1.0),
+        ],
+    )
+
+    result = JevGuidedSearch(graph).from_node(
+        "root2",
+        "continue through important application boundaries",
+        max_depth=1,
+        beam_width=1,
+    )
+
+    assert [hit.node.id for hit in result.hits] == ["root2", "loaded"]
