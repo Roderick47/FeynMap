@@ -134,17 +134,23 @@ class RegionIndex:
 
         summaries: Dict[str, RegionSummary] = {}
         document_frequency: Dict[str, int] = {}
+        self.node_terms: Dict[str, frozenset] = {}
         for key, nodes in grouped.items():
             terms: Set[str] = set(_tokens(key))
             for node in nodes:
-                terms.update(_tokens(node.id))
-                terms.update(_tokens(node.name))
-                terms.update(_tokens(node.qualified_name or ""))
-                terms.update(_tokens(node.kind.value))
-                terms.update(_tokens(node.language or ""))
-                terms.update(_tokens(node.framework or ""))
+                node_terms: Set[str] = set()
+                node_terms.update(_tokens(node.id))
+                node_terms.update(_tokens(node.name))
+                node_terms.update(_tokens(node.qualified_name or ""))
+                node_terms.update(_tokens(node.kind.value))
+                node_terms.update(_tokens(node.language or ""))
+                node_terms.update(_tokens(node.framework or ""))
+                if node.location:
+                    node_terms.update(_tokens(node.location.path))
                 for text in _flatten_attribute_text(node.attributes):
-                    terms.update(_tokens(text))
+                    node_terms.update(_tokens(text))
+                self.node_terms[node.id] = frozenset(node_terms)
+                terms.update(node_terms)
             summary = RegionSummary(
                 id=key,
                 node_ids=tuple(sorted(node.id for node in nodes)),
@@ -285,18 +291,12 @@ class RegionIndex:
                 node = self.graph.node(node_id)
                 if node is None:
                     continue
-                text = " ".join(
-                    [
-                        node.id,
-                        node.name,
-                        node.qualified_name or "",
-                        node.kind.value,
-                        node.location.path if node.location else "",
-                        " ".join(_flatten_attribute_text(node.attributes)),
-                    ]
+                terms = self.node_terms.get(node_id, frozenset())
+                score = sum(
+                    self._idf(token)
+                    for token in query_tokens
+                    if token in terms
                 )
-                terms = set(_tokens(text))
-                score = sum(self._idf(token) for token in query_tokens if token in terms)
                 if node.kind.value in {"file", "module"}:
                     score += 0.02
                 region_rows.append((score, node_id))

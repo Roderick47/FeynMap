@@ -80,6 +80,25 @@
         "max_nodes": 64,
         "direction": "both"
       }
+    },
+    {
+      "id": "self-adaptive-sufficiency",
+      "mode": "node",
+      "root": "feynmap.adaptive.AdaptiveSparseSearch.from_node",
+      "query": "How does adaptive sparse search decide whether local grounded context is sufficient and escalate to region activation or JEV only when needed?",
+      "essential_files": [
+        "feynmap/sufficiency.py",
+        "feynmap/routing.py"
+      ],
+      "essential_symbols": [
+        "feynmap.sufficiency.SufficiencyEvaluator.evaluate"
+      ],
+      "search": {
+        "max_depth": 4,
+        "beam_width": 8,
+        "max_nodes": 64,
+        "direction": "both"
+      }
     }
   ]
 }
