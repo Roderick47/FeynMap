@@ -125,3 +125,81 @@ def test_secondary_component_is_marked_as_grounded_anchor():
 
     assert "remote" in packed.selected_node_ids
     assert "remote" in packed.payload["anchors"]
+
+
+
+def test_minimal_context_protects_all_activation_roots():
+    graph, result = _graph_and_result()
+    secondary = SemanticNode(
+        "secondary-root",
+        "stale_model_region",
+        NodeKind.CLASS,
+        evidence=_evidence(),
+    )
+    graph.add_node(secondary)
+    rooted = GuidedSearchResult(
+        mode=result.mode,
+        query=result.query,
+        roots=list(result.roots) + [secondary],
+        hits=list(result.hits) + [
+            SearchHit(secondary, depth=0, seed_score=0.7)
+        ],
+        edges=result.edges,
+        trace=result.trace,
+        provider=result.provider,
+        model=result.model,
+        exhausted=result.exhausted,
+        truncated=result.truncated,
+    )
+
+    packed = MinimalContextPacker(graph).pack(
+        rooted,
+        budget=MinimalContextBudget(
+            max_tokens=1400,
+            initial_tokens=700,
+            step_tokens=200,
+            max_nodes=5,
+            max_edges=3,
+        ),
+    )
+
+    assert "root" in packed.critical_node_ids
+    assert "secondary-root" in packed.critical_node_ids
+    assert "secondary-root" in packed.selected_node_ids
+
+
+def test_minimal_context_grows_budget_until_critical_evidence_fits():
+    graph, result = _graph_and_result()
+    packed = MinimalContextPacker(graph).pack(
+        result,
+        budget=MinimalContextBudget(
+            max_tokens=1400,
+            initial_tokens=300,
+            step_tokens=250,
+            max_nodes=4,
+            max_edges=3,
+        ),
+    )
+
+    assert packed.packing_iterations >= 2
+    assert packed.selected_budget_tokens > 300
+    assert packed.sufficient is True
+    assert set(packed.critical_node_ids) <= set(packed.selected_node_ids)
+
+
+def test_minimal_context_reports_insufficient_when_maximum_is_too_small():
+    graph, result = _graph_and_result()
+    packed = MinimalContextPacker(graph).pack(
+        result,
+        budget=MinimalContextBudget(
+            max_tokens=350,
+            initial_tokens=300,
+            step_tokens=100,
+            max_nodes=4,
+            max_edges=3,
+        ),
+    )
+
+    assert packed.sufficient is False
+    assert set(packed.critical_node_ids) - set(packed.selected_node_ids)
+    assert packed.to_dict()["metrics"]["critical_coverage"] < 1.0
