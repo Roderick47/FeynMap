@@ -193,6 +193,7 @@ def run_benchmark(
                 "mode": mode,
                 "query": query,
                 "root": task.get("root"),
+                "revision": task.get("revision"),
                 "strategy": strategy,
                 "region_route": route_payload,
                 "metrics": metrics.to_dict(),
@@ -250,6 +251,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("dataset", help="Path to feynmap.sparse_activation_benchmark.v1 JSON")
     parser.add_argument("project_root", help="Repository root to analyze")
     parser.add_argument("--output", help="Optional path for the JSON result")
+    parser.add_argument("--task", action="append", dest="tasks", help="Run only the named task id; repeatable")
     parser.add_argument("--strategy", choices=("flat", "region"), default="flat")
     parser.add_argument("--region-limit", type=int, default=8)
     parser.add_argument("--region-seed-limit", type=int, default=12)
@@ -258,6 +260,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     with open(args.dataset, "r", encoding="utf-8") as handle:
         dataset = json.load(handle)
+
+    if args.tasks:
+        requested = set(args.tasks)
+        available = {str(task.get("id")) for task in dataset.get("tasks") or []}
+        missing = sorted(requested - available)
+        if missing:
+            raise ValueError("unknown benchmark task(s): %s" % ", ".join(missing))
+        dataset = dict(dataset)
+        dataset["tasks"] = [
+            task for task in dataset["tasks"] if str(task.get("id")) in requested
+        ]
 
     result = run_benchmark(
         args.project_root,
