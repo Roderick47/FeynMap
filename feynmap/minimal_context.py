@@ -271,6 +271,25 @@ class MinimalContextPacker:
             node_id: _node_terms(hit.node)
             for node_id, hit in hit_by_id.items()
         }
+
+        # Prefer symbols that jointly express several task concepts before
+        # one-term witnesses. This protects semantically specific APIs such as
+        # context_bundle for "token-budgeted context bundle" without relying
+        # on benchmark gold labels.
+        multi_term: List[Tuple[int, float, str]] = []
+        for node_id, terms in terms_by_id.items():
+            overlap_count = len(query_terms & terms)
+            if overlap_count < 2:
+                continue
+            multi_term.append((
+                overlap_count,
+                node_scores.get(node_id, 0.0),
+                node_id,
+            ))
+        multi_term.sort(key=lambda item: (-item[0], -item[1], item[2]))
+        for _, _, node_id in multi_term[:4]:
+            add_critical(node_id)
+
         for term in sorted(query_terms):
             candidates = [
                 node_id for node_id, terms in terms_by_id.items()
