@@ -177,6 +177,23 @@ class MinimalContextPacker:
     def __init__(self, graph: SemanticGraph) -> None:
         self.graph = graph
 
+    def activated_payload(self, result: GuidedSearchResult) -> Dict[str, Any]:
+        activated_ids = {hit.node.id for hit in result.hits}
+        activated_edges = [
+            edge
+            for edge in result.edges
+            if edge.source in activated_ids and edge.target in activated_ids
+        ]
+        return self._payload(
+            result,
+            [hit.node.id for hit in result.hits],
+            [edge.id for edge in activated_edges],
+            [node.id for node in result.roots if node.id in activated_ids],
+        )
+
+    def activated_tokens(self, result: GuidedSearchResult) -> int:
+        return estimate_tokens(self.activated_payload(result))
+
     def pack(
         self,
         result: GuidedSearchResult,
@@ -377,13 +394,7 @@ class MinimalContextPacker:
             if edge.source in activated_ids and edge.target in activated_ids
         ]
 
-        activated_payload = self._payload(
-            result,
-            [hit.node.id for hit in result.hits],
-            [edge.id for edge in activated_edges],
-            [node.id for node in result.roots if node.id in activated_ids],
-        )
-        activated_tokens = estimate_tokens(activated_payload)
+        activated_tokens = self.activated_tokens(result)
 
         if not result.hits:
             payload = self._payload(result, [], [], [])
