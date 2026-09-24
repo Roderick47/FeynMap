@@ -156,11 +156,11 @@ class SufficiencyEvaluator:
         activated_terms: Set[str] = set()
         activated_regions: Set[str] = set()
         for hit in result.hits:
+            cached_terms = self.region_index.node_terms.get(hit.node.id)
             activated_terms.update(
-                self.region_index.node_terms.get(
-                    hit.node.id,
-                    frozenset(_node_terms(hit.node)),
-                )
+                cached_terms
+                if cached_terms is not None
+                else frozenset(_node_terms(hit.node))
             )
             region = self.region_index.region_for_node(hit.node.id)
             if region:
@@ -204,15 +204,13 @@ class SufficiencyEvaluator:
             node = self.graph.node(node_id)
             if node is None:
                 continue
-            novel_terms.update(
-                uncovered
-                & set(
-                    self.region_index.node_terms.get(
-                        node_id,
-                        frozenset(_node_terms(node)),
-                    )
-                )
+            cached_terms = self.region_index.node_terms.get(node_id)
+            node_terms = (
+                cached_terms
+                if cached_terms is not None
+                else frozenset(_node_terms(node))
             )
+            novel_terms.update(uncovered & set(node_terms))
         novel_weight = sum(weight(term) for term in novel_terms)
         novel_region_gain = (
             novel_weight / total_weight
