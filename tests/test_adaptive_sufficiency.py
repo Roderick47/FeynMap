@@ -118,3 +118,43 @@ def test_sufficiency_result_is_deterministic_for_same_graph_and_query():
 
     assert first.local_sufficiency.to_dict() == second.local_sufficiency.to_dict()
     assert route.selected_regions == first.route.selected_regions
+
+
+
+def test_sufficiency_tracks_marginal_information_gain_by_depth():
+    root = _node("gain-root", "home", "views.py")
+    first = _node("gain-first", "price", "views.py")
+    second = _node("gain-second", "history", "models.py")
+    graph = SemanticGraph(
+        nodes=[root, first, second],
+        edges=[
+            SemanticEdge(
+                id="gain-1",
+                source=root.id,
+                target=first.id,
+                kind=EdgeKind.CALLS,
+                confidence=1.0,
+            ),
+            SemanticEdge(
+                id="gain-2",
+                source=first.id,
+                target=second.id,
+                kind=EdgeKind.DEPENDS_ON,
+                confidence=1.0,
+            ),
+        ],
+    )
+
+    adaptive = AdaptiveSparseSearch(graph, region_limit=2)
+    result = adaptive.from_node(
+        root.id,
+        "price history",
+        max_depth=2,
+        beam_width=2,
+        max_nodes=8,
+    )
+
+    gains = result.local_sufficiency.marginal_gain_by_depth
+    assert set(gains) == {0, 1, 2}
+    assert gains[1] > 0
+    assert gains[2] > 0
