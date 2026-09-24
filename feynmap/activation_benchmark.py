@@ -293,6 +293,7 @@ def run_benchmark(
                 )
                 adaptive_payload = {
                     "stage": adaptive_result.stage,
+                    "effort": adaptive_result.effort,
                     "escalations": list(adaptive_result.escalations),
                     "local_sufficiency": adaptive_result.local_sufficiency.to_dict(),
                     "final_sufficiency": (
@@ -319,6 +320,7 @@ def run_benchmark(
                 )
                 adaptive_payload = {
                     "stage": adaptive_result.stage,
+                    "effort": adaptive_result.effort,
                     "escalations": list(adaptive_result.escalations),
                     "local_sufficiency": adaptive_result.local_sufficiency.to_dict(),
                     "final_sufficiency": (
