@@ -9,7 +9,6 @@ compacted using the same transport-neutral representation as stored context.
 """
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
@@ -185,12 +184,122 @@ class MinimalContextPacker:
             # rather than returning a misleading empty context.
             raise ValueError("minimal context budget is too small for the primary grounded root")
 
+        # Reserve a few application-boundary continuations before ordinary
+        # node ranking. These often carry the critical cross-file/language
+        # evidence (render/load/request/route/invoke) that pure lexical scoring
+        # underweights.
+        boundary_edges = sorted(
+            (
+                edge for edge in activated_edges
+                if _edge_search_priority(edge) >= 0.95
+            ),
+            key=lambda edge: (-edge_scores.get(edge.id, 0.0), edge.id),
+        )
+        for edge in boundary_edges[:3]:
+            nodes = {edge.source, edge.target}
+            candidate_anchors = list(anchors)
+            if not nodes.intersection(selected_nodes):
+                anchor_id = max(
+                    nodes,
+                    key=lambda item: (node_scores.get(item, 0.0), item),
+                )
+                if anchor_id not in candidate_anchors:
+                    candidate_anchors.append(anchor_id)
+            if self._fits(
+                result,
+                budget,
+                selected_nodes | nodes,
+                selected_edges | {edge.id},
+                candidate_anchors,
+            ):
+                selected_nodes.update(nodes)
+                selected_edges.add(edge.id)
+                anchors[:] = candidate_anchors
+
+        # Preserve semantic diversity across source files. Activated search has
+        # already paid to discover these nodes; S3 should not spend its entire
+        # delivery budget on several variants from one file while dropping the
+        # best representative of another strong file/region.
+        file_groups: Dict[str, List[str]] = {}
+        hit_order = {hit.node.id: index for index, hit in enumerate(result.hits)}
+        for node_id in activated_ids - selected_nodes:
+            node = self.graph.node(node_id)
+            if node is None or node.location is None or not node.location.path:
+                continue
+            file_groups.setdefault(node.location.path, []).append(node_id)
+
+        file_candidates: List[Tuple[float, str, str]] = []
+        total_hits = max(1, len(result.hits))
+        for path, node_ids in file_groups.items():
+            representative = max(
+                node_ids,
+                key=lambda item: (
+                    node_scores.get(item, 0.0),
+                    -hit_order.get(item, total_hits),
+                    item,
+                ),
+            )
+            incident_boundary = 0.0
+            for edge in activated_edges:
+                if representative not in {edge.source, edge.target}:
+                    continue
+                incident_boundary = max(
+                    incident_boundary,
+                    _edge_search_priority(edge),
+                )
+            order_bonus = 1.0 - (
+                float(hit_order.get(representative, total_hits))
+                / float(total_hits)
+            )
+            file_score = (
+                node_scores.get(representative, 0.0)
+                + (0.55 * order_bonus)
+                + (0.65 * incident_boundary)
+            )
+            file_candidates.append((file_score, path, representative))
+
+        file_candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
+        diversity_slots = min(6, max(2, budget.max_nodes // 3))
+        admitted_files = 0
+        represented_paths = {
+            self.graph.node(node_id).location.path
+            for node_id in selected_nodes
+            if self.graph.node(node_id) is not None
+            and self.graph.node(node_id).location is not None
+        }
+        for _, path, node_id in file_candidates:
+            if admitted_files >= diversity_slots:
+                break
+            if path in represented_paths:
+                continue
+            closure_nodes, closure_edges, anchor_candidate = self._path_closure(
+                node_id,
+                hit_by_id,
+                edge_by_id,
+                selected_nodes,
+            )
+            candidate_anchors = list(anchors)
+            if anchor_candidate and anchor_candidate not in candidate_anchors:
+                candidate_anchors.append(anchor_candidate)
+            if self._fits(
+                result,
+                budget,
+                selected_nodes | set(closure_nodes),
+                selected_edges | set(closure_edges),
+                candidate_anchors,
+            ):
+                selected_nodes.update(closure_nodes)
+                selected_edges.update(closure_edges)
+                anchors[:] = candidate_anchors
+                represented_paths.add(path)
+                admitted_files += 1
+
         ranked_nodes = sorted(
             activated_ids - selected_nodes,
             key=lambda node_id: (-node_scores.get(node_id, 0.0), node_id),
         )
 
-        # First admit high-value nodes with their search-parent path. This keeps
+        # Then admit high-value nodes with their search-parent path. This keeps
         # the explanation/evidence chain whenever the search result records one.
         for node_id in ranked_nodes:
             closure_nodes, closure_edges, anchor_candidate = self._path_closure(
@@ -295,7 +404,7 @@ class MinimalContextPacker:
             degree[edge.target] = degree.get(edge.target, 0.0) + weight
         max_degree = max(degree.values(), default=1.0) or 1.0
 
-        roots = {node.id for node in result.roots}
+        primary_root = result.roots[0].id if result.roots else None
         scores: Dict[str, float] = {}
         for node_id, hit in hit_by_id.items():
             overlap = sum(
@@ -317,7 +426,7 @@ class MinimalContextPacker:
                 + (0.3 * seed)
                 + (0.3 * path)
                 + (0.35 / (1.0 + depth))
-                + (0.8 if node_id in roots else 0.0)
+                + (0.8 if node_id == primary_root else 0.0)
             )
             scores[node_id] = score
         return scores
