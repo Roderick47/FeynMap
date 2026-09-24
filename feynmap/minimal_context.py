@@ -135,14 +135,16 @@ class MinimalContextPacker:
             if edge.source in activated_ids and edge.target in activated_ids
         ]
 
-        activated_payload = {
-            "nodes": [_compact_node(hit.node) for hit in result.hits],
-            "relationships": [_compact_edge(edge) for edge in activated_edges],
-        }
+        activated_payload = self._payload(
+            result,
+            [hit.node.id for hit in result.hits],
+            [edge.id for edge in activated_edges],
+            [node.id for node in result.roots if node.id in activated_ids],
+        )
         activated_tokens = estimate_tokens(activated_payload)
 
         if not result.hits:
-            payload = self._payload(result, [], [], [], budget, activated_tokens)
+            payload = self._payload(result, [], [], [])
             delivered_tokens = estimate_tokens(payload)
             return MinimalContextResult(
                 payload=payload,
@@ -176,7 +178,6 @@ class MinimalContextPacker:
             anchors,
             [first_root],
             [],
-            activated_tokens,
         ):
             anchors.append(first_root)
         else:
@@ -207,7 +208,6 @@ class MinimalContextPacker:
                 selected_nodes | set(closure_nodes),
                 selected_edges | set(closure_edges),
                 candidate_anchors,
-                activated_tokens,
             ):
                 selected_nodes.update(closure_nodes)
                 selected_edges.update(closure_edges)
@@ -241,7 +241,6 @@ class MinimalContextPacker:
                 selected_nodes | nodes,
                 selected_edges | {edge.id},
                 candidate_anchors,
-                activated_tokens,
             ):
                 selected_nodes.update(nodes)
                 selected_edges.add(edge.id)
@@ -252,18 +251,20 @@ class MinimalContextPacker:
             sorted(selected_nodes, key=lambda item: (-node_scores.get(item, 0.0), item)),
             sorted(selected_edges, key=lambda item: (-edge_scores.get(item, 0.0), item)),
             anchors,
-            budget,
-            activated_tokens,
         )
         delivered_tokens = estimate_tokens(payload)
         return MinimalContextResult(
             payload=payload,
-            selected_node_ids=tuple(payload["selection"]["node_ids"]),
-            selected_edge_ids=tuple(payload["selection"]["edge_ids"]),
+            selected_node_ids=tuple(
+                sorted(selected_nodes, key=lambda item: (-node_scores.get(item, 0.0), item))
+            ),
+            selected_edge_ids=tuple(
+                sorted(selected_edges, key=lambda item: (-edge_scores.get(item, 0.0), item))
+            ),
             activated_tokens=activated_tokens,
             delivered_tokens=delivered_tokens,
             activated_nodes=len(activated_ids),
-            delivered_nodes=len(payload["selection"]["node_ids"]),
+            delivered_nodes=len(selected_nodes),
         )
 
     def _node_scores(
@@ -376,7 +377,6 @@ class MinimalContextPacker:
         anchors: Sequence[str],
         nodes: Sequence[str],
         edges: Sequence[str],
-        activated_tokens: int,
     ) -> bool:
         next_nodes = selected_nodes | set(nodes)
         next_edges = selected_edges | set(edges)
@@ -388,7 +388,6 @@ class MinimalContextPacker:
             next_nodes,
             next_edges,
             anchors,
-            activated_tokens,
         )
 
     def _fits(
@@ -398,7 +397,6 @@ class MinimalContextPacker:
         node_ids: Set[str],
         edge_ids: Set[str],
         anchors: Sequence[str],
-        activated_tokens: int,
     ) -> bool:
         if len(node_ids) > budget.max_nodes or len(edge_ids) > budget.max_edges:
             return False
@@ -407,8 +405,6 @@ class MinimalContextPacker:
             sorted(node_ids),
             sorted(edge_ids),
             list(anchors),
-            budget,
-            activated_tokens,
         )
         return estimate_tokens(payload) <= budget.max_tokens
 
@@ -418,8 +414,6 @@ class MinimalContextPacker:
         node_ids: Sequence[str],
         edge_ids: Sequence[str],
         anchors: Sequence[str],
-        budget: MinimalContextBudget,
-        activated_tokens: int,
     ) -> Dict[str, Any]:
         nodes = [
             self.graph.node(node_id)
@@ -428,7 +422,7 @@ class MinimalContextPacker:
         ]
         edge_map = {edge.id: edge for edge in result.edges}
         edges = [edge_map[edge_id] for edge_id in edge_ids if edge_id in edge_map]
-        payload: Dict[str, Any] = {
+        return {
             "query": result.query,
             "anchors": list(anchors),
             "nodes": [_compact_node(node) for node in nodes],
@@ -438,25 +432,4 @@ class MinimalContextPacker:
                 "unknown": "Omitted activated facts are not false; they were excluded by minimal-context selection.",
                 "selection": "Post-activation relevance + structural scoring with atomic relationship/endpoints and search-parent path preservation.",
             },
-            "selection": {
-                "node_ids": list(node_ids),
-                "edge_ids": list(edge_ids),
-                "activated_nodes": len(result.hits),
-                "activated_relationships": len(result.edges),
-                "omitted_nodes": max(0, len(result.hits) - len(node_ids)),
-                "omitted_relationships": max(0, len(result.edges) - len(edge_ids)),
-                "max_tokens": int(budget.max_tokens),
-                "max_nodes": int(budget.max_nodes),
-                "max_edges": int(budget.max_edges),
-                "activated_tokens": int(activated_tokens),
-            },
         }
-        # Fixed-point token estimate because the metric itself contributes a few
-        # characters to the serialized payload.
-        payload["selection"]["estimated_tokens"] = 0
-        while True:
-            size = estimate_tokens(payload)
-            if payload["selection"]["estimated_tokens"] == size:
-                break
-            payload["selection"]["estimated_tokens"] = size
-        return payload
