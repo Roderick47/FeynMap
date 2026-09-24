@@ -104,13 +104,13 @@
       "id": "self-minimal-sufficient-context",
       "mode": "node",
       "root": "feynmap.minimal_context.MinimalContextPacker.pack",
-      "query": "How does FeynMap compress an activated search into minimal downstream context while preserving grounded relationships, endpoints, evidence and search paths?",
+      "query": "How does FeynMap identify critical activated evidence, grow a context budget only when needed, and deliver a minimal grounded context bundle?",
       "essential_files": [
         "feynmap/minimal_context.py",
         "feynmap/context.py"
       ],
       "essential_symbols": [
-        "feynmap.minimal_context.MinimalContextPacker._path_closure"
+        "feynmap.minimal_context.MinimalContextPacker._critical_node_ids"
       ],
       "search": {
         "max_depth": 4,
