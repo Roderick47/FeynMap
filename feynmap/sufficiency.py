@@ -165,10 +165,32 @@ class SufficiencyEvaluator:
             if marginal_gain_by_depth
             else 0.0
         )
+        frontier_pressure = self._frontier_pressure(result)
+
+        if (
+            query_coverage < self.stalled_coverage_threshold
+            and marginal_gain <= self.stalled_marginal_threshold
+        ):
+            return SufficiencyResult(
+                sufficient=False,
+                score=query_coverage,
+                query_coverage=query_coverage,
+                novel_region_gain=0.0,
+                novel_specific_term_count=0,
+                novel_max_specificity=0.0,
+                actionable_query_terms=len(query_terms),
+                region_coverage=0.0,
+                marginal_gain=marginal_gain,
+                marginal_gain_by_depth=marginal_gain_by_depth,
+                frontier_pressure=frontier_pressure,
+                reasons=("low_coverage_stalled",),
+                uncovered_query_terms=tuple(sorted(uncovered)),
+                novel_region_terms=(),
+            )
+
         if query_coverage < self.direct_stop_coverage:
             return None
 
-        frontier_pressure = self._frontier_pressure(result)
         return SufficiencyResult(
             sufficient=True,
             score=query_coverage,
