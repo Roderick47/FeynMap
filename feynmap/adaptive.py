@@ -10,7 +10,8 @@ This layer owns effort allocation, not graph truth:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Sequence
+import time
+from typing import Any, Dict, Mapping, Optional, Sequence
 
 from .core import SemanticGraph
 from .judgment.contracts import JudgmentProvider
@@ -28,6 +29,7 @@ class AdaptiveSearchResult:
     escalations: Sequence[str]
     local_sufficiency: SufficiencyResult
     final_sufficiency: SufficiencyResult
+    timings_ms: Mapping[str, float]
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -36,6 +38,10 @@ class AdaptiveSearchResult:
             "route": self.route.to_dict(),
             "local_sufficiency": self.local_sufficiency.to_dict(),
             "final_sufficiency": self.final_sufficiency.to_dict(),
+            "timings_ms": {
+                key: float(value)
+                for key, value in self.timings_ms.items()
+            },
             "search": self.search.to_dict(),
         }
 
@@ -119,12 +125,17 @@ class AdaptiveSparseSearch:
         direction: str = "both",
     ) -> AdaptiveSearchResult:
         root = self.query.resolve(node)
+        timings: Dict[str, float] = {}
+
+        started = time.perf_counter()
         route = self.index.route(
             goal,
             anchor_node_id=root.id,
             limit=self.region_limit,
         )
+        timings["route"] = (time.perf_counter() - started) * 1000.0
 
+        started = time.perf_counter()
         local = self.local_searcher.from_node(
             root.id,
             goal,
@@ -133,6 +144,9 @@ class AdaptiveSparseSearch:
             max_nodes=max_nodes,
             direction=direction,
         )
+        timings["local_search"] = (time.perf_counter() - started) * 1000.0
+
+        started = time.perf_counter()
         global_budget = max(4, min(16, max(4, int(max_nodes)) // 4))
         region_seeds = self.index.seed_nodes(
             goal,
@@ -150,6 +164,7 @@ class AdaptiveSparseSearch:
             route,
             representative_ids=region_seeds,
         )
+        timings["sufficiency"] = (time.perf_counter() - started) * 1000.0
         if local_sufficiency.sufficient:
             return AdaptiveSearchResult(
                 search=local,
@@ -158,8 +173,10 @@ class AdaptiveSparseSearch:
                 escalations=(),
                 local_sufficiency=local_sufficiency,
                 final_sufficiency=local_sufficiency,
+                timings_ms=timings,
             )
 
+        started = time.perf_counter()
         region_search = self._activate_regions(
             local,
             goal,
@@ -170,12 +187,17 @@ class AdaptiveSparseSearch:
             direction=direction,
             region_seeds=region_seeds,
         )
+        timings["region_search"] = (time.perf_counter() - started) * 1000.0
+        started = time.perf_counter()
         region_sufficiency = self.sufficiency.evaluate(
             goal,
             region_search,
             route,
             representative_ids=region_seeds,
         )
+        timings["post_region_sufficiency"] = (
+            time.perf_counter() - started
+        ) * 1000.0
         if region_sufficiency.sufficient or self.provider_searcher is None:
             return AdaptiveSearchResult(
                 search=region_search,
@@ -184,8 +206,10 @@ class AdaptiveSparseSearch:
                 escalations=("region",),
                 local_sufficiency=local_sufficiency,
                 final_sufficiency=region_sufficiency,
+                timings_ms=timings,
             )
 
+        started = time.perf_counter()
         judged = self.provider_searcher.from_node(
             root.id,
             goal,
@@ -194,6 +218,7 @@ class AdaptiveSparseSearch:
             max_nodes=max_nodes,
             direction=direction,
         )
+        timings["jev_search"] = (time.perf_counter() - started) * 1000.0
         merged = _merge_search_results(
             region_search,
             judged,
@@ -212,6 +237,7 @@ class AdaptiveSparseSearch:
             escalations=("region", "jev"),
             local_sufficiency=local_sufficiency,
             final_sufficiency=final_sufficiency,
+            timings_ms=timings,
         )
 
     def concept(
@@ -225,7 +251,11 @@ class AdaptiveSparseSearch:
         max_nodes: int = 64,
         direction: str = "both",
     ) -> AdaptiveSearchResult:
+        timings: Dict[str, float] = {}
+        started = time.perf_counter()
         route = self.index.route(concept, limit=self.region_limit)
+        timings["route"] = (time.perf_counter() - started) * 1000.0
+        started = time.perf_counter()
         local = self.local_searcher.concept(
             concept,
             seed_limit=seed_limit,
@@ -235,6 +265,8 @@ class AdaptiveSparseSearch:
             max_nodes=max_nodes,
             direction=direction,
         )
+        timings["local_search"] = (time.perf_counter() - started) * 1000.0
+        started = time.perf_counter()
         region_seeds = self.index.seed_nodes(
             concept,
             route,
@@ -250,6 +282,7 @@ class AdaptiveSparseSearch:
             route,
             representative_ids=region_seeds,
         )
+        timings["sufficiency"] = (time.perf_counter() - started) * 1000.0
         if local_sufficiency.sufficient or self.provider_searcher is None:
             return AdaptiveSearchResult(
                 search=local,
@@ -258,8 +291,10 @@ class AdaptiveSparseSearch:
                 escalations=(),
                 local_sufficiency=local_sufficiency,
                 final_sufficiency=local_sufficiency,
+                timings_ms=timings,
             )
 
+        started = time.perf_counter()
         judged = self.provider_searcher.concept(
             concept,
             seed_limit=seed_limit,
@@ -269,6 +304,7 @@ class AdaptiveSparseSearch:
             max_nodes=max_nodes,
             direction=direction,
         )
+        timings["jev_search"] = (time.perf_counter() - started) * 1000.0
         final_sufficiency = self.sufficiency.evaluate(
             concept,
             judged,
@@ -282,4 +318,5 @@ class AdaptiveSparseSearch:
             escalations=("jev",),
             local_sufficiency=local_sufficiency,
             final_sufficiency=final_sufficiency,
+            timings_ms=timings,
         )
