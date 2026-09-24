@@ -150,7 +150,7 @@ GROUNDING_TOOLS: Tuple[GroundingTool, ...] = (
                 "max_depth": {"type": "integer", "minimum": 0, "maximum": 12, "default": 4},
                 "beam_width": {"type": "integer", "minimum": 1, "maximum": 64, "default": 8},
                 "max_nodes": {"type": "integer", "minimum": 1, "maximum": 256, "default": 64},
-                "max_tokens": {"type": "integer", "minimum": 128, "maximum": 100000, "default": 1800},
+                "max_tokens": {"type": "integer", "minimum": 128, "maximum": 100000, "default": 3200},
                 "max_context_nodes": {"type": "integer", "minimum": 1, "maximum": 256, "default": 24},
                 "max_context_edges": {"type": "integer", "minimum": 0, "maximum": 512, "default": 24},
                 "direction": {"type": "string", "enum": ["outgoing", "incoming", "both"], "default": "both"},
@@ -262,7 +262,7 @@ class GroundingService:
                 max_nodes=int(args.get("max_nodes", 64)),
                 direction=str(args.get("direction", "both")),
                 context_budget=MinimalContextBudget(
-                    max_tokens=int(args.get("max_tokens", 1800)),
+                    max_tokens=int(args.get("max_tokens", 3200)),
                     max_nodes=int(args.get("max_context_nodes", 24)),
                     max_edges=int(args.get("max_context_edges", 24)),
                 ),
