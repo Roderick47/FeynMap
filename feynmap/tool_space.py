@@ -223,3 +223,141 @@ class ToolCapabilitySpace:
             "tool_count": len(self.nodes),
             "nodes": [node.to_dict() for node in self.nodes],
         }
+
+
+TOOL_SELECTION_SCHEMA = "feynmap.tool_selection"
+TOOL_SELECTION_SCHEMA_VERSION = "1.0.0"
+
+_ROUTING_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how",
+    "in", "into", "is", "it", "of", "on", "or", "the", "to", "with",
+}
+
+
+def _routing_tokens(value: str) -> Tuple[str, ...]:
+    return tuple(
+        token
+        for token in _tokens(value)
+        if token not in _ROUTING_STOPWORDS
+    )
+
+
+@dataclass(frozen=True)
+class ToolSelectionHit:
+    """One deterministic tool-space routing result."""
+
+    node: ToolCapabilityNode
+    score: float
+    matched_terms: Tuple[str, ...]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "tool_id": self.node.id,
+            "name": self.node.name,
+            "score": float(self.score),
+            "matched_terms": list(self.matched_terms),
+        }
+
+
+@dataclass(frozen=True)
+class ToolSelectionResult:
+    """Small ranked subset selected from a grounded capability space."""
+
+    query: str
+    candidate_count: int
+    actionable_query_terms: Tuple[str, ...]
+    hits: Tuple[ToolSelectionHit, ...]
+
+    @property
+    def selection_ratio(self) -> float:
+        if self.candidate_count <= 0:
+            return 0.0
+        return float(len(self.hits)) / float(self.candidate_count)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "schema": TOOL_SELECTION_SCHEMA,
+            "schema_version": TOOL_SELECTION_SCHEMA_VERSION,
+            "query": self.query,
+            "candidate_count": int(self.candidate_count),
+            "selected_count": len(self.hits),
+            "selection_ratio": self.selection_ratio,
+            "actionable_query_terms": list(self.actionable_query_terms),
+            "hits": [hit.to_dict() for hit in self.hits],
+        }
+
+
+class DeterministicToolSelector:
+    """Cheap provider-free lexical router over declared tool capabilities.
+
+    S5.3 scores only terms grounded in the declared tool contracts. It does not
+    invoke JEV, infer undeclared capabilities, or fall back to arbitrary tools
+    when the query has no grounded lexical match.
+    """
+
+    def __init__(self, space: ToolCapabilitySpace) -> None:
+        self.space = space
+        self._document_frequency: Dict[str, int] = {}
+        self._node_terms: Dict[str, frozenset] = {}
+        for node in space.nodes:
+            terms = frozenset(_routing_tokens(" ".join(node.terms)))
+            self._node_terms[node.id] = terms
+            for term in terms:
+                self._document_frequency[term] = (
+                    self._document_frequency.get(term, 0) + 1
+                )
+
+    def _idf(self, term: str) -> float:
+        count = self._document_frequency.get(term, 0)
+        return math.log(
+            (len(self.space.nodes) + 1.0) / (count + 1.0)
+        ) + 1.0
+
+    def select(self, query: str, *, limit: int = 4) -> ToolSelectionResult:
+        text = str(query).strip()
+        if not text:
+            raise ValueError("tool routing query is required")
+        limit = max(1, int(limit))
+
+        query_terms = set(_routing_tokens(text))
+        actionable = tuple(sorted(
+            term for term in query_terms
+            if term in self._document_frequency
+        ))
+
+        ranked = []
+        for node in self.space.nodes:
+            terms = self._node_terms[node.id]
+            overlap = set(actionable) & set(terms)
+            if not overlap:
+                continue
+
+            name_terms = set(_routing_tokens(node.name))
+            weighted = sum(
+                self._idf(term) * (1.75 if term in name_terms else 1.0)
+                for term in overlap
+            )
+            denominator = sum(
+                self._idf(term) * 1.75
+                for term in actionable
+            )
+            score = weighted / denominator if denominator > 0.0 else 0.0
+            ranked.append((
+                score,
+                len(overlap),
+                node.id,
+                ToolSelectionHit(
+                    node=node,
+                    score=score,
+                    matched_terms=tuple(sorted(overlap)),
+                ),
+            ))
+
+        ranked.sort(key=lambda item: (-item[0], -item[1], item[2]))
+        hits = tuple(item[3] for item in ranked[:limit])
+        return ToolSelectionResult(
+            query=text,
+            candidate_count=len(self.space.nodes),
+            actionable_query_terms=actionable,
+            hits=hits,
+        )
