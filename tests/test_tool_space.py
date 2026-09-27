@@ -2,6 +2,8 @@ from dataclasses import dataclass
 
 import pytest
 
+import feynmap.tool_space as tool_space_module
+
 from feynmap.grounding import GROUNDING_TOOL_CONTRACT_VERSION, GROUNDING_TOOLS
 from feynmap.tool_space import (
     TOOL_CAPABILITY_SCHEMA,
@@ -238,3 +240,33 @@ def test_deterministic_selector_requires_non_empty_query():
 
     with pytest.raises(ValueError, match="query is required"):
         selector.select("   ")
+
+
+
+def test_routing_tokenization_cache_reuses_identical_text(monkeypatch):
+    original_tokens = tool_space_module._tokens
+    calls = []
+
+    def counted_tokens(value):
+        calls.append(value)
+        return original_tokens(value)
+
+    tool_space_module._routing_tokens.cache_clear()
+    monkeypatch.setattr(tool_space_module, "_tokens", counted_tokens)
+    try:
+        first = tool_space_module._routing_tokens("trace path source target")
+        second = tool_space_module._routing_tokens("trace path source target")
+        third = tool_space_module._routing_tokens("find incoming callers")
+
+        assert first == second
+        assert third != first
+        assert calls == [
+            "trace path source target",
+            "find incoming callers",
+        ]
+        info = tool_space_module._routing_tokens.cache_info()
+        assert info.hits == 1
+        assert info.misses == 2
+        assert info.maxsize == 2048
+    finally:
+        tool_space_module._routing_tokens.cache_clear()
