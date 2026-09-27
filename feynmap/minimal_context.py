@@ -112,6 +112,14 @@ class MinimalContextBudget:
         )
 
 
+@dataclass
+class _PackPayloadCache:
+    """Compact payload fragments reused only within one pack() invocation."""
+
+    nodes: Dict[str, Dict[str, Any]]
+    edges: Dict[str, Dict[str, Any]]
+
+
 @dataclass(frozen=True)
 class MinimalContextResult:
     payload: Mapping[str, Any]
@@ -177,7 +185,7 @@ class MinimalContextPacker:
     def __init__(self, graph: SemanticGraph) -> None:
         self.graph = graph
 
-    def activated_payload(self, result: GuidedSearchResult) -> Dict[str, Any]:
+    def activated_payload(\n        self,\n        result: GuidedSearchResult,\n        *,\n        payload_cache: Optional[_PackPayloadCache] = None,\n    ) -> Dict[str, Any]:
         activated_ids = {hit.node.id for hit in result.hits}
         activated_edges = [
             edge
@@ -188,11 +196,7 @@ class MinimalContextPacker:
             result,
             [hit.node.id for hit in result.hits],
             [edge.id for edge in activated_edges],
-            [node.id for node in result.roots if node.id in activated_ids],
-        )
-
-    def activated_tokens(self, result: GuidedSearchResult) -> int:
-        return estimate_tokens(self.activated_payload(result))
+            [node.id for node in result.roots if node.id in activated_ids],\n            payload_cache=payload_cache,\n        )\n\n    def activated_tokens(\n        self,\n        result: GuidedSearchResult,\n        *,\n        payload_cache: Optional[_PackPayloadCache] = None,\n    ) -> int:\n        return estimate_tokens(\n            self.activated_payload(result, payload_cache=payload_cache)\n        )
 
     def pack(
         self,
@@ -200,8 +204,7 @@ class MinimalContextPacker:
         *,
         budget: Optional[MinimalContextBudget] = None,
     ) -> MinimalContextResult:
-        requested = (budget or MinimalContextBudget()).normalized()
-        critical = self._critical_node_ids(result)
+        requested = (budget or MinimalContextBudget()).normalized()\n        critical = self._critical_node_ids(result)\n        payload_cache = _PackPayloadCache(nodes={}, edges={})
 
         caps: List[int] = []
         cap = requested.initial_tokens
@@ -223,8 +226,7 @@ class MinimalContextPacker:
             packed = self._pack_once(
                 result,
                 budget=current_budget,
-                critical_node_ids=critical,
-            )
+                critical_node_ids=critical,\n                payload_cache=payload_cache,\n            )
             packed = MinimalContextResult(
                 payload=packed.payload,
                 selected_node_ids=packed.selected_node_ids,
@@ -422,8 +424,7 @@ class MinimalContextPacker:
         result: GuidedSearchResult,
         *,
         budget: MinimalContextBudget,
-        critical_node_ids: Sequence[str] = (),
-    ) -> MinimalContextResult:
+        critical_node_ids: Sequence[str] = (),\n        payload_cache: Optional[_PackPayloadCache] = None,\n    ) -> MinimalContextResult:
         hit_by_id: Dict[str, SearchHit] = {hit.node.id: hit for hit in result.hits}
         activated_ids = set(hit_by_id)
         edge_by_id = {edge.id: edge for edge in result.edges}
@@ -433,10 +434,10 @@ class MinimalContextPacker:
             if edge.source in activated_ids and edge.target in activated_ids
         ]
 
-        activated_tokens = self.activated_tokens(result)
+        activated_tokens = self.activated_tokens(\n            result, payload_cache=payload_cache\n        )
 
         if not result.hits:
-            payload = self._payload(result, [], [], [])
+            payload = self._payload(\n                result, [], [], [], payload_cache=payload_cache\n            )
             delivered_tokens = estimate_tokens(payload)
             return MinimalContextResult(
                 payload=payload,
@@ -472,9 +473,7 @@ class MinimalContextPacker:
             selected_nodes,
             selected_edges,
             anchors,
-            [first_root],
-            [],
-        ):
+            [first_root],\n            [],\n            payload_cache=payload_cache,\n        ):
             anchors.append(first_root)
         else:
             # The compact root should fit all supported budgets; fail clearly
@@ -501,8 +500,7 @@ class MinimalContextPacker:
                 budget,
                 selected_nodes | set(closure_nodes),
                 selected_edges | set(closure_edges),
-                candidate_anchors,
-            ):
+                candidate_anchors,\n                payload_cache=payload_cache,\n            ):
                 selected_nodes.update(closure_nodes)
                 selected_edges.update(closure_edges)
                 anchors[:] = candidate_anchors
@@ -667,8 +665,7 @@ class MinimalContextPacker:
                 budget,
                 selected_nodes | set(closure_nodes),
                 selected_edges | set(closure_edges),
-                candidate_anchors,
-            ):
+                candidate_anchors,\n                payload_cache=payload_cache,\n            ):
                 selected_nodes.update(closure_nodes)
                 selected_edges.update(closure_edges)
                 anchors[:] = candidate_anchors
@@ -697,8 +694,7 @@ class MinimalContextPacker:
                 budget,
                 selected_nodes | set(closure_nodes),
                 selected_edges | set(closure_edges),
-                candidate_anchors,
-            ):
+                candidate_anchors,\n                payload_cache=payload_cache,\n            ):
                 selected_nodes.update(closure_nodes)
                 selected_edges.update(closure_edges)
                 anchors[:] = candidate_anchors
@@ -730,8 +726,7 @@ class MinimalContextPacker:
                 budget,
                 selected_nodes | nodes,
                 selected_edges | {edge.id},
-                candidate_anchors,
-            ):
+                candidate_anchors,\n                payload_cache=payload_cache,\n            ):
                 selected_nodes.update(nodes)
                 selected_edges.add(edge.id)
                 anchors[:] = candidate_anchors
@@ -740,9 +735,7 @@ class MinimalContextPacker:
             result,
             sorted(selected_nodes, key=lambda item: (-node_scores.get(item, 0.0), item)),
             sorted(selected_edges, key=lambda item: (-edge_scores.get(item, 0.0), item)),
-            anchors,
-        )
-        delivered_tokens = estimate_tokens(payload)
+            anchors,\n            payload_cache=payload_cache,\n        )\n        delivered_tokens = estimate_tokens(payload)
         return MinimalContextResult(
             payload=payload,
             selected_node_ids=tuple(
@@ -870,8 +863,7 @@ class MinimalContextPacker:
         selected_edges: Set[str],
         anchors: Sequence[str],
         nodes: Sequence[str],
-        edges: Sequence[str],
-    ) -> bool:
+        edges: Sequence[str],\n        *,\n        payload_cache: Optional[_PackPayloadCache] = None,\n    ) -> bool:
         next_nodes = selected_nodes | set(nodes)
         next_edges = selected_edges | set(edges)
         if len(next_nodes) > budget.max_nodes or len(next_edges) > budget.max_edges:
@@ -880,47 +872,24 @@ class MinimalContextPacker:
             result,
             budget,
             next_nodes,
-            next_edges,
-            anchors,
-        )
-
-    def _fits(
+            next_edges,\n            anchors,\n            payload_cache=payload_cache,\n        )\n\n    def _fits(
         self,
         result: GuidedSearchResult,
         budget: MinimalContextBudget,
         node_ids: Set[str],
         edge_ids: Set[str],
-        anchors: Sequence[str],
-    ) -> bool:
-        if len(node_ids) > budget.max_nodes or len(edge_ids) > budget.max_edges:
+        anchors: Sequence[str],\n        *,\n        payload_cache: Optional[_PackPayloadCache] = None,\n    ) -> bool:\n        if len(node_ids) > budget.max_nodes or len(edge_ids) > budget.max_edges:
             return False
         payload = self._payload(
             result,
             sorted(node_ids),
             sorted(edge_ids),
-            list(anchors),
-        )
-        return estimate_tokens(payload) <= budget.max_tokens
-
-    def _payload(
+            list(anchors),\n            payload_cache=payload_cache,\n        )\n        return estimate_tokens(payload) <= budget.max_tokens\n\n    def _payload(
         self,
         result: GuidedSearchResult,
         node_ids: Sequence[str],
         edge_ids: Sequence[str],
-        anchors: Sequence[str],
-    ) -> Dict[str, Any]:
-        nodes = [
-            self.graph.node(node_id)
-            for node_id in node_ids
-            if self.graph.node(node_id) is not None
-        ]
-        edge_map = {edge.id: edge for edge in result.edges}
-        edges = [edge_map[edge_id] for edge_id in edge_ids if edge_id in edge_map]
-        return {
-            "query": result.query,
-            "anchors": list(anchors),
-            "nodes": [_compact_node(node) for node in nodes],
-            "relationships": [_compact_edge(edge) for edge in edges],
+        anchors: Sequence[str],\n        *,\n        payload_cache: Optional[_PackPayloadCache] = None,\n    ) -> Dict[str, Any]:\n        edge_map = {edge.id: edge for edge in result.edges}\n\n        compact_nodes: List[Dict[str, Any]] = []\n        for node_id in node_ids:\n            node = self.graph.node(node_id)\n            if node is None:\n                continue\n            if payload_cache is None:\n                compact = _compact_node(node)\n            else:\n                compact = payload_cache.nodes.get(node_id)\n                if compact is None:\n                    compact = _compact_node(node)\n                    payload_cache.nodes[node_id] = compact\n            compact_nodes.append(compact)\n\n        compact_edges: List[Dict[str, Any]] = []\n        for edge_id in edge_ids:\n            edge = edge_map.get(edge_id)\n            if edge is None:\n                continue\n            if payload_cache is None:\n                compact = _compact_edge(edge)\n            else:\n                compact = payload_cache.edges.get(edge_id)\n                if compact is None:\n                    compact = _compact_edge(edge)\n                    payload_cache.edges[edge_id] = compact\n            compact_edges.append(compact)\n\n        return {\n            "query": result.query,\n            "anchors": list(anchors),\n            "nodes": compact_nodes,\n            "relationships": compact_edges,
             "grounding": {
                 "known": "Every included node and relationship comes from the activated FeynMap semantic graph.",
                 "unknown": "Omitted activated facts are not false; they were excluded by minimal-context selection.",
