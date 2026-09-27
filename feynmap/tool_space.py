@@ -10,6 +10,7 @@ invent effects, permissions, or semantic relationships.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -98,11 +99,14 @@ class ToolCapabilityNode:
         namespace = str(namespace).strip()
         if not namespace:
             raise ValueError("tool namespace is required")
+        contract_version = str(contract_version).strip()
+        if not contract_version:
+            raise ValueError("tool contract version is required")
         name = str(tool.name).strip()
         if not name:
             raise ValueError("tool name is required")
 
-        schema = dict(tool.input_schema)
+        schema = copy.deepcopy(dict(tool.input_schema))
         properties = schema.get("properties")
         property_names = (
             tuple(sorted(str(key) for key in properties))
@@ -129,7 +133,7 @@ class ToolCapabilityNode:
             "description": str(tool.description),
             "input_schema": schema,
             "read_only": bool(tool.read_only),
-            "contract_version": str(contract_version),
+            "contract_version": contract_version,
         }
         terms = _tokens(
             "%s %s %s"
@@ -146,7 +150,7 @@ class ToolCapabilityNode:
             description=str(tool.description),
             input_schema=schema,
             read_only=bool(tool.read_only),
-            contract_version=str(contract_version),
+            contract_version=contract_version,
             contract_digest=_contract_digest(declared),
             terms=terms,
             required_inputs=required,
@@ -161,7 +165,7 @@ class ToolCapabilityNode:
             "namespace": self.namespace,
             "name": self.name,
             "description": self.description,
-            "input_schema": dict(self.input_schema),
+            "input_schema": copy.deepcopy(dict(self.input_schema)),
             "read_only": self.read_only,
             "contract_version": self.contract_version,
             "contract_digest": self.contract_digest,
@@ -191,6 +195,12 @@ class ToolCapabilitySpace:
         namespace: str,
         contract_version: str,
     ) -> "ToolCapabilitySpace":
+        namespace = str(namespace).strip()
+        if not namespace:
+            raise ValueError("tool namespace is required")
+        contract_version = str(contract_version).strip()
+        if not contract_version:
+            raise ValueError("tool contract version is required")
         nodes = tuple(
             ToolCapabilityNode.from_contract(
                 tool,
@@ -203,8 +213,8 @@ class ToolCapabilitySpace:
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate tool capability ids are not allowed")
         return cls(
-            namespace=str(namespace),
-            contract_version=str(contract_version),
+            namespace=namespace,
+            contract_version=contract_version,
             nodes=tuple(sorted(nodes, key=lambda item: item.id)),
         )
 

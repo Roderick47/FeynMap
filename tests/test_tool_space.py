@@ -96,6 +96,53 @@ def test_capability_digest_is_independent_of_schema_dictionary_order():
     assert left.optional_inputs == right.optional_inputs
 
 
+def test_capability_schema_is_detached_from_source_and_serialized_payload():
+    @dataclass(frozen=True)
+    class Contract:
+        name: str
+        description: str
+        input_schema: dict
+        read_only: bool = True
+
+    source_schema = {
+        "type": "object",
+        "properties": {"symbol": {"type": "string"}},
+        "required": ["symbol"],
+    }
+    node = ToolCapabilityNode.from_contract(
+        Contract("lookup", "Lookup a symbol.", source_schema),
+        namespace="test",
+        contract_version="1",
+    )
+    original_digest = node.contract_digest
+
+    source_schema["properties"]["symbol"]["type"] = "number"
+    payload = node.to_dict()
+    payload["input_schema"]["properties"]["symbol"]["type"] = "boolean"
+
+    assert node.input_schema["properties"]["symbol"]["type"] == "string"
+    assert node.contract_digest == original_digest
+
+
+def test_tool_space_normalizes_identity_and_validates_empty_spaces():
+    tool = GROUNDING_TOOLS[0]
+    space = ToolCapabilitySpace.from_contracts(
+        (tool,),
+        namespace="  grounding  ",
+        contract_version="  2.1.0  ",
+    )
+
+    assert space.namespace == "grounding"
+    assert space.contract_version == "2.1.0"
+    assert space.nodes[0].namespace == space.namespace
+    assert space.nodes[0].contract_version == space.contract_version
+
+    with pytest.raises(ValueError, match="namespace is required"):
+        ToolCapabilitySpace.from_contracts((), namespace="  ", contract_version="1")
+    with pytest.raises(ValueError, match="contract version is required"):
+        ToolCapabilitySpace.from_contracts((), namespace="test", contract_version="  ")
+
+
 def test_tool_space_serialization_is_deterministic_and_contains_no_selection_result():
     first = _grounding_space()
     second = ToolCapabilitySpace.from_contracts(
