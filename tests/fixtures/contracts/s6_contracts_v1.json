@@ -104,13 +104,13 @@
   "repository_snapshot": {
     "schema": "feynmap.repository_snapshot",
     "schema_version": "1.0.0",
-    "snapshot_id": "5a9ba0b569d71d169c6fce8510fbb207ac816eca22ffd0946f60aabb685780bb",
+    "snapshot_id": "a652b317c95ea12b90142bfca40602af041820a49c77b89f4e5f166f7e81fda7",
     "repository_key": "e6ab10706dc87287a25d5b3dfaad3c1a0c89f333abe421a3bdc7af5ea321cebe",
     "locator": "git:example.com/feynmap/conformance",
     "root_hint": "/conformance",
     "revision": "0123456789abcdef0123456789abcdef01234567",
     "content_hash": "fa798042f70d66e33375ed74daf9f72c4fc4da515157e26fed6a46c6dd203e46",
-    "graph_hash": "0e01bd2f768a8f175ee1b0da0c2353c3f15e35e17abd2bb26965bf7702d6dad4",
+    "graph_hash": "dca5d6028e3b4dd1566dded9fdae7ab01adfbee571cc562a9a1dc0fa1e8b296c",
     "graph_schema_version": "1.0.0",
     "analysis_options": {
       "language_selection": "python",
@@ -129,7 +129,7 @@
   "active_state": {
     "schema": "feynmap.active_state",
     "schema_version": "1.0.0",
-    "snapshot_id": "5a9ba0b569d71d169c6fce8510fbb207ac816eca22ffd0946f60aabb685780bb",
+    "snapshot_id": "a652b317c95ea12b90142bfca40602af041820a49c77b89f4e5f166f7e81fda7",
     "task": "trace callers",
     "step": 1,
     "focus_node_ids": [
@@ -303,17 +303,17 @@
     ]
   },
   "identity_vectors": {
-    "semantic_graph_hash": "0e01bd2f768a8f175ee1b0da0c2353c3f15e35e17abd2bb26965bf7702d6dad4",
+    "semantic_graph_hash": "dca5d6028e3b4dd1566dded9fdae7ab01adfbee571cc562a9a1dc0fa1e8b296c",
     "repository_key": "e6ab10706dc87287a25d5b3dfaad3c1a0c89f333abe421a3bdc7af5ea321cebe",
     "content_hash": "fa798042f70d66e33375ed74daf9f72c4fc4da515157e26fed6a46c6dd203e46",
-    "snapshot_id": "5a9ba0b569d71d169c6fce8510fbb207ac816eca22ffd0946f60aabb685780bb",
+    "snapshot_id": "a652b317c95ea12b90142bfca40602af041820a49c77b89f4e5f166f7e81fda7",
     "tool_contract_digest": "8e451375fe6656408042026d84fac02e21d1408f78114ab8cbe3267445f8c314",
     "snapshot_identity_payload": {
       "snapshot_schema_version": "1.0.0",
       "repository_key": "e6ab10706dc87287a25d5b3dfaad3c1a0c89f333abe421a3bdc7af5ea321cebe",
       "revision": "0123456789abcdef0123456789abcdef01234567",
       "content_hash": "fa798042f70d66e33375ed74daf9f72c4fc4da515157e26fed6a46c6dd203e46",
-      "graph_hash": "0e01bd2f768a8f175ee1b0da0c2353c3f15e35e17abd2bb26965bf7702d6dad4",
+      "graph_hash": "dca5d6028e3b4dd1566dded9fdae7ab01adfbee571cc562a9a1dc0fa1e8b296c",
       "graph_schema_version": "1.0.0",
       "analysis_options": {
         "language_selection": "python",
