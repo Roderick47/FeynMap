@@ -1,3 +1,5 @@
+import feynmap.minimal_context as minimal_context_module
+
 from feynmap.context import estimate_tokens
 from feynmap.core import (
     EdgeKind,
@@ -273,3 +275,64 @@ def test_minimal_context_protects_direct_cross_file_root_dependency():
 
     assert "route" in packed.critical_node_ids
     assert "route" in packed.selected_node_ids
+
+
+
+def test_pack_local_payload_cache_compacts_each_activated_item_once(monkeypatch):
+    graph, result = _graph_and_result()
+    node_calls = []
+    edge_calls = []
+    original_node = minimal_context_module._compact_node
+    original_edge = minimal_context_module._compact_edge
+
+    def counted_node(node):
+        node_calls.append(node.id)
+        return original_node(node)
+
+    def counted_edge(edge):
+        edge_calls.append(edge.id)
+        return original_edge(edge)
+
+    monkeypatch.setattr(minimal_context_module, "_compact_node", counted_node)
+    monkeypatch.setattr(minimal_context_module, "_compact_edge", counted_edge)
+
+    MinimalContextPacker(graph).pack(
+        result,
+        budget=MinimalContextBudget(
+            max_tokens=1400,
+            initial_tokens=300,
+            step_tokens=250,
+            max_nodes=4,
+            max_edges=3,
+        ),
+    )
+
+    assert sorted(node_calls) == sorted(hit.node.id for hit in result.hits)
+    assert sorted(edge_calls) == sorted(edge.id for edge in result.edges)
+    assert len(node_calls) == len(set(node_calls))
+    assert len(edge_calls) == len(set(edge_calls))
+
+
+def test_cached_pack_payload_matches_uncached_reconstruction():
+    graph, result = _graph_and_result()
+    packer = MinimalContextPacker(graph)
+    packed = packer.pack(
+        result,
+        budget=MinimalContextBudget(
+            max_tokens=1400,
+            initial_tokens=300,
+            step_tokens=250,
+            max_nodes=4,
+            max_edges=3,
+        ),
+    )
+
+    uncached = packer._payload(
+        result,
+        packed.selected_node_ids,
+        packed.selected_edge_ids,
+        packed.payload["anchors"],
+    )
+
+    assert packed.payload == uncached
+    assert estimate_tokens(packed.payload) == packed.delivered_tokens
