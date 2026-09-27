@@ -200,6 +200,14 @@ class RepositorySnapshot:
         version = payload.get("schema_version")
         if version and version != SNAPSHOT_SCHEMA_VERSION:
             raise ValueError("unsupported snapshot schema version: %s" % version)
+        graph_schema_version = str(
+            payload.get("graph_schema_version", SEMANTIC_SCHEMA_VERSION)
+        )
+        if graph_schema_version != SEMANTIC_SCHEMA_VERSION:
+            raise ValueError(
+                "unsupported graph schema version in snapshot: %s"
+                % graph_schema_version
+            )
         return cls(
             snapshot_id=str(payload.get("snapshot_id", "")),
             repository_key=str(payload.get("repository_key", "")),
@@ -208,7 +216,7 @@ class RepositorySnapshot:
             revision=payload.get("revision"),
             content_hash=str(payload.get("content_hash", "")),
             graph_hash=str(payload.get("graph_hash", "")),
-            graph_schema_version=str(payload.get("graph_schema_version", SEMANTIC_SCHEMA_VERSION)),
+            graph_schema_version=graph_schema_version,
             analysis_options=dict(payload.get("analysis_options") or {}),
             files=[FileFingerprint.from_dict(item) for item in payload.get("files", []) if isinstance(item, dict)],
             created_at=str(payload.get("created_at", _utc_now())),
