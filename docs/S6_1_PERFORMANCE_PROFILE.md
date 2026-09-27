@@ -11,6 +11,11 @@ or network work. Profiled elapsed time includes `cProfile` overhead and is
 useful for comparing the same harness across revisions, not as a production
 latency promise.
 
+The analyzed repository root and FeynMap's installed source root are tracked
+independently. FeynMap hotspot tables therefore remain populated when the
+profile target is another repository. Workloads default to one iteration when
+the field is omitted.
+
 ## Local baseline
 
 On the initial Python 3.12 local run:

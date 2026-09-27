@@ -94,7 +94,6 @@ def test_profile_runs_activation_and_tool_routing_workloads(tmp_path):
                 "name": "routing",
                 "kind": "tool_routing",
                 "dataset": "routing.json",
-                "iterations": 2,
             },
         ],
     }
@@ -109,6 +108,13 @@ def test_profile_runs_activation_and_tool_routing_workloads(tmp_path):
     assert activation["workload_summary"]["graph_nodes"] >= 2
     assert routing["workload_summary"]["task_count"] == 2
     assert routing["workload_summary"]["top1_accuracy"] == 1.0
+    assert routing["iterations"] == 1
+    assert routing["top_feynmap_internal_functions"]
+    assert routing["top_feynmap_modules_by_internal_time"]
+    assert all(
+        item["module"].startswith("feynmap/")
+        for item in routing["top_feynmap_modules_by_internal_time"]
+    )
     assert all(item["total_calls"] > 0 for item in result["workloads"])
 
 

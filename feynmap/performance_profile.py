@@ -19,6 +19,7 @@ from .tool_routing_benchmark import run_benchmark as run_tool_routing_benchmark
 
 
 PROFILE_SCHEMA = "feynmap.performance_profile.v1"
+_FEYNMAP_SOURCE_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_json(path: Path) -> Mapping[str, Any]:
@@ -175,7 +176,7 @@ def _workload_action(
     spec_directory: Path,
 ) -> Callable[[], Any]:
     dataset = _load_json(spec_directory / str(workload["dataset"]))
-    iterations = int(workload["iterations"])
+    iterations = int(workload.get("iterations", 1))
     kind = str(workload["kind"])
 
     if kind == "activation":
@@ -240,10 +241,13 @@ def run_profile(
             spec_directory=directory,
         )
         report, result = profile_callable(
-            str(workload["name"]), action, source_root=root, top_n=top_n,
+            str(workload["name"]),
+            action,
+            source_root=_FEYNMAP_SOURCE_ROOT,
+            top_n=top_n,
         )
         report["kind"] = str(workload["kind"])
-        report["iterations"] = int(workload["iterations"])
+        report["iterations"] = int(workload.get("iterations", 1))
         report["workload_summary"] = _result_summary(str(workload["kind"]), result)
         reports.append(report)
     return {
