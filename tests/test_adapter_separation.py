@@ -2,6 +2,8 @@ import ast
 from pathlib import Path
 
 from feynmap import EdgeKind, FeynMapEngine, NodeKind
+from feynmap.core import SemanticGraph, SemanticNode, SourceLocation
+from feynmap.adapters.frameworks._python import _CallableLineIndex, _node_for_line
 from feynmap.adapters.python import Definition, ParsedModule, PythonAdapter, _render_expr
 
 
@@ -157,3 +159,68 @@ def test_render_expr_fast_paths_name_and_attribute_without_unparse(monkeypatch):
     monkeypatch.setattr(ast, "unparse", fail_unparse, raising=False)
 
     assert _render_expr(expression) == "service.client.run"
+
+
+
+def test_framework_callable_line_index_preserves_smallest_enclosing_span():
+    outer = SemanticNode(
+        "outer",
+        "outer",
+        NodeKind.FUNCTION,
+        language="python",
+        location=SourceLocation(path="views.py", line=1, end_line=20),
+    )
+    inner = SemanticNode(
+        "inner",
+        "inner",
+        NodeKind.FUNCTION,
+        language="python",
+        location=SourceLocation(path="views.py", line=5, end_line=8),
+    )
+    other_file = SemanticNode(
+        "other",
+        "other",
+        NodeKind.FUNCTION,
+        language="python",
+        location=SourceLocation(path="other.py", line=1, end_line=50),
+    )
+    ignored_class = SemanticNode(
+        "class",
+        "Container",
+        NodeKind.CLASS,
+        language="python",
+        location=SourceLocation(path="views.py", line=1, end_line=30),
+    )
+    graph = SemanticGraph(nodes=[outer, inner, other_file, ignored_class])
+
+    index = _CallableLineIndex(graph)
+    owners = index.resolve_many("views.py", [1, 6, 10, 25])
+
+    assert owners[1] is outer
+    assert owners[6] is inner
+    assert owners[10] is outer
+    assert 25 not in owners
+    assert _node_for_line(graph, "views.py", 6) is inner
+    assert _node_for_line(graph, "views.py", 25) is None
+
+
+def test_framework_callable_line_index_preserves_graph_order_for_equal_spans():
+    first = SemanticNode(
+        "first",
+        "first",
+        NodeKind.FUNCTION,
+        language="python",
+        location=SourceLocation(path="views.py", line=5, end_line=10),
+    )
+    second = SemanticNode(
+        "second",
+        "second",
+        NodeKind.HANDLER,
+        language="python",
+        location=SourceLocation(path="views.py", line=5, end_line=10),
+    )
+    graph = SemanticGraph(nodes=[first, second])
+
+    index = _CallableLineIndex(graph)
+
+    assert index.resolve("views.py", 7) is first
