@@ -110,8 +110,12 @@ history rather than copied graph truth, and snapshot changes invalidate reuse.
 - [ ] Freeze substrate contracts
   - [x] S6.3.1 inventory current external/cross-runtime contracts
   - [x] S6.3.2 define compatibility/versioning rules
-  - [ ] S6.3.3 add canonical conformance fixtures
+  - [x] S6.3.3 add canonical conformance fixtures
   - [ ] S6.3.4 freeze accepted contract set
+
+S6.3.3 conformance assets:
+- `tests/fixtures/contracts/s6_contracts_v1.json` pins canonical semantic graph, repository snapshot, active state, tool capability/space, tool-schema-pack, and deterministic identity/digest vectors.
+- `tests/test_contract_conformance.py` verifies canonical round-trips, unsupported-major and unknown-enum rejection, additive optional-field read behavior, deterministic graph/snapshot/tool identities, nested graph-version rejection, active-state snapshot binding, and model-facing tool-schema delivery.
 - [ ] Port latency-critical pieces to Rust where profiling justifies it
 
 S6.2 accepted measured optimizations:
