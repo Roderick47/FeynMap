@@ -106,9 +106,20 @@ history rather than copied graph truth, and snapshot changes invalidate reuse.
 ### S6 — Performance implementation
 
 - [x] Profile the Python hot path before porting
-- [ ] Cache only measured bottlenecks
+- [x] Cache only measured bottlenecks
 - [ ] Freeze substrate contracts
 - [ ] Port latency-critical pieces to Rust where profiling justifies it
+
+S6.2 accepted measured optimizations:
+- bounded repeated tool-routing tokenization cache (S6.2.1)
+- pack-local compact node/edge payload reuse during minimal-context budget fitting (S6.2.2)
+- per-file callable interval indexing for Python framework enrichment (S6.2.3)
+
+The post-S6.2 profile leaves no comparably clear cache/index target. Python AST
+indexes are already session-cached, region lexical indexing is constructed once
+per graph, and the remaining token/attribute processing costs are materially
+smaller. Further optimization now requires a new measured bottleneck rather
+than speculative caching.
 
 The older phases below remain valid capability work. Their priority is now
 judged by how much they improve graph truth, activation quality, context
