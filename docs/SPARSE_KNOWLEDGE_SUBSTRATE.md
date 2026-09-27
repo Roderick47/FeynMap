@@ -186,8 +186,8 @@ behavior.
 
 ### S5 — Tool and agent routing
 
-- [ ] Represent tool capabilities as grounded routable nodes/contracts.
-- [ ] Select small tool subsets before exposing schemas to an LLM.
+- [x] Represent tool capabilities as grounded routable nodes/contracts.
+- [x] Select small tool subsets before exposing schemas to an LLM.
 - [ ] Apply the same activation metrics to tool-space routing.
 
 ### S6 — Performance substrate

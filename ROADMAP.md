@@ -99,8 +99,8 @@ history rather than copied graph truth, and snapshot changes invalidate reuse.
 
 ### S5 — Tool-space routing
 
-- [ ] Represent tool capabilities as routable grounded contracts
-- [ ] Expose only the small relevant tool subset to the downstream model
+- [x] Represent tool capabilities as routable grounded contracts
+- [x] Expose only the small relevant tool subset to the downstream model
 - [ ] Measure tool-schema token reduction and routing quality
 
 ### S6 — Performance implementation
