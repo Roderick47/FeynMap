@@ -1,0 +1,324 @@
+{
+  "fixture_schema": "feynmap.contract_conformance.fixtures",
+  "fixture_version": "1.0.0",
+  "semantic_graph": {
+    "schema": "feynmap.semantic_graph",
+    "schema_version": "1.0.0",
+    "metadata": {
+      "analysis_contract_version": "1.1.0",
+      "confidence_policy_version": "2.0.0",
+      "language_selection": "python",
+      "framework_selection": "none",
+      "node_count": 2,
+      "edge_count": 1,
+      "evidence_coverage": 1
+    },
+    "nodes": [
+      {
+        "id": "python:module:app",
+        "name": "app",
+        "kind": "module",
+        "confidence": 1,
+        "confidence_tier": "supported",
+        "evidence": [
+          {
+            "kind": "static",
+            "detector": "conformance.fixture",
+            "confidence": 1,
+            "detail": "module declaration",
+            "location": {
+              "path": "app.py",
+              "line": 1
+            }
+          }
+        ],
+        "attributes": {},
+        "language": "python",
+        "qualified_name": "app",
+        "location": {
+          "path": "app.py",
+          "line": 1,
+          "end_line": 4
+        }
+      },
+      {
+        "id": "python:symbol:app.run",
+        "name": "run",
+        "kind": "function",
+        "confidence": 1,
+        "confidence_tier": "supported",
+        "evidence": [
+          {
+            "kind": "static",
+            "detector": "conformance.fixture",
+            "confidence": 1,
+            "detail": "function declaration",
+            "location": {
+              "path": "app.py",
+              "line": 2
+            }
+          }
+        ],
+        "attributes": {
+          "python": {
+            "parameters": []
+          }
+        },
+        "language": "python",
+        "qualified_name": "app.run",
+        "location": {
+          "path": "app.py",
+          "line": 2,
+          "end_line": 4
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge:app-calls-run",
+        "source": "python:module:app",
+        "target": "python:symbol:app.run",
+        "kind": "calls",
+        "confidence": 1,
+        "confidence_tier": "supported",
+        "evidence": [
+          {
+            "kind": "static",
+            "detector": "conformance.fixture",
+            "confidence": 1,
+            "detail": "fixture call",
+            "location": {
+              "path": "app.py",
+              "line": 3
+            }
+          }
+        ],
+        "attributes": {}
+      }
+    ],
+    "diagnostics": {
+      "errors": [],
+      "warnings": []
+    }
+  },
+  "repository_snapshot": {
+    "schema": "feynmap.repository_snapshot",
+    "schema_version": "1.0.0",
+    "snapshot_id": "90b448ae2f8c4d357e0f6bc9dcbb20b546e278a19a89584e05630990be1a1b4f",
+    "repository_key": "e6ab10706dc87287a25d5b3dfaad3c1a0c89f333abe421a3bdc7af5ea321cebe",
+    "locator": "git:example.com/feynmap/conformance",
+    "root_hint": "/conformance",
+    "revision": "0123456789abcdef0123456789abcdef01234567",
+    "content_hash": "fa798042f70d66e33375ed74daf9f72c4fc4da515157e26fed6a46c6dd203e46",
+    "graph_hash": "bd959c79249368041344f1b1ecae28601db61bf23d0180972b4cf48e95e1512a",
+    "graph_schema_version": "1.0.0",
+    "analysis_options": {
+      "language_selection": "python",
+      "framework_selection": "none"
+    },
+    "file_count": 1,
+    "created_at": "2026-09-28T00:00:00+00:00",
+    "files": [
+      {
+        "path": "app.py",
+        "sha256": "a40c04aa22c369fa354406d31613f110878d800e33ddd428e124b513762b3635",
+        "size": 24
+      }
+    ]
+  },
+  "active_state": {
+    "schema": "feynmap.active_state",
+    "schema_version": "1.0.0",
+    "snapshot_id": "90b448ae2f8c4d357e0f6bc9dcbb20b546e278a19a89584e05630990be1a1b4f",
+    "task": "trace callers",
+    "step": 1,
+    "focus_node_ids": [
+      "python:symbol:app.run"
+    ],
+    "active_node_ids": [
+      "python:module:app",
+      "python:symbol:app.run"
+    ],
+    "active_edge_ids": [
+      "edge:app-calls-run"
+    ],
+    "active_region_ids": [
+      "app.py"
+    ],
+    "concepts": [
+      "trace",
+      "callers"
+    ],
+    "open_questions": [],
+    "contradictions": [],
+    "retrievals": [
+      {
+        "query": "find callers for run",
+        "root_node_id": "python:symbol:app.run",
+        "stage": "local",
+        "effort": "low",
+        "region_ids": [
+          "app.py"
+        ],
+        "selected_node_count": 2,
+        "selected_edge_count": 1,
+        "delivered_tokens": 180
+      }
+    ],
+    "invalidated": false,
+    "invalidation_reason": null
+  },
+  "tool_capability": {
+    "schema": "feynmap.tool_capability",
+    "schema_version": "1.0.0",
+    "id": "tool:grounding:find_callers",
+    "namespace": "grounding",
+    "name": "find_callers",
+    "description": "Find grounded callers for a symbol.",
+    "input_schema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "symbol": {
+          "type": "string"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        }
+      },
+      "required": [
+        "symbol"
+      ],
+      "additionalProperties": false
+    },
+    "read_only": true,
+    "contract_version": "2.1.0",
+    "contract_digest": "8e451375fe6656408042026d84fac02e21d1408f78114ab8cbe3267445f8c314",
+    "terms": [
+      "find",
+      "callers",
+      "grounded",
+      "for",
+      "symbol",
+      "depth"
+    ],
+    "required_inputs": [
+      "symbol"
+    ],
+    "optional_inputs": [
+      "depth"
+    ]
+  },
+  "tool_capability_space": {
+    "schema": "feynmap.tool_capability_space",
+    "schema_version": "1.0.0",
+    "namespace": "grounding",
+    "contract_version": "2.1.0",
+    "tool_count": 1,
+    "nodes": [
+      {
+        "schema": "feynmap.tool_capability",
+        "schema_version": "1.0.0",
+        "id": "tool:grounding:find_callers",
+        "namespace": "grounding",
+        "name": "find_callers",
+        "description": "Find grounded callers for a symbol.",
+        "input_schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "symbol": {
+              "type": "string"
+            },
+            "depth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            }
+          },
+          "required": [
+            "symbol"
+          ],
+          "additionalProperties": false
+        },
+        "read_only": true,
+        "contract_version": "2.1.0",
+        "contract_digest": "8e451375fe6656408042026d84fac02e21d1408f78114ab8cbe3267445f8c314",
+        "terms": [
+          "find",
+          "callers",
+          "grounded",
+          "for",
+          "symbol",
+          "depth"
+        ],
+        "required_inputs": [
+          "symbol"
+        ],
+        "optional_inputs": [
+          "depth"
+        ]
+      }
+    ]
+  },
+  "tool_schema_pack": {
+    "schema": "feynmap.tool_schema_pack",
+    "schema_version": "1.0.0",
+    "query": "find callers for symbol",
+    "route_sufficient": true,
+    "route_reason": "conformance_fixture",
+    "available_tool_count": 1,
+    "selected_tool_count": 1,
+    "delivered_tool_count": 1,
+    "delivery_ratio": 1,
+    "tools": [
+      {
+        "tool_id": "tool:grounding:find_callers",
+        "name": "find_callers",
+        "description": "Find grounded callers for a symbol.",
+        "input_schema": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "type": "object",
+          "properties": {
+            "symbol": {
+              "type": "string"
+            },
+            "depth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4
+            }
+          },
+          "required": [
+            "symbol"
+          ],
+          "additionalProperties": false
+        },
+        "read_only": true,
+        "contract_version": "2.1.0",
+        "contract_digest": "8e451375fe6656408042026d84fac02e21d1408f78114ab8cbe3267445f8c314"
+      }
+    ]
+  },
+  "identity_vectors": {
+    "semantic_graph_hash": "bd959c79249368041344f1b1ecae28601db61bf23d0180972b4cf48e95e1512a",
+    "repository_key": "e6ab10706dc87287a25d5b3dfaad3c1a0c89f333abe421a3bdc7af5ea321cebe",
+    "content_hash": "fa798042f70d66e33375ed74daf9f72c4fc4da515157e26fed6a46c6dd203e46",
+    "snapshot_id": "90b448ae2f8c4d357e0f6bc9dcbb20b546e278a19a89584e05630990be1a1b4f",
+    "tool_contract_digest": "8e451375fe6656408042026d84fac02e21d1408f78114ab8cbe3267445f8c314",
+    "snapshot_identity_payload": {
+      "snapshot_schema_version": "1.0.0",
+      "repository_key": "e6ab10706dc87287a25d5b3dfaad3c1a0c89f333abe421a3bdc7af5ea321cebe",
+      "revision": "0123456789abcdef0123456789abcdef01234567",
+      "content_hash": "fa798042f70d66e33375ed74daf9f72c4fc4da515157e26fed6a46c6dd203e46",
+      "graph_hash": "bd959c79249368041344f1b1ecae28601db61bf23d0180972b4cf48e95e1512a",
+      "graph_schema_version": "1.0.0",
+      "analysis_options": {
+        "language_selection": "python",
+        "framework_selection": "none"
+      }
+    }
+  }
+}
