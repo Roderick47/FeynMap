@@ -108,6 +108,10 @@ history rather than copied graph truth, and snapshot changes invalidate reuse.
 - [x] Profile the Python hot path before porting
 - [x] Cache only measured bottlenecks
 - [ ] Freeze substrate contracts
+  - [x] S6.3.1 inventory current external/cross-runtime contracts
+  - [ ] S6.3.2 define compatibility/versioning rules
+  - [ ] S6.3.3 add canonical conformance fixtures
+  - [ ] S6.3.4 freeze accepted contract set
 - [ ] Port latency-critical pieces to Rust where profiling justifies it
 
 S6.2 accepted measured optimizations:
