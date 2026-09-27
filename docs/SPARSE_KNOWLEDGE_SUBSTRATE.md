@@ -188,7 +188,7 @@ behavior.
 
 - [x] Represent tool capabilities as grounded routable nodes/contracts.
 - [x] Select small tool subsets before exposing schemas to an LLM.
-- [ ] Apply the same activation metrics to tool-space routing.
+- [x] Apply the same activation metrics to tool-space routing.
 
 ### S6 — Performance substrate
 

@@ -101,7 +101,7 @@ history rather than copied graph truth, and snapshot changes invalidate reuse.
 
 - [x] Represent tool capabilities as routable grounded contracts
 - [x] Expose only the small relevant tool subset to the downstream model
-- [ ] Measure tool-schema token reduction and routing quality
+- [x] Measure tool-schema token reduction and routing quality
 
 ### S6 — Performance implementation
 
