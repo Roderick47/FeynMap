@@ -1,0 +1,21 @@
+{
+  "schema": "feynmap.performance_profile.v1",
+  "name": "S6.1 Python sparse-substrate hot-path profile",
+  "top_n": 12,
+  "workloads": [
+    {
+      "name": "adaptive-minimal-activation",
+      "kind": "activation",
+      "dataset": "sparse_activation_feynmap_s0.json",
+      "strategy": "adaptive",
+      "context_strategy": "minimal",
+      "iterations": 1
+    },
+    {
+      "name": "tool-routing-and-schema-delivery",
+      "kind": "tool_routing",
+      "dataset": "tool_routing_s5.json",
+      "iterations": 25
+    }
+  ]
+}

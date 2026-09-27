@@ -105,7 +105,7 @@ history rather than copied graph truth, and snapshot changes invalidate reuse.
 
 ### S6 — Performance implementation
 
-- [ ] Profile the Python hot path before porting
+- [x] Profile the Python hot path before porting
 - [ ] Cache only measured bottlenecks
 - [ ] Freeze substrate contracts
 - [ ] Port latency-critical pieces to Rust where profiling justifies it

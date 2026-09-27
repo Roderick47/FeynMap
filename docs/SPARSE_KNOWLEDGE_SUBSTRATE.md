@@ -192,9 +192,10 @@ behavior.
 
 ### S6 — Performance substrate
 
+- [x] Profile the Python hot path before optimizing or porting.
 - [ ] Cache only where measurement shows value.
 - [ ] Reduce network/service hops.
-- [ ] Benchmark the Python hot path first.
+- [x] Benchmark the Python hot path first.
 - [ ] Freeze substrate contracts.
 - [ ] Port latency-critical components to Rust where profiling justifies it.
 

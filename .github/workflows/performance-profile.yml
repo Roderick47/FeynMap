@@ -1,0 +1,59 @@
+name: performance-profile
+
+on:
+  push:
+    branches:
+      - feature/tool-space-routing
+  workflow_dispatch:
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install FeynMap
+        run: python -m pip install -e .
+      - name: Profile sparse-substrate hot paths
+        run: |
+          python -m feynmap.performance_profile \
+            experiments/performance_profile_s6.json \
+            . \
+            --output performance-results/s6-1.json
+      - name: Write profile summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          with open("performance-results/s6-1.json", "r", encoding="utf-8") as handle:
+              result = json.load(handle)
+          lines = [
+              "## S6.1 Python hot-path profile",
+              "",
+              "| Workload | Iterations | Profiled elapsed ms | Calls | Top FeynMap self-time module |",
+              "|---|---:|---:|---:|---|",
+          ]
+          for workload in result["workloads"]:
+              modules = workload["top_feynmap_modules_by_internal_time"]
+              top_module = modules[0]["module"] if modules else "n/a"
+              lines.append(
+                  "| %s | %d | %.3f | %d | %s |" % (
+                      workload["name"],
+                      workload["iterations"],
+                      workload["elapsed_ms"],
+                      workload["total_calls"],
+                      top_module,
+                  )
+              )
+          rendered = "\n".join(lines) + "\n"
+          print(rendered)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+              handle.write(rendered)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: s6-1-performance-profile
+          path: performance-results/s6-1.json
