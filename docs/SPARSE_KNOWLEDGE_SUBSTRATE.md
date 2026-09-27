@@ -193,11 +193,25 @@ behavior.
 ### S6 — Performance substrate
 
 - [x] Profile the Python hot path before optimizing or porting.
-- [ ] Cache only where measurement shows value.
+- [x] Cache only where measurement shows value.
 - [ ] Reduce network/service hops.
 - [x] Benchmark the Python hot path first.
 - [ ] Freeze substrate contracts.
 - [ ] Port latency-critical components to Rust where profiling justifies it.
+
+### S6.2 measured optimization decision
+
+S6.2 stops after three profile-backed changes: bounded routing-token reuse,
+pack-local compact payload reuse, and per-file callable interval indexing for
+framework enrichment. Each change removed a measured repeated cost without
+changing graph truth, routing semantics, context-selection policy, or snapshot
+contracts.
+
+The next profile does not justify another cache/index by itself. PythonSourceSession
+already caches AST indexes, region summaries are built once per graph, and the
+remaining lexical/attribute processing costs are substantially smaller and are
+part of normal index construction. New performance work must therefore start
+from a fresh measured bottleneck rather than extending S6.2 speculatively.
 
 ## What is deliberately not being thrown away
 
