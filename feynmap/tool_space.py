@@ -14,6 +14,7 @@ import copy
 import hashlib
 import json
 import math
+from functools import lru_cache
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Mapping, Optional, Protocol, Sequence, Tuple
 
@@ -245,7 +246,9 @@ _ROUTING_STOPWORDS = {
 }
 
 
+@lru_cache(maxsize=2048)
 def _routing_tokens(value: str) -> Tuple[str, ...]:
+    """Tokenize routing text with a bounded cache for repeated tool-space calls."""
     return tuple(
         token
         for token in _tokens(value)
