@@ -30,7 +30,7 @@ schema_version: 1.0.0
 | Contract | Identifier | Frozen version | Role |
 |---|---|---:|---|
 | Canonical semantic graph | `feynmap.semantic_graph` | `1.0.0` | Cross-runtime repository truth |
-| Analysis contract | policy version | `1.1.0` | Analysis-semantic equivalence / incremental guard |
+| Analysis contract | policy version | `1.2.0` | Analysis-semantic equivalence / incremental guard |
 | Confidence policy | policy version | `2.0.0` | Evidence/confidence interpretation |
 | Repository snapshot | `feynmap.repository_snapshot` | `1.0.0` | Immutable persistence/identity |
 | Grounding tool catalog | catalog version | `2.1.0` | Transport-neutral read-only tool inputs |
