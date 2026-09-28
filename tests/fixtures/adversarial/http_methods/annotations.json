@@ -1,0 +1,48 @@
+{
+  "schema": "feynmap.relationship_benchmark.v1",
+  "name": "http_methods",
+  "symbols": {
+    "readItems": {
+      "name": "readItems",
+      "language": "javascript"
+    },
+    "writeItems": {
+      "name": "writeItems",
+      "language": "javascript"
+    },
+    "get_items": {
+      "name": "get_items",
+      "language": "python"
+    },
+    "post_items": {
+      "name": "post_items",
+      "language": "python"
+    }
+  },
+  "relationships": [
+    {
+      "source": "readItems",
+      "target": "get_items",
+      "kind": "requests",
+      "present": true
+    },
+    {
+      "source": "readItems",
+      "target": "post_items",
+      "kind": "requests",
+      "present": false
+    },
+    {
+      "source": "writeItems",
+      "target": "get_items",
+      "kind": "requests",
+      "present": false
+    },
+    {
+      "source": "writeItems",
+      "target": "post_items",
+      "kind": "requests",
+      "present": true
+    }
+  ]
+}

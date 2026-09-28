@@ -1,0 +1,77 @@
+{
+  "schema": "feynmap.context_ranker_v1f.v1",
+  "name": "Context Ranker v1F - historical change localization on Wikonomi V2",
+  "repository": {
+    "name": "Roderick47/wikonomi-v2",
+    "evaluation_policy": "Run only on the pinned pre-fix revision. Task descriptions contain user-visible problem statements but no implementation hints. Production files changed by the later patch are hidden ground truth."
+  },
+  "retrieval": {
+    "max_depth": 3,
+    "direct_max_candidates": 30,
+    "adaptive_max_candidates": 30,
+    "naive_max_candidates": 80
+  },
+  "adaptive": {
+    "max_branch_expansions_per_depth": 2,
+    "fallback_branch_expansions": 1,
+    "frozen_from": "context_ranker_v1e"
+  },
+  "tasks": [
+    {
+      "id": "wikonomi-map-first-home",
+      "source_pr": 147,
+      "pre_fix_revision": "688a6f19030403bc496d4f284be389c13082f1df",
+      "root": "wikonomi.core.views.home",
+      "description": "The homepage makes price discovery harder than it should be: the map is not prominent enough, especially on phones, and the page should prioritize helping people find current price reports.",
+      "gold_changed_files": [
+        "wikonomi/core/templates/home.html",
+        "wikonomi/core/templates/includes/_onboarding.html"
+      ]
+    },
+    {
+      "id": "wikonomi-map-history",
+      "source_pr": 148,
+      "pre_fix_revision": "71a15400216c5b9b6d5ce94ddcc347158f0e879a",
+      "root": "wikonomi.core.views.home",
+      "description": "The homepage map hides older price reports after a limit and does not clearly distinguish outdated reports. All mapped price history should remain discoverable while stale reports are visibly differentiated.",
+      "gold_changed_files": [
+        "wikonomi/core/models.py",
+        "wikonomi/core/templates/home.html",
+        "wikonomi/core/templates/includes/_price_report_card.html",
+        "wikonomi/core/views.py"
+      ]
+    },
+    {
+      "id": "wikonomi-location-first",
+      "source_pr": 149,
+      "pre_fix_revision": "3819c0d7c1397ce4d434a2d62931ba0dd1994574",
+      "root": "wikonomi.core.views.home",
+      "description": "A user should see price reports near their current location first when local data exists, while still falling back to available prices elsewhere when there are no nearby reports.",
+      "gold_changed_files": [
+        "wikonomi/core/static/js/onboarding.js"
+      ]
+    },
+    {
+      "id": "wikonomi-price-accuracy",
+      "source_pr": 150,
+      "pre_fix_revision": "f55e52e49bf0dce9fb622146d3782b5b4cdcdf32",
+      "root": "wikonomi.core.views.toggle_price_like",
+      "description": "On a price detail page, clicking Yes to confirm that a price is accurate records the confirmation but the price can remain marked stale instead of becoming current.",
+      "gold_changed_files": [
+        "wikonomi/core/apps.py",
+        "wikonomi/core/signals.py"
+      ]
+    },
+    {
+      "id": "wikonomi-guide-formatting",
+      "source_pr": 151,
+      "pre_fix_revision": "1f428086614fbc33363171c0e4d603f1b19cfd59",
+      "root": "wikonomi.guides.views.guide_detail",
+      "description": "Guide summaries and step instructions read too much like plain text. Existing safe structured formatting should render with clearer article styling for headings, lists, links, code, quotes and section breaks.",
+      "gold_changed_files": [
+        "wikonomi/guides/templates/guides/_formatting_help.html",
+        "wikonomi/guides/templatetags/guide_markup.py"
+      ]
+    }
+  ]
+}

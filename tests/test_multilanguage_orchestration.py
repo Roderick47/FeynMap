@@ -111,6 +111,110 @@ def test_django_urlpattern_is_resolved_from_javascript_client(tmp_path):
     assert _has_edge(graph, client, dashboard, EdgeKind.REQUESTS)
 
 
+def test_django_handler_depends_on_nearest_app_config(tmp_path):
+    (tmp_path / "requirements.txt").write_text("django\n", encoding="utf-8")
+    (tmp_path / "manage.py").write_text("", encoding="utf-8")
+    (tmp_path / "core").mkdir()
+    (tmp_path / "core" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "core" / "apps.py").write_text(
+        "from django.apps import AppConfig\n\n"
+        "class CoreConfig(AppConfig):\n"
+        "    name = 'core'\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "core" / "views.py").write_text(
+        "def toggle_price_like(request):\n"
+        "    return None\n",
+        encoding="utf-8",
+    )
+
+    graph = FeynMapEngine().analyze(str(tmp_path))
+    handler = _node(graph, "toggle_price_like", "python")
+    config = _node(graph, "CoreConfig", "python")
+
+    assert config.kind == NodeKind.SERVICE
+    assert config.framework == "django"
+    assert _has_edge(graph, handler, config, EdgeKind.DEPENDS_ON)
+
+
+def test_django_template_composition_and_custom_filters_form_cross_runtime_paths(tmp_path):
+    (tmp_path / "requirements.txt").write_text("django\n", encoding="utf-8")
+    (tmp_path / "manage.py").write_text("", encoding="utf-8")
+    (tmp_path / "views.py").write_text(
+        "from django.shortcuts import render\n\n"
+        "def detail(request):\n"
+        "    return render(request, 'detail.html', {'value': 'ok'})\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "templates").mkdir()
+    (tmp_path / "templates" / "detail.html").write_text(
+        "{% extends 'base.html' %}\n"
+        "{% load guide_markup %}\n"
+        "{{ value|guide_markdown }}\n"
+        "{% include 'includes/_card.html' %}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "templates" / "includes").mkdir()
+    (tmp_path / "templates" / "includes" / "_card.html").write_text(
+        "<article>included card</article>\n", encoding="utf-8"
+    )
+    (tmp_path / "templates" / "partials").mkdir()
+    (tmp_path / "templates" / "partials" / "_card.html").write_text(
+        "<article>decoy card with same basename</article>\n", encoding="utf-8"
+    )
+    (tmp_path / "templates" / "base.html").write_text(
+        "{% load static %}\n"
+        "<html><body>{% block content %}{% endblock %}"
+        "<script src=\"{% static 'js/app.js' %}\"></script></body></html>\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "static" / "js").mkdir(parents=True)
+    (tmp_path / "static" / "js" / "app.js").write_text(
+        "function boot() { return true; }\n", encoding="utf-8"
+    )
+    (tmp_path / "templatetags").mkdir()
+    (tmp_path / "templatetags" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "templatetags" / "guide_markup.py").write_text(
+        "from django import template\n"
+        "register = template.Library()\n\n"
+        "@register.filter(name='guide_markdown')\n"
+        "def guide_markdown(value):\n"
+        "    return value\n",
+        encoding="utf-8",
+    )
+
+    graph = FeynMapEngine().analyze(str(tmp_path))
+    detail_view = _node(graph, "detail", "python")
+    detail_template = _node(graph, "detail.html", "html")
+    base_template = _node(graph, "base.html", "html")
+    card_template = next(
+        node
+        for node in graph.nodes
+        if node.language == "html"
+        and node.location
+        and node.location.path.endswith("templates/includes/_card.html")
+    )
+    decoy_card = next(
+        node
+        for node in graph.nodes
+        if node.language == "html"
+        and node.location
+        and node.location.path.endswith("templates/partials/_card.html")
+    )
+    js_module = _node(graph, "app.js", "javascript")
+    tag_module = _node(graph, "guide_markup", "python")
+    filter_function = _node(graph, "guide_markdown", "python")
+
+    assert _has_edge(graph, detail_view, detail_template, EdgeKind.RENDERS)
+    assert _has_edge(graph, detail_template, base_template, EdgeKind.EXTENDS)
+    assert _has_edge(graph, detail_template, card_template, EdgeKind.RENDERS)
+    assert not _has_edge(graph, detail_template, decoy_card, EdgeKind.RENDERS)
+    assert _has_edge(graph, base_template, js_module, EdgeKind.LOADS)
+    assert tag_module.qualified_name == "templatetags.guide_markup"
+    assert _has_edge(graph, detail_template, tag_module, EdgeKind.DEPENDS_ON)
+    assert _has_edge(graph, detail_template, filter_function, EdgeKind.INVOKES)
+
+
 def test_resolver_supports_dynamic_http_route_parameters():
     client = SemanticNode("client", "client", NodeKind.FUNCTION, language="javascript")
     server = SemanticNode("server", "server", NodeKind.HANDLER, language="python")

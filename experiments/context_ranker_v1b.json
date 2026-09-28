@@ -1,0 +1,32 @@
+{
+  "schema": "feynmap.context_ranker_real_benchmark.v1",
+  "name": "Context Ranker v1B - FeynMap self-analysis",
+  "retrieval": {
+    "depth": 3,
+    "max_nodes": 40,
+    "max_edges": 100,
+    "max_tokens": 12000
+  },
+  "tasks": [
+    {
+      "id": "engine-analysis-pipeline",
+      "root": "feynmap.engine.FeynMapEngine.analyze",
+      "description": "Understand the core collaborators FeynMapEngine.analyze uses to detect frameworks, merge language graphs, and resolve cross-language integration."
+    },
+    {
+      "id": "language-selection",
+      "root": "feynmap.engine.FeynMapEngine._select_languages",
+      "description": "Understand how FeynMap selects language adapters for automatic and explicit language analysis."
+    },
+    {
+      "id": "default-adapter-registry",
+      "root": "feynmap.engine.default_registry",
+      "description": "Identify the language and framework adapters constructed by FeynMap's default adapter registry."
+    },
+    {
+      "id": "cli-orchestration",
+      "root": "feynmap.cli.main",
+      "description": "Understand the major FeynMap subsystems orchestrated by the command-line entry point."
+    }
+  ]
+}

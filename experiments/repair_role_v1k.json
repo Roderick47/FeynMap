@@ -1,0 +1,393 @@
+{
+  "schema": "feynmap.repair_role_v1k.v1",
+  "tasks": [
+    {
+      "id": "limit-comparison-repair",
+      "description": "Retries continue for one attempt beyond the configured ceiling. Preserve the configured value and change only the boundary comparison so the last permitted attempt remains valid.",
+      "challenge_tags": ["opaque_ids", "task_conditioning"],
+      "task_conditioning_group": "retry-limit-role-swap",
+      "provider_task_id": "retry-limit-comparison",
+      "candidates": [
+        {
+          "id": "region_01",
+          "symbol": "limit_value",
+          "summary": "Provides the default ceiling consumed by retry decisions.",
+          "excerpt": "limit_value = 5",
+          "region": {"path": "unit/a.src", "start_line": 8, "end_line": 10},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "region_02",
+          "symbol": "decision",
+          "summary": "Returns whether another attempt is permitted from the current count and configured ceiling.",
+          "excerpt": "return current <= settings.limit_value",
+          "region": {"path": "unit/b.src", "start_line": 21, "end_line": 27},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        },
+        {
+          "id": "region_03",
+          "symbol": "process_failure",
+          "summary": "Handles a failed operation and asks the decision component whether to schedule again.",
+          "excerpt": "if decision(failure.count): schedule(failure)",
+          "region": {"path": "unit/c.src", "start_line": 44, "end_line": 55},
+          "gold": {"semantic_relevance": true, "repair_role": "structural_bridge"}
+        },
+        {
+          "id": "region_04",
+          "symbol": "boundary_examples",
+          "summary": "Describes permitted and rejected attempt counts at the ceiling.",
+          "excerpt": "permit 4; reject 5 when ceiling is 5",
+          "region": {"path": "unit/d.spec", "start_line": 13, "end_line": 20},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "region_05",
+          "symbol": "format_failure",
+          "summary": "Formats a diagnostic message emitted after failed operations.",
+          "excerpt": "return operation.name + ':' + failure.code",
+          "region": {"path": "unit/e.src", "start_line": 30, "end_line": 36},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        }
+      ],
+      "relationships": [
+        {"source": "region_03", "relationship": "calls", "target": "region_02"},
+        {"source": "region_02", "relationship": "reads", "target": "region_01"},
+        {"source": "region_04", "relationship": "specifies", "target": "region_02"},
+        {"source": "region_03", "relationship": "emits_to", "target": "region_05"}
+      ]
+    },
+    {
+      "id": "limit-default-change",
+      "description": "Increase the default retry ceiling from five attempts to eight. Keep the existing comparison behavior and failure-processing flow unchanged.",
+      "challenge_tags": ["opaque_ids", "task_conditioning"],
+      "task_conditioning_group": "retry-limit-role-swap",
+      "provider_task_id": "retry-limit-comparison",
+      "candidates": [
+        {
+          "id": "region_01",
+          "symbol": "limit_value",
+          "summary": "Provides the default ceiling consumed by retry decisions.",
+          "excerpt": "limit_value = 5",
+          "region": {"path": "unit/a.src", "start_line": 8, "end_line": 10},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        },
+        {
+          "id": "region_02",
+          "symbol": "decision",
+          "summary": "Returns whether another attempt is permitted from the current count and configured ceiling.",
+          "excerpt": "return current <= settings.limit_value",
+          "region": {"path": "unit/b.src", "start_line": 21, "end_line": 27},
+          "gold": {"semantic_relevance": true, "repair_role": "structural_bridge"}
+        },
+        {
+          "id": "region_03",
+          "symbol": "process_failure",
+          "summary": "Handles a failed operation and asks the decision component whether to schedule again.",
+          "excerpt": "if decision(failure.count): schedule(failure)",
+          "region": {"path": "unit/c.src", "start_line": 44, "end_line": 55},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        },
+        {
+          "id": "region_04",
+          "symbol": "boundary_examples",
+          "summary": "Describes permitted and rejected attempt counts at the ceiling.",
+          "excerpt": "permit 4; reject 5 when ceiling is 5",
+          "region": {"path": "unit/d.spec", "start_line": 13, "end_line": 20},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "region_05",
+          "symbol": "format_failure",
+          "summary": "Formats a diagnostic message emitted after failed operations.",
+          "excerpt": "return operation.name + ':' + failure.code",
+          "region": {"path": "unit/e.src", "start_line": 30, "end_line": 36},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        }
+      ],
+      "relationships": [
+        {"source": "region_03", "relationship": "calls", "target": "region_02"},
+        {"source": "region_02", "relationship": "reads", "target": "region_01"},
+        {"source": "region_04", "relationship": "specifies", "target": "region_02"},
+        {"source": "region_03", "relationship": "emits_to", "target": "region_05"}
+      ]
+    },
+    {
+      "id": "window-boundary-two-region-repair",
+      "description": "The final record of one page is repeated as the first record of the next page. Correct both cursor advancement and window slicing so page boundaries neither overlap nor skip records.",
+      "challenge_tags": ["multiple_targets", "opaque_ids", "same_file_regions"],
+      "candidates": [
+        {
+          "id": "region_10",
+          "symbol": "advance_marker",
+          "summary": "Calculates the marker passed from one result window to the next.",
+          "excerpt": "next_marker = records[last_index].position",
+          "region": {"path": "unit/f.src", "start_line": 14, "end_line": 23},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        },
+        {
+          "id": "region_11",
+          "symbol": "select_window",
+          "summary": "Chooses records beginning at the supplied marker using an inclusive lower bound.",
+          "excerpt": "selected = records[from marker through marker + size]",
+          "region": {"path": "unit/f.src", "start_line": 31, "end_line": 43},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        },
+        {
+          "id": "region_12",
+          "symbol": "list_records",
+          "summary": "Accepts a page request and delegates marker handling and window selection.",
+          "excerpt": "return select_window(input.marker, input.size)",
+          "region": {"path": "unit/g.src", "start_line": 50, "end_line": 61},
+          "gold": {"semantic_relevance": true, "repair_role": "structural_bridge"}
+        },
+        {
+          "id": "region_13",
+          "symbol": "window_contract",
+          "summary": "Specifies contiguous pages and uniqueness of records across adjacent windows.",
+          "excerpt": "intersection(page(n), page(n + 1)) is empty",
+          "region": {"path": "unit/h.spec", "start_line": 17, "end_line": 25},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "region_14",
+          "symbol": "record_window_size",
+          "summary": "Publishes the number of records returned in a window.",
+          "excerpt": "observe('window_size', selected.length)",
+          "region": {"path": "unit/f.src", "start_line": 47, "end_line": 49},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        }
+      ],
+      "relationships": [
+        {"source": "region_12", "relationship": "calls", "target": "region_11"},
+        {"source": "region_11", "relationship": "continues_with", "target": "region_10"},
+        {"source": "region_13", "relationship": "specifies", "target": "region_10"},
+        {"source": "region_13", "relationship": "specifies", "target": "region_11"},
+        {"source": "region_11", "relationship": "observed_by", "target": "region_14"}
+      ]
+    },
+    {
+      "id": "canonical-amount-rounding",
+      "description": "Totals ending in a half unit are rounded down in the final persisted amount. Repair the canonical rounding calculation; do not change the request guard or persistence flow.",
+      "challenge_tags": ["opaque_ids", "suspicious_bridge"],
+      "candidates": [
+        {
+          "id": "region_20",
+          "symbol": "accept_amount",
+          "summary": "Rejects negative input, applies a display precision guard, and delegates canonical calculation.",
+          "excerpt": "if amount < 0: reject; if digits > 4: warn; value = canonical(amount)",
+          "region": {"path": "unit/i.src", "start_line": 19, "end_line": 33},
+          "gold": {"semantic_relevance": true, "repair_role": "structural_bridge"}
+        },
+        {
+          "id": "region_21",
+          "symbol": "canonical",
+          "summary": "Converts an input amount to the persisted integral unit.",
+          "excerpt": "return floor(amount + 0.4999)",
+          "region": {"path": "unit/j.src", "start_line": 42, "end_line": 48},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        },
+        {
+          "id": "region_22",
+          "symbol": "half_unit_examples",
+          "summary": "Defines expected persisted values immediately below, at, and above a half unit.",
+          "excerpt": "10.49 -> 10; 10.50 -> 11; 10.51 -> 11",
+          "region": {"path": "unit/k.spec", "start_line": 6, "end_line": 14},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "region_23",
+          "symbol": "persist_notice",
+          "summary": "Builds a notification after the final amount has been persisted.",
+          "excerpt": "message = 'stored ' + record.identifier",
+          "region": {"path": "unit/l.src", "start_line": 70, "end_line": 76},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        }
+      ],
+      "relationships": [
+        {"source": "region_20", "relationship": "calls", "target": "region_21"},
+        {"source": "region_22", "relationship": "specifies", "target": "region_21"},
+        {"source": "region_21", "relationship": "precedes", "target": "region_23"}
+      ]
+    },
+    {
+      "id": "order-control-forward",
+      "description": "Public export includes a private annotation. Remove that annotation from public projection while preserving storage and audit behavior.",
+      "challenge_tags": ["opaque_ids", "order_invariance"],
+      "order_invariance_group": "projection-order",
+      "provider_task_id": "projection-order-control",
+      "candidates": [
+        {
+          "id": "region_30",
+          "symbol": "project",
+          "summary": "Constructs the public export and currently copies the private annotation.",
+          "excerpt": "public.annotation = stored.private_annotation",
+          "region": {"path": "unit/m.src", "start_line": 40, "end_line": 51},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        },
+        {
+          "id": "region_31",
+          "symbol": "export",
+          "summary": "Loads the stored record and delegates creation of the public projection.",
+          "excerpt": "return project(store.load(identifier))",
+          "region": {"path": "unit/n.src", "start_line": 12, "end_line": 20},
+          "gold": {"semantic_relevance": true, "repair_role": "structural_bridge"}
+        },
+        {
+          "id": "region_32",
+          "symbol": "allowed_fields",
+          "summary": "Defines the fields permitted in a public export.",
+          "excerpt": "allowed = [identifier, title, created_at]",
+          "region": {"path": "unit/o.spec", "start_line": 9, "end_line": 16},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "region_33",
+          "symbol": "audit_export",
+          "summary": "Records that an export occurred without reading its projected fields.",
+          "excerpt": "audit.record('exported', identifier)",
+          "region": {"path": "unit/p.src", "start_line": 61, "end_line": 66},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        }
+      ],
+      "relationships": [
+        {"source": "region_31", "relationship": "calls", "target": "region_30"},
+        {"source": "region_32", "relationship": "constrains", "target": "region_30"},
+        {"source": "region_31", "relationship": "emits_to", "target": "region_33"}
+      ]
+    },
+    {
+      "id": "order-control-reversed",
+      "description": "Public export includes a private annotation. Remove that annotation from public projection while preserving storage and audit behavior.",
+      "challenge_tags": ["opaque_ids", "order_invariance"],
+      "order_invariance_group": "projection-order",
+      "provider_task_id": "projection-order-control",
+      "candidates": [
+        {
+          "id": "region_33",
+          "symbol": "audit_export",
+          "summary": "Records that an export occurred without reading its projected fields.",
+          "excerpt": "audit.record('exported', identifier)",
+          "region": {"path": "unit/p.src", "start_line": 61, "end_line": 66},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        },
+        {
+          "id": "region_32",
+          "symbol": "allowed_fields",
+          "summary": "Defines the fields permitted in a public export.",
+          "excerpt": "allowed = [identifier, title, created_at]",
+          "region": {"path": "unit/o.spec", "start_line": 9, "end_line": 16},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "region_31",
+          "symbol": "export",
+          "summary": "Loads the stored record and delegates creation of the public projection.",
+          "excerpt": "return project(store.load(identifier))",
+          "region": {"path": "unit/n.src", "start_line": 12, "end_line": 20},
+          "gold": {"semantic_relevance": true, "repair_role": "structural_bridge"}
+        },
+        {
+          "id": "region_30",
+          "symbol": "project",
+          "summary": "Constructs the public export and currently copies the private annotation.",
+          "excerpt": "public.annotation = stored.private_annotation",
+          "region": {"path": "unit/m.src", "start_line": 40, "end_line": 51},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        }
+      ],
+      "relationships": [
+        {"source": "region_31", "relationship": "calls", "target": "region_30"},
+        {"source": "region_32", "relationship": "constrains", "target": "region_30"},
+        {"source": "region_31", "relationship": "emits_to", "target": "region_33"}
+      ]
+    },
+    {
+      "id": "relationship-control-full",
+      "description": "A completed transfer remains marked pending. Correct the state assignment performed after successful settlement.",
+      "challenge_tags": ["opaque_ids", "relationship_ablation"],
+      "relationship_ablation_group": "settlement-edges",
+      "provider_task_id": "settlement-relationship-control",
+      "candidates": [
+        {
+          "id": "region_40",
+          "symbol": "apply",
+          "summary": "Assigns a state after receiving a successful settlement result.",
+          "excerpt": "record.state = pending",
+          "region": {"path": "unit/q.src", "start_line": 28, "end_line": 35},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        },
+        {
+          "id": "region_41",
+          "symbol": "complete",
+          "summary": "Receives the settlement result and delegates application of the resulting state.",
+          "excerpt": "apply(record, settlement.result)",
+          "region": {"path": "unit/r.src", "start_line": 11, "end_line": 19},
+          "gold": {"semantic_relevance": true, "repair_role": "structural_bridge"}
+        },
+        {
+          "id": "region_42",
+          "symbol": "state_table",
+          "summary": "Defines the state associated with each settlement outcome.",
+          "excerpt": "success -> completed; failure -> rejected",
+          "region": {"path": "unit/s.spec", "start_line": 22, "end_line": 29},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "region_43",
+          "symbol": "format_reference",
+          "summary": "Formats a transfer reference for display after processing.",
+          "excerpt": "return prefix + '-' + record.number",
+          "region": {"path": "unit/t.src", "start_line": 53, "end_line": 58},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        }
+      ],
+      "relationships": [
+        {"source": "region_41", "relationship": "calls", "target": "region_40"},
+        {"source": "region_42", "relationship": "specifies", "target": "region_40"},
+        {"source": "region_41", "relationship": "followed_by", "target": "region_43"}
+      ]
+    },
+    {
+      "id": "relationship-control-ablated",
+      "description": "A completed transfer remains marked pending. Correct the state assignment performed after successful settlement.",
+      "challenge_tags": ["opaque_ids", "relationship_ablation"],
+      "relationship_ablation_group": "settlement-edges",
+      "provider_task_id": "settlement-relationship-control",
+      "candidates": [
+        {
+          "id": "region_40",
+          "symbol": "apply",
+          "summary": "Assigns a state after receiving a successful settlement result.",
+          "excerpt": "record.state = pending",
+          "region": {"path": "unit/q.src", "start_line": 28, "end_line": 35},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        },
+        {
+          "id": "region_41",
+          "symbol": "complete",
+          "summary": "Receives the settlement result and delegates application of the resulting state.",
+          "excerpt": "apply(record, settlement.result)",
+          "region": {"path": "unit/r.src", "start_line": 11, "end_line": 19},
+          "gold": {"semantic_relevance": true, "repair_role": "structural_bridge"}
+        },
+        {
+          "id": "region_42",
+          "symbol": "state_table",
+          "summary": "Defines the state associated with each settlement outcome.",
+          "excerpt": "success -> completed; failure -> rejected",
+          "region": {"path": "unit/s.spec", "start_line": 22, "end_line": 29},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "region_43",
+          "symbol": "format_reference",
+          "summary": "Formats a transfer reference for display after processing.",
+          "excerpt": "return prefix + '-' + record.number",
+          "region": {"path": "unit/t.src", "start_line": 53, "end_line": 58},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        }
+      ],
+      "relationships": []
+    }
+  ]
+}

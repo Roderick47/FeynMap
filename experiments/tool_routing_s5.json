@@ -1,0 +1,88 @@
+{
+  "schema": "feynmap.tool_routing_benchmark.v1",
+  "name": "S5 grounded tool routing and schema delivery benchmark",
+  "settings": {
+    "limit": 4,
+    "max_tools": 4,
+    "candidate_limit": 4,
+    "min_score": 0.5,
+    "min_margin": 0.15
+  },
+  "tasks": [
+    {
+      "id": "repository-overview",
+      "query": "Summarize repository languages, frameworks, diagnostics, evidence coverage, and graph size.",
+      "expected_tools": ["repository_summary"]
+    },
+    {
+      "id": "symbol-details",
+      "query": "Get this symbol and its direct incoming and outgoing relationships.",
+      "expected_tools": ["get_symbol"]
+    },
+    {
+      "id": "incoming-callers",
+      "query": "Find incoming callers and invocations for this symbol.",
+      "expected_tools": ["find_callers"]
+    },
+    {
+      "id": "outgoing-dependencies",
+      "query": "Walk outgoing dependencies from this symbol.",
+      "expected_tools": ["find_dependencies"]
+    },
+    {
+      "id": "impact-closure",
+      "query": "Show the broad incoming change impact, including imports and containment.",
+      "expected_tools": ["change_impact"]
+    },
+    {
+      "id": "claim-validation",
+      "query": "Validate whether the source calls the target with supporting evidence.",
+      "expected_tools": ["validate_claim"]
+    },
+    {
+      "id": "evidenced-path",
+      "query": "Trace an evidenced path between the source and target symbols.",
+      "expected_tools": ["trace_path"]
+    },
+    {
+      "id": "integration-boundaries",
+      "query": "Find integration boundary relationships for this symbol.",
+      "expected_tools": ["find_integrations"]
+    },
+    {
+      "id": "evidence-explanation",
+      "query": "Explain evidence attached to this symbol and its direct relationships.",
+      "expected_tools": ["explain_evidence"]
+    },
+    {
+      "id": "unresolved-uncertainty",
+      "query": "List unresolved calls and integration contracts.",
+      "expected_tools": ["unresolved"]
+    },
+    {
+      "id": "bounded-neighborhood",
+      "query": "Build an evidence-preserving context bundle around this symbol within a token budget.",
+      "expected_tools": ["context_bundle"]
+    },
+    {
+      "id": "minimal-activated-context",
+      "query": "Produce minimal context using adaptive activation for this symbol and goal.",
+      "expected_tools": ["minimal_context"]
+    },
+    {
+      "id": "snapshot-comparison",
+      "query": "Compare semantic graph changes between two immutable snapshots.",
+      "expected_tools": ["semantic_diff"]
+    },
+    {
+      "id": "ambiguous-symbol-evidence",
+      "query": "Show symbol evidence relationships graph.",
+      "expected_tools": ["explain_evidence"]
+    },
+    {
+      "id": "unmatched-request",
+      "query": "Quantum banana orchestra.",
+      "expected_tools": []
+    }
+  ]
+}

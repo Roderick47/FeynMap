@@ -1,0 +1,46 @@
+{
+  "schema": "feynmap.relationship_benchmark.v1",
+  "name": "python_scope",
+  "symbols": {
+    "actual": {
+      "name": "actual",
+      "language": "python",
+      "path": "consumer.py"
+    },
+    "parameter": {
+      "name": "parameter",
+      "language": "python",
+      "path": "consumer.py"
+    },
+    "local": {
+      "name": "local",
+      "language": "python",
+      "path": "consumer.py"
+    },
+    "helper": {
+      "name": "helper",
+      "language": "python",
+      "path": "pkg/impl.py"
+    }
+  },
+  "relationships": [
+    {
+      "source": "actual",
+      "target": "helper",
+      "kind": "calls",
+      "present": true
+    },
+    {
+      "source": "parameter",
+      "target": "helper",
+      "kind": "calls",
+      "present": false
+    },
+    {
+      "source": "local",
+      "target": "helper",
+      "kind": "calls",
+      "present": false
+    }
+  ]
+}

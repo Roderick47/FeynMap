@@ -217,6 +217,14 @@ Ambiguous-target behavior is protected separately by regression tests that requi
 
 The benchmark deliberately defers absolute thresholds for unresolved-call count, evidence coverage, orphan nodes, and unresolved integration contracts. Those metrics are recorded now and become useful comparative gates once Phase 2 snapshot identity can provide trustworthy before/after baselines.
 
-## Validation caveat
+## Continuous recursive validation
 
-The connected GitHub Actions runs are still failing before runner steps execute. Jobs have reported `steps: null`, so Phase 1.6 must not be described as CI-verified until checkout/install/test steps actually run in an execution environment.
+The original runner-availability caveat is no longer current. GitHub Actions now
+executes the normal Python regression matrix, and the project also has a
+dedicated `recursive-self-check` job that runs FeynMap against its own
+repository and enforces the invariant architecture quality gates.
+
+See `RECURSIVE_DEVELOPMENT.md` for the broader development protocol. The
+self-hosting gate proves known architecture invariants remain grounded; phase-
+specific retrieval, performance, and contract benchmarks are still required for
+claims beyond those invariants.

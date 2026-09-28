@@ -17,14 +17,17 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import symtable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 
+from .python_source import cached_relative_path, get_python_source_session
 
-EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache"}
+
+EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache", ".feynmap"}
 ResolvedAlias = Tuple[str, List[str], float]
 
 
@@ -42,6 +45,7 @@ class ParsedPythonFile:
     is_package: bool
     tree: ast.Module
     imports: Dict[str, ImportBinding]
+    scope: symtable.SymbolTable
 
 
 class _ScopedCallCollector(ast.NodeVisitor):
@@ -72,6 +76,13 @@ class _ScopedCallCollector(ast.NodeVisitor):
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         return
 
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        return
+
+    visit_SetComp = visit_ListComp
+    visit_DictComp = visit_ListComp
+    visit_GeneratorExp = visit_ListComp
+
 
 def python_reexport_aliases(graph: SemanticGraph, project_path: Path) -> Dict[str, ResolvedAlias]:
     """Return uniquely resolved package aliases for reuse by other Python passes.
@@ -97,6 +108,7 @@ def python_reexport_aliases(graph: SemanticGraph, project_path: Path) -> Dict[st
 def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> SemanticGraph:
     """Resolve statically provable package re-export aliases and calls through them."""
     root = project_path.resolve()
+    source = get_python_source_session(root)
     nodes_by_qname: Dict[str, SemanticNode] = {
         node.qualified_name: node
         for node in graph.nodes
@@ -107,8 +119,13 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
         return graph
 
     parsed = _parse_python_files(root)
-    resolved_aliases, ambiguous_aliases = _resolved_alias_index(parsed, nodes_by_qname)
-    raw_aliases, _ = _package_aliases(parsed)
+    raw_aliases, explicit_exports = _package_aliases(parsed)
+    resolved_aliases, ambiguous_aliases = _resolved_alias_index(
+        parsed,
+        nodes_by_qname,
+        raw_aliases=raw_aliases,
+        explicit_exports=explicit_exports,
+    )
 
     call_edges_added = 0
     import_edges_added = 0
@@ -166,14 +183,28 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
                     if old_target.qualified_name == binding.qualified_name or local_name == binding.local_name:
                         edges_to_remove.add(edge.id)
 
+        scopes = [parsed_file.scope]
+        scope_index = {}
+        while scopes:
+            candidate = scopes.pop()
+            scope_index[(candidate.get_lineno(), candidate.get_name())] = candidate
+            scopes.extend(candidate.get_children())
+
         for callable_node, source_qname in _iter_callables(parsed_file.module, parsed_file.tree):
             source_node = nodes_by_qname.get(source_qname)
             if source_node is None:
                 continue
-            collector = _ScopedCallCollector(callable_node)
-            collector.visit(callable_node)
-            for call in collector.calls:
+            scope = scope_index.get((callable_node.lineno, callable_node.name))
+            if scope is None:
+                continue
+            for call in source.scoped_calls(callable_node):
                 if not isinstance(call.func, ast.Name):
+                    continue
+                try:
+                    symbol = scope.lookup(call.func.id)
+                except KeyError:
+                    continue
+                if symbol.is_local() or symbol.is_free() or symbol.is_nonlocal():
                     continue
                 binding = parsed_file.imports.get(call.func.id)
                 if binding is None:
@@ -236,8 +267,11 @@ def enrich_python_reexports(graph: SemanticGraph, project_path: Path) -> Semanti
 def _resolved_alias_index(
     parsed: Sequence[ParsedPythonFile],
     nodes_by_qname: Dict[str, SemanticNode],
+    raw_aliases: Optional[Dict[str, Set[str]]] = None,
+    explicit_exports: Optional[Set[str]] = None,
 ) -> Tuple[Dict[str, ResolvedAlias], List[str]]:
-    raw_aliases, explicit_exports = _package_aliases(parsed)
+    if raw_aliases is None or explicit_exports is None:
+        raw_aliases, explicit_exports = _package_aliases(parsed)
     resolved_aliases: Dict[str, ResolvedAlias] = {}
     ambiguous_aliases: List[str] = []
     for alias in sorted(raw_aliases):
@@ -273,16 +307,28 @@ def _binding_resolution(
 
 def _parse_python_files(root: Path) -> List[ParsedPythonFile]:
     result: List[ParsedPythonFile] = []
-    for path in _iter_python_files(root):
-        relative = _relative(root, path)
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
-        except (OSError, UnicodeDecodeError, SyntaxError):
+    source = get_python_source_session(root)
+    for record in source.records():
+        if record.tree is None:
             continue
+        path = record.path
+        tree = record.tree
+        source_text = record.text or ""
         is_package = path.name == "__init__.py"
         module = _module_name(root, path)
         imports = _collect_imports(tree, module, is_package)
-        result.append(ParsedPythonFile(path, module, is_package, tree, imports))
+        try:
+            scope = symtable.symtable(source_text, record.relative, "exec")
+        except SyntaxError:
+            continue
+        imports = {
+            name: binding
+            for name, binding in imports.items()
+            if not scope.lookup(name).is_assigned()
+        }
+        result.append(
+            ParsedPythonFile(path, module, is_package, tree, imports, scope)
+        )
     return result
 
 
@@ -456,10 +502,7 @@ def _iter_python_files(root: Path) -> Iterable[Path]:
 
 
 def _relative(root: Path, path: Path) -> str:
-    try:
-        return path.relative_to(root).as_posix()
-    except ValueError:
-        return path.as_posix()
+    return cached_relative_path(root, path)
 
 
 def _qualify(module: str, name: str) -> str:

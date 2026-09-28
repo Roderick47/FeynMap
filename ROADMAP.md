@@ -1,5 +1,145 @@
 # FeynMap Roadmap
 
+## 2026 realignment — sparse knowledge activation substrate
+
+The completed semantic-graph, evidence, snapshot, context, and JEV work remains
+the foundation. The product priority is now a **low-latency sparse
+knowledge-activation substrate** rather than treating MCP or a grounding server
+as the end state.
+
+MCP, HTTP, IDE, and agent integrations become thin consumers of the substrate.
+The hot path should minimize graph regions touched, nodes activated, context
+tokens delivered, and routing latency while preserving task quality.
+
+See `docs/SPARSE_KNOWLEDGE_SUBSTRATE.md` for the architecture and definitions.
+
+Recursive development is now the default project discipline: substrate work stays on one authoritative integration line, FeynMap self-analyzes in CI, and manual-fallback misses become benchmark evidence. See `docs/RECURSIVE_DEVELOPMENT.md`.
+
+### S0 — Measure the current activation path 🚧
+
+- [x] Evidence-backed canonical graph
+- [x] Immutable snapshots and token-budgeted context
+- [x] Provider-neutral JEV judgment layer
+- [x] JEV-guided bounded node/concept search (PR #28)
+- [x] Candidate-touch and knowledge-activation metrics
+- [x] Baseline the metrics on FeynMap itself
+- [x] Baseline the metrics on a substantially larger real repository
+- [x] Add routing-latency and context-token instrumentation
+
+### S1 — Region-first sparse routing
+
+- [x] Stable file/module region summaries over the canonical graph
+- [x] Add a bounded global region route alongside local semantic traversal
+- [x] Reuse one region selection within each task invocation
+- [x] Compare flat vs region-hybrid recall, activation ratio, context, and latency
+- [x] Preserve deterministic routing when JEV is unavailable
+
+
+S1 benchmark outcome on the five pinned Wikonomi v1F tasks: flat deterministic
+search retained 85% mean essential recall; the accepted local + region hybrid
+reached 100% (5/5 full-recall tasks) while keeping mean knowledge activation at
+about 1.3% of the graph. The hybrid currently costs more latency/context than
+flat search, so S2 should make the global channel conditional on sufficiency
+rather than always-on. Hard region filtering was tested and rejected because it
+damaged recall.
+
+### S2 — Adaptive sufficiency and effort
+
+- [x] Provider-neutral sufficiency contract
+- [x] Marginal information-gain tracking
+- [x] Confidence/coverage-based early stopping
+- [x] Escalation policy: deterministic → region → judgment provider (JEV / optional expensive provider)
+- [x] Fast/normal/deep effort levels selected by sufficiency rather than fixed user mode
+
+
+S2 accepted benchmark (pinned Wikonomi v1F + recursive FeynMap self-hosting):
+adaptive search retained 100% essential recall, stopped locally on 3/5 Wikonomi
+tasks and 5/5 FeynMap self-tasks, reduced Wikonomi active context from about
+3,324 to 2,762 tokens versus always-on region activation, and was faster than
+the always-on hybrid in the reference CI run. The controller now exposes
+`fast`, `normal`, and `deep` effort levels chosen from sufficiency signals.
+
+### S3 — Minimal sufficient context
+
+- [x] Explicit post-activation context-selection stage
+- [x] Evidence-preserving endpoint/relationship packing
+- [x] Quality-retention benchmark against the same model-facing activated context
+- [x] Context-compression and downstream-cost metrics
+
+S3 accepted benchmark: `substrate-baseline` run **35962742536** at
+`9781fcb0`. FeynMap self-hosting retained 100% essential recall (6/6) while
+reducing model-facing context from about 7,661 to 2,948 tokens (~61.5%).
+Pinned Wikonomi v1F retained 100% essential recall (5/5) while reducing
+model-facing context from about 6,313 to 2,686 tokens (~57.4%). The comparison
+uses the same model-facing activated payload on both sides rather than debug
+metadata.
+
+### S4 — Active state for long-horizon agents
+
+- [x] Distinguish persistent graph memory from active working context
+- [x] Reuse task regions/working context across tool calls when S2 sufficiency allows it
+- [x] Re-expand or invalidate state when new evidence changes the task
+- [x] Measure context growth avoided over long agent runs
+
+S4 accepted benchmark: `substrate-baseline` run **36024684677** at
+`f78c7c77`. Across two recursive FeynMap agent loops (12 steps total), the
+active-state fast path served 7/12 follow-ups without a fresh graph route/search
+and re-expanded on the other 5. Essential-symbol recall remained 100% (12/12).
+
+Naively accumulating each fresh S3 context would retain 26,119 tokens. The
+portable carried `ActiveState` ended at 2,439 tokens, avoiding about **90.7%**
+of that retained-context growth. Even fully rehydrating every currently active
+node/edge produced 9,931 tokens, still about **62.0%** below accumulated
+history. The bounded state retained about 78.0% of the fresh S3 node set on
+average while preserving every benchmark-essential symbol.
+
+The accepted policy is conservative: an existing active set is reused only
+when the same provider-neutral S2 sufficiency precheck says it already covers
+the follow-up. Otherwise FeynMap falls back to the normal S2 adaptive retrieval
+and S3 packing path. Active state stores references and compact retrieval
+history rather than copied graph truth, and snapshot changes invalidate reuse.
+
+### S5 — Tool-space routing
+
+- [x] Represent tool capabilities as routable grounded contracts
+- [x] Expose only the small relevant tool subset to the downstream model
+- [x] Measure tool-schema token reduction and routing quality
+
+### S6 — Performance implementation
+
+- [x] Profile the Python hot path before porting
+- [x] Cache only measured bottlenecks
+- [x] Freeze substrate contracts
+  - [x] S6.3.1 inventory current external/cross-runtime contracts
+  - [x] S6.3.2 define compatibility/versioning rules
+  - [x] S6.3.3 add canonical conformance fixtures
+  - [x] S6.3.4 freeze accepted contract set
+
+S6.3.4 freezes the accepted portable contract set in `feynmap/contracts.py` and
+`docs/S6_3_4_FROZEN_CONTRACTS.md`. Provisional grounding/context/judgment
+payloads remain explicitly outside the frozen set until separately versioned
+and covered by conformance fixtures.
+
+S6.3.3 conformance assets:
+- `tests/fixtures/contracts/s6_contracts_v1.json` pins canonical semantic graph, repository snapshot, active state, tool capability/space, tool-schema-pack, and deterministic identity/digest vectors.
+- `tests/test_contract_conformance.py` verifies canonical round-trips, unsupported-major and unknown-enum rejection, additive optional-field read behavior, deterministic graph/snapshot/tool identities, nested graph-version rejection, active-state snapshot binding, and model-facing tool-schema delivery.
+- [ ] Port latency-critical pieces to Rust where profiling justifies it
+
+S6.2 accepted measured optimizations:
+- bounded repeated tool-routing tokenization cache (S6.2.1)
+- pack-local compact node/edge payload reuse during minimal-context budget fitting (S6.2.2)
+- per-file callable interval indexing for Python framework enrichment (S6.2.3)
+
+The post-S6.2 profile leaves no comparably clear cache/index target. Python AST
+indexes are already session-cached, region lexical indexing is constructed once
+per graph, and the remaining token/attribute processing costs are materially
+smaller. Further optimization now requires a new measured bottleneck rather
+than speculative caching.
+
+The older phases below remain valid capability work. Their priority is now
+judged by how much they improve graph truth, activation quality, context
+efficiency, or delivery of the substrate.
+
 ## Phase 0 — V3 foundation
 
 - [x] Canonical language-neutral semantic graph
@@ -61,7 +201,9 @@ FeynMap now treats a repository as a heterogeneous software system rather than c
 ### Integration hardening backlog
 
 - [ ] embedded-language regions (inline `<script>`, Vue/Svelte single-file components, templated JS/CSS)
-- [ ] richer JavaScript parsing via Tree-sitter/TypeScript compiler APIs
+- [ ] shared Tree-sitter parsing/source-region foundation with explicit parser provenance and deterministic node identities
+- [ ] parser-backed JavaScript and TypeScript via Tree-sitter, with conformance comparisons against the dependency-free JavaScript adapter
+- [ ] optional TypeScript compiler enrichment for type/module facts that Tree-sitter syntax alone cannot prove
 - [ ] route-prefix composition (`include_router`, nested routers, mounted apps, reverse routing)
 - [ ] CSS/assets and bundler-generated dependency graphs
 - [ ] protocol schemas (OpenAPI, protobuf/gRPC, GraphQL schemas)
@@ -158,6 +300,34 @@ Groundwork has started, but no MCP SDK/transport or remote hosting dependency ha
 - [ ] Production hosting/shared-storage deployment
 
 See `docs/MCP_GROUNDING.md` for the tool boundary, transport plan, hosting choices and the project-owner decisions required before remote deployment.
+
+### Phase 2C — AI-assisted real-world validation 🚧
+
+Real-world testing expands through explicit evidence gates rather than a single
+"production ready" switch. See `docs/AI_REAL_WORLD_VALIDATION.md` for the full
+checkpoint definitions, safety boundaries, measurements, and rollback rules.
+
+- [x] R0 manual read-only grounding trials are possible with current CLI/snapshot outputs
+- [x] Freeze non-destructive dual-channel context/repair guidance through v1R
+- [x] Build a provider-neutral held-out-capable repair benchmark harness and immutable run manifests
+- [x] Add independent failing development fixtures and oracle-leakage guards for harness validation
+- [x] Add outcome scoring and four-arm comparison with completeness diagnostics
+- [x] Add disposable local execution, sealed verifier files, bounded test commands, and deterministic patch hashing
+- [x] Add an explicit argv/JSON command-agent protocol with opt-in environment forwarding
+- [ ] Compare unassisted, deterministic-context, relevance-context, and dual-channel AI repair arms
+- [ ] Record patch correctness, tests, changed files, unsupported claims, searches, time, and token cost
+- [ ] R1 controlled AI repair trial on disposable worktrees with new non-Wikonomi tasks
+- [ ] R2 local read-only stdio MCP alpha for real feature-branch usage
+- [ ] Capture privacy-preserving local MCP usefulness and outcome feedback
+- [ ] R3 Tree-sitter JavaScript/TypeScript mixed-language alpha after conformance gates
+- [ ] R4 selected-team beta with CI plus test/runtime/history evidence
+- [ ] R5 authenticated remote pilot with repository-scoped authorization
+
+The first normal integrated AI usage begins at **R2 local MCP alpha**. R0 can be
+tested manually now; R1 is the first controlled AI repair checkpoint.
+
+See `docs/AI_REPAIR_BENCHMARK.md` for the R1 schemas, commands, development
+fixtures, and remaining execution-adapter/held-out-corpus gates.
 
 ## Phase 3 — More language adapters
 

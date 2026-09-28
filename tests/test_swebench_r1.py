@@ -1,0 +1,541 @@
+import copy
+import json
+from pathlib import Path
+
+import pytest
+
+from feynmap.judgment.ai_repair_benchmark import ARMS, content_hash
+from feynmap.judgment.swebench_r1 import (
+    GENERATION_SCHEMA,
+    REPORT_SCHEMA,
+    SELECTION_SCHEMA,
+    _arm_order,
+    _patch_paths,
+    aggregate_results,
+    audit_context_matrix,
+    capture_swebench_patch,
+    build_selection,
+    export_predictions,
+    preflight_environment,
+    validate_selection,
+)
+
+
+def _rows(count=10):
+    result = []
+    for index in range(count):
+        result.append(
+            {
+                "instance_id": "owner__repo-%d" % index,
+                "repo": "owner/repo-%d" % (index % 5),
+                "base_commit": "%040x" % (index + 1),
+                "problem_statement": "Repair historical issue %d." % index,
+                "version": "1.%d" % index,
+                "patch": (
+                    "diff --git a/pkg/file%d.py b/pkg/file%d.py\n"
+                    "--- a/pkg/file%d.py\n"
+                    "+++ b/pkg/file%d.py\n"
+                    "@@ -1 +1 @@\n-old\n+new\n"
+                )
+                % (index, index, index, index),
+                "test_patch": "SECRET TEST PATCH %d" % index,
+                "FAIL_TO_PASS": json.dumps(["test_%d" % index]),
+                "PASS_TO_PASS": json.dumps(["existing_%d" % index]),
+                "hints_text": "SECRET HINT %d" % index,
+            }
+        )
+    return result
+
+
+def test_preflight_reports_selection_and_local_evaluation_readiness(
+    monkeypatch, tmp_path: Path
+):
+    import feynmap.judgment.swebench_r1 as module
+
+    monkeypatch.setattr(
+        module.shutil,
+        "which",
+        lambda name: "C:/tools/%s.exe" % name,
+    )
+
+    class Completed:
+        returncode = 0
+        stdout = "27.0.0\n"
+        stderr = ""
+
+    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kwargs: Completed())
+    monkeypatch.setattr(module.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(
+        module.shutil,
+        "disk_usage",
+        lambda path: type("Usage", (), {"free": 130 * 1024 ** 3})(),
+    )
+
+    result = preflight_environment(tmp_path)
+
+    assert result["schema"] == "feynmap.swebench_r1_preflight.v1"
+    assert result["checks"]["swebench_cli"]["available"] is True
+    assert result["checks"]["docker"]["daemon_reachable"] is True
+    assert result["checks"]["cpu"]["meets_recommendation"] is True
+    assert result["checks"]["disk"]["meets_recommendation"] is True
+    # The real datasets import determines selection readiness in this test
+    # environment; local-evaluation readiness can only be true when it is present.
+    if result["checks"]["datasets"]["available"]:
+        assert result["ready_for_local_evaluation"] is True
+
+
+def test_selection_is_deterministic_and_contains_no_gold_fields():
+    rows = _rows()
+    first = build_selection(
+        rows,
+        dataset_name="SWE-bench/SWE-bench_Verified",
+        split="test",
+        corpus_id="r1-test",
+        count=8,
+        max_per_repo=2,
+        selected_at="2026-09-22T00:00:00+00:00",
+    )
+    second = build_selection(
+        copy.deepcopy(rows),
+        dataset_name="SWE-bench/SWE-bench_Verified",
+        split="test",
+        corpus_id="r1-test",
+        count=8,
+        max_per_repo=2,
+        selected_at="2026-09-22T00:00:00+00:00",
+    )
+
+    assert first == second
+    assert first["schema"] == SELECTION_SCHEMA
+    assert len(first["tasks"]) == 8
+    rendered = json.dumps(first, sort_keys=True)
+    assert "SECRET TEST PATCH" not in rendered
+    assert "SECRET HINT" not in rendered
+
+    selected_task_keys = {key for task in first["tasks"] for key in task}
+    assert "patch" not in selected_task_keys
+    assert "test_patch" not in selected_task_keys
+    assert "FAIL_TO_PASS" not in selected_task_keys
+    assert "PASS_TO_PASS" not in selected_task_keys
+    assert "hints_text" not in selected_task_keys
+    assert set(first["selection_policy"]["excluded_gold_keys"]) >= {
+        "patch",
+        "test_patch",
+        "FAIL_TO_PASS",
+        "PASS_TO_PASS",
+        "hints_text",
+    }
+
+    counts = {}
+    for task in first["tasks"]:
+        counts[task["repo"]] = counts.get(task["repo"], 0) + 1
+    assert max(counts.values()) <= 2
+    validate_selection(first, rows)
+
+
+def test_selection_is_independent_of_gold_patch_and_test_contents():
+    rows = _rows()
+    original = build_selection(
+        rows,
+        dataset_name="verified",
+        split="test",
+        corpus_id="r1-gold-blind",
+        count=5,
+        selected_at="2026-09-22T00:00:00+00:00",
+    )
+    changed = copy.deepcopy(rows)
+    for index, row in enumerate(changed):
+        row["patch"] = "COMPLETELY DIFFERENT GOLD %d" % index
+        row["test_patch"] = "COMPLETELY DIFFERENT TEST %d" % index
+        row["FAIL_TO_PASS"] = json.dumps(["secret_changed_%d" % index])
+        row["PASS_TO_PASS"] = json.dumps([])
+        row["hints_text"] = "different hidden hint"
+
+    repeated = build_selection(
+        changed,
+        dataset_name="verified",
+        split="test",
+        corpus_id="r1-gold-blind",
+        count=5,
+        selected_at="2026-09-22T00:00:00+00:00",
+    )
+    assert repeated == original
+
+
+def test_arm_order_is_a_deterministic_counterbalanced_rotation():
+    orders = [_arm_order("task-%d" % index) for index in range(20)]
+    assert all(set(order) == set(ARMS) and len(order) == len(ARMS) for order in orders)
+    assert all(order == _arm_order("task-%d" % index) for index, order in enumerate(orders))
+    assert len({tuple(order) for order in orders}) > 1
+
+
+def test_selection_validation_detects_metadata_tampering():
+    rows = _rows()
+    selection = build_selection(
+        rows,
+        dataset_name="verified",
+        split="test",
+        corpus_id="r1-test",
+        count=5,
+        selected_at="2026-09-22T00:00:00+00:00",
+    )
+    changed = copy.deepcopy(rows)
+    selected_id = selection["tasks"][0]["instance_id"]
+    for row in changed:
+        if row["instance_id"] == selected_id:
+            row["problem_statement"] += " tampered"
+            break
+
+    with pytest.raises(ValueError, match="no longer matches"):
+        validate_selection(selection, changed)
+
+
+def test_patch_paths_extracts_reference_changed_files_only_once():
+    patch = """diff --git a/a.py b/a.py
+--- a/a.py
++++ b/a.py
+@@ -1 +1 @@
+-a
++b
+diff --git a/pkg/b.py b/pkg/b.py
+--- a/pkg/b.py
++++ b/pkg/b.py
+@@ -1 +1 @@
+-a
++b
+diff --git a/a.py b/a.py
+--- a/a.py
++++ b/a.py
+@@ -4 +4 @@
+-x
++y
+"""
+    assert _patch_paths(patch) == ["a.py", "pkg/b.py"]
+
+
+def _spec():
+    tasks = []
+    for index in range(2):
+        tasks.append(
+            {
+                "id": "instance-%d" % index,
+                "description": "Repair issue %d." % index,
+                "repository": {
+                    "locator": "path:/tmp/instance-%d" % index,
+                    "revision": "%040x" % (index + 1),
+                    "content_hash_policy": "canonical_text_lf_v1",
+                    "content_hash": "%064x" % (index + 10),
+                },
+                "oracle": {
+                    "required_tests": [
+                        {
+                            "id": "swebench-resolved",
+                            "command": ["external:swebench"],
+                        }
+                    ],
+                    "acceptable_change_sets": [
+                        {
+                            "required_files": ["pkg/target%d.py" % index],
+                            "allowed_files": ["pkg/target%d.py" % index],
+                        }
+                    ],
+                    "forbidden_files": [],
+                    "sealed_files": [],
+                    "baseline_expectation": "at_least_one_failure",
+                },
+                "external_evaluator": {
+                    "kind": "swebench",
+                    "dataset_name": "verified",
+                    "split": "test",
+                    "instance_id": "instance-%d" % index,
+                    "repo": "owner/repo",
+                    "base_commit": "%040x" % (index + 1),
+                    "gold_changed_files_proxy": ["pkg/target%d.py" % index],
+                },
+            }
+        )
+    return {
+        "schema": "feynmap.ai_repair_benchmark.v1",
+        "name": "test",
+        "evaluation_tier": "held_out",
+        "arms": list(ARMS),
+        "tasks": tasks,
+    }
+
+
+def _audit_holdout_spec():
+    base = _spec()
+    tasks = []
+    for index in range(5):
+        source = copy.deepcopy(base["tasks"][index % len(base["tasks"])])
+        source["id"] = "audit-instance-%d" % index
+        source["description"] = "Audit repair issue %d." % index
+        source["repository"] = {
+            "locator": "path:/tmp/audit-instance-%d" % index,
+            "revision": "%040x" % (index + 101),
+            "content_hash_policy": "canonical_text_lf_v1",
+            "content_hash": "%064x" % (index + 201),
+        }
+        source["external_evaluator"] = {
+            "kind": "swebench",
+            "dataset_name": "verified",
+            "split": "test",
+            "instance_id": source["id"],
+            "repo": "owner/repo-%d" % index,
+            "base_commit": source["repository"]["revision"],
+            "gold_changed_files_proxy": ["pkg/target%d.py" % index],
+        }
+        source["admission"] = {
+            "source_group": "owner/repo-%d" % index,
+            "source_reference": source["id"],
+            "selection_reason": "Selected before assisted results.",
+            "used_for_policy_tuning": False,
+            "solution_inspected_before_selection": False,
+        }
+        tasks.append(source)
+
+    return {
+        "schema": base["schema"],
+        "name": "audit held-out test",
+        "evaluation_tier": "held_out",
+        "arms": list(ARMS),
+        "holdout": {
+            "corpus_id": "audit-heldout-v1",
+            "selection_policy": "Deterministic test fixture selection.",
+            "selected_at": "2026-09-22T00:00:00Z",
+            "selection_owner": "test",
+            "assisted_results_observed_before_freeze": False,
+            "policy_tuning_allowed_after_freeze": False,
+        },
+        "tasks": tasks,
+    }
+
+
+def _record(spec, task_index, arm, resolved=True):
+    task_id = "instance-%d" % task_index
+    model = "model/%s" % arm
+    record = {
+        "schema": GENERATION_SCHEMA,
+        "benchmark_hash": content_hash(spec),
+        "task_id": task_id,
+        "instance_id": task_id,
+        "arm": arm,
+        "context_hash": None if arm == "unassisted" else ("%064x" % 77),
+        "repository": dict(spec["tasks"][task_index]["repository"]),
+        "agent": {"provider": "test", "model": "model"},
+        "prediction": {
+            "instance_id": task_id,
+            "model_name_or_path": model,
+            "model_patch": "diff",
+        },
+        "outcome": {
+            "patch_produced": True,
+            "patch_sha256": "%064x" % 99,
+            "changed_files": ["pkg/target%d.py" % task_index],
+            "first_proposed_edit": {"path": "pkg/target%d.py" % task_index},
+            "unsupported_claims": [],
+            "repository_searches": task_index + 1,
+            "extra_context_requests": 0,
+            "elapsed_seconds": 3.0 + task_index,
+            "usage": {"input_tokens": 100 + task_index, "output_tokens": 20},
+        },
+    }
+    record["generation_id"] = content_hash(record)
+    return record
+
+
+def test_context_generation_can_resume_completed_tasks(monkeypatch, tmp_path: Path):
+    import feynmap.judgment.swebench_r1 as module
+
+    spec = _audit_holdout_spec()
+    selected = [spec["tasks"][0]["id"], spec["tasks"][1]["id"]]
+    calls = []
+
+    def fake_generate_context(
+        spec_value,
+        task_id,
+        arm,
+        *,
+        project_root,
+        max_candidates,
+        max_relationships,
+        provider=None,
+    ):
+        calls.append((task_id, arm))
+        task = next(item for item in spec_value["tasks"] if item["id"] == task_id)
+        repository = task["repository"]
+        return {
+            "schema": "feynmap.ai_repair_context.v1",
+            "task_id": task_id,
+            "arm": arm,
+            "analysis_snapshot": {"snapshot_id": "snapshot-" + task_id},
+            "source_repository": {
+                "content_hash": repository["content_hash"],
+                "revision": repository["revision"],
+            },
+            "candidates": [
+                {
+                    "id": "python:symbol:%s.target" % task_id,
+                    "location": {"path": "pkg/target.py"},
+                }
+            ],
+            "relationships": [],
+            "selection": {"available_local_candidate_count": 1},
+        }
+
+    monkeypatch.setattr(module, "generate_context", fake_generate_context)
+    output_root = tmp_path / "contexts"
+
+    first = module.generate_context_matrix(
+        spec,
+        output_root=output_root,
+        project_root=tmp_path,
+        include_judged=False,
+        task_ids=selected,
+        resume=False,
+    )
+    assert len(calls) == 2
+    assert first["task_count"] == 2
+    assert first["complete"] is False
+
+    second = module.generate_context_matrix(
+        spec,
+        output_root=output_root,
+        project_root=tmp_path,
+        include_judged=False,
+        task_ids=selected,
+        resume=True,
+    )
+    assert len(calls) == 2
+    assert second["task_count"] == 2
+
+
+def test_context_audit_is_gold_blind_and_checks_shared_snapshot(tmp_path: Path):
+    spec = _audit_holdout_spec()
+    context_root = tmp_path / "contexts"
+    context_root.mkdir()
+
+    task_rows = []
+    for task in spec["tasks"]:
+        task_id = task["id"]
+        task_dir = context_root / task_id
+        task_dir.mkdir()
+        deterministic = {
+            "schema": "feynmap.ai_repair_context.v1",
+            "task_id": task_id,
+            "arm": "deterministic_context",
+            "analysis_snapshot": {"snapshot_id": "snapshot-" + task_id},
+            "candidates": [
+                {
+                    "id": "python:symbol:%s.target" % task_id,
+                    "language": "python",
+                    "framework": None,
+                    "location": {"path": "pkg/target.py"},
+                }
+            ],
+            "relationships": [],
+        }
+        path = task_dir / "deterministic_context.json"
+        path.write_text(json.dumps(deterministic), encoding="utf-8")
+        task_rows.append(
+            {
+                "task_id": task_id,
+                "deterministic_context": str(path),
+                "relevance_context": None,
+                "dual_channel": None,
+            }
+        )
+
+    manifest = {
+        "schema": "feynmap.swebench_r1_context_matrix.v1",
+        "benchmark_hash": content_hash(spec),
+        "task_count": len(task_rows),
+        "judged_context_included": False,
+        "policy": {},
+        "tasks": task_rows,
+    }
+    manifest["matrix_id"] = content_hash(manifest)
+    (context_root / "matrix.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+
+    result = audit_context_matrix(spec, context_root=context_root)
+
+    assert result["schema"] == "feynmap.swebench_r1_context_audit.v1"
+    assert result["oracle_leakage_detected"] is False
+    assert result["policy"]["gold_labels_consulted"] is False
+    assert result["policy"]["reference_changed_files_consulted"] is False
+    assert result["task_count"] == 5
+    assert result["mean_candidate_count"] == 1.0
+
+
+def test_swebench_patch_handles_modified_created_and_deleted_files(tmp_path: Path):
+    baseline = tmp_path / "baseline"
+    workspace = tmp_path / "workspace"
+    baseline.mkdir()
+    workspace.mkdir()
+
+    (baseline / "keep.py").write_text("old\n", encoding="utf-8")
+    (workspace / "keep.py").write_text("new\n", encoding="utf-8")
+    (workspace / "created.py").write_text("created\n", encoding="utf-8")
+    (baseline / "deleted.py").write_text("deleted\n", encoding="utf-8")
+
+    changed, patch, digest = capture_swebench_patch(baseline, workspace)
+
+    assert changed == ["created.py", "deleted.py", "keep.py"]
+    assert "diff --git a/created.py b/created.py" in patch
+    assert "--- /dev/null" in patch
+    assert "+++ b/created.py" in patch
+    assert "diff --git a/deleted.py b/deleted.py" in patch
+    assert "--- a/deleted.py" in patch
+    assert "+++ /dev/null" in patch
+    assert "diff --git a/keep.py b/keep.py" in patch
+    assert len(digest) == 64
+
+
+def test_export_predictions_uses_official_swebench_shape():
+    spec = _spec()
+    records = [_record(spec, index, "unassisted") for index in range(2)]
+    payload = export_predictions(records, arm="unassisted")
+    rows = [json.loads(line) for line in payload.splitlines()]
+
+    assert [row["instance_id"] for row in rows] == ["instance-0", "instance-1"]
+    assert all(set(row) == {"instance_id", "model_name_or_path", "model_patch"} for row in rows)
+
+
+def test_aggregate_uses_official_resolved_as_primary_metric(tmp_path: Path):
+    spec = _spec()
+    records = []
+    for task_index in range(2):
+        for arm in ARMS:
+            record = _record(spec, task_index, arm)
+            records.append(record)
+            model_dir = (
+                tmp_path
+                / record["prediction"]["model_name_or_path"].replace("/", "__")
+                / record["instance_id"]
+            )
+            model_dir.mkdir(parents=True)
+            # Assisted arms resolve both tasks; unassisted resolves one.
+            resolved = arm != "unassisted" or task_index == 0
+            report = {
+                record["instance_id"]: {
+                    "patch_is_None": False,
+                    "patch_exists": True,
+                    "patch_successfully_applied": True,
+                    "resolved": resolved,
+                    "infra_failure": False,
+                }
+            }
+            (model_dir / "report.json").write_text(
+                json.dumps(report), encoding="utf-8"
+            )
+
+    result = aggregate_results(spec, records, run_root=tmp_path)
+
+    assert result["schema"] == REPORT_SCHEMA
+    assert result["primary_metric"] == "official_swebench_resolved_rate"
+    assert result["by_arm"]["unassisted"]["resolved_rate"] == 0.5
+    assert result["by_arm"]["deterministic_context"]["resolved_rate"] == 1.0
+    assert result["deltas_from_unassisted"]["deterministic_context"]["resolved_rate"] == 0.5
+    assert result["by_arm"]["dual_channel"]["first_edit_gold_file_proxy_rate"] == 1.0

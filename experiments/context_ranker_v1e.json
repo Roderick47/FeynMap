@@ -1,0 +1,91 @@
+{
+  "schema": "feynmap.context_ranker_v1e.v1",
+  "name": "Context Ranker v1E - transitive necessity and adaptive semantic frontier",
+  "retrieval": {
+    "max_depth": 3,
+    "direct_max_candidates": 30,
+    "adaptive_max_candidates": 30,
+    "naive_max_candidates": 80
+  },
+  "adaptive": {
+    "max_branch_expansions_per_depth": 2,
+    "fallback_branch_expansions": 1
+  },
+  "tasks": [
+    {
+      "id": "analyze-language-transitive",
+      "root": "feynmap.engine.FeynMapEngine.analyze",
+      "description": "Trace the language select branch beneath FeynMapEngine.analyze into adapter registry language detection and lookup.",
+      "relevant": [
+        "feynmap.engine.FeynMapEngine._select_languages",
+        "feynmap.adapters.base.AdapterRegistry.detect_languages",
+        "feynmap.adapters.base.AdapterRegistry.language"
+      ],
+      "essential": [
+        "feynmap.adapters.base.AdapterRegistry.detect_languages",
+        "feynmap.adapters.base.AdapterRegistry.language"
+      ]
+    },
+    {
+      "id": "analyze-framework-transitive",
+      "root": "feynmap.engine.FeynMapEngine.analyze",
+      "description": "Trace the framework detection branch beneath analyze into the registry logic that chooses framework adapters for a language.",
+      "relevant": [
+        "feynmap.adapters.base.AdapterRegistry.detect_frameworks",
+        "feynmap.adapters.base.AdapterRegistry.frameworks_for_language"
+      ],
+      "essential": [
+        "feynmap.adapters.base.AdapterRegistry.frameworks_for_language"
+      ]
+    },
+    {
+      "id": "engine-init-adapter-construction",
+      "root": "feynmap.engine.FeynMapEngine.__init__",
+      "description": "Trace the default registry branch constructed by the engine initializer into the concrete language and framework adapters.",
+      "relevant": [
+        "feynmap.engine.default_registry",
+        "feynmap.adapters.python.PythonAdapter",
+        "feynmap.adapters.html.HTMLAdapter",
+        "feynmap.adapters.javascript.JavaScriptAdapter",
+        "feynmap.adapters.frameworks.django.DjangoAdapter",
+        "feynmap.adapters.frameworks.flask.FlaskAdapter",
+        "feynmap.adapters.frameworks.fastapi.FastAPIAdapter"
+      ],
+      "essential": [
+        "feynmap.adapters.python.PythonAdapter",
+        "feynmap.adapters.html.HTMLAdapter",
+        "feynmap.adapters.javascript.JavaScriptAdapter",
+        "feynmap.adapters.frameworks.django.DjangoAdapter",
+        "feynmap.adapters.frameworks.flask.FlaskAdapter",
+        "feynmap.adapters.frameworks.fastapi.FastAPIAdapter"
+      ]
+    },
+    {
+      "id": "cli-parser-transitive",
+      "root": "feynmap.cli.main",
+      "description": "Trace command parser construction beneath the CLI entry point into the language and framework option help providers.",
+      "relevant": [
+        "feynmap.cli.build_parser",
+        "feynmap.cli._language_help",
+        "feynmap.cli._framework_help"
+      ],
+      "essential": [
+        "feynmap.cli._language_help",
+        "feynmap.cli._framework_help"
+      ]
+    },
+    {
+      "id": "analyze-integration-deep",
+      "root": "feynmap.engine.FeynMapEngine.analyze",
+      "description": "Trace cross-language integration resolution beneath analyze through resolver helpers to the low-level connection operation.",
+      "relevant": [
+        "feynmap.integration.IntegrationResolver.resolve",
+        "feynmap.integration.IntegrationResolver._resolve_pair",
+        "feynmap.integration.IntegrationResolver._connect"
+      ],
+      "essential": [
+        "feynmap.integration.IntegrationResolver._connect"
+      ]
+    }
+  ]
+}

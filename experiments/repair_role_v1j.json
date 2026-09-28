@@ -1,0 +1,177 @@
+{
+  "schema": "feynmap.repair_role_v1j.v1",
+  "tasks": [
+    {
+      "id": "cache-key-normalization",
+      "description": "Equivalent resource identifiers with different letter case create separate cache entries. Make cache reads and writes use one stable identity without changing request routing.",
+      "candidates": [
+        {
+          "id": "cache.lookup.normalized_key",
+          "symbol": "normalized_key",
+          "summary": "Builds the key used by both cache lookup and storage, but currently preserves input case.",
+          "excerpt": "return namespace + ':' + resource_id",
+          "region": {"path": "core/cache_store.src", "start_line": 41, "end_line": 47},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        },
+        {
+          "id": "request.dispatch.load_resource",
+          "symbol": "load_resource",
+          "summary": "Receives a request identifier and delegates lookup to the cache before loading the backing record.",
+          "excerpt": "cached = cache.lookup(request.resource_id)",
+          "region": {"path": "service/request_dispatch.src", "start_line": 18, "end_line": 31},
+          "gold": {"semantic_relevance": true, "repair_role": "structural_bridge"}
+        },
+        {
+          "id": "cache.contract.case_equivalence",
+          "symbol": "case_equivalence",
+          "summary": "Specifies that resource identifiers are case-insensitive and demonstrates expected cache identity.",
+          "excerpt": "lookup('Item-A') equals lookup('item-a')",
+          "region": {"path": "spec/cache_contract.spec", "start_line": 9, "end_line": 17},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "audit.format_cache_event",
+          "symbol": "format_cache_event",
+          "summary": "Formats cache hit and miss events for an audit stream.",
+          "excerpt": "return event.kind + ':' + event.timestamp",
+          "region": {"path": "observability/audit_format.src", "start_line": 63, "end_line": 71},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        }
+      ],
+      "relationships": [
+        {"source": "request.dispatch.load_resource", "relationship": "calls", "target": "cache.lookup.normalized_key"},
+        {"source": "cache.contract.case_equivalence", "relationship": "specifies", "target": "cache.lookup.normalized_key"},
+        {"source": "request.dispatch.load_resource", "relationship": "emits_to", "target": "audit.format_cache_event"}
+      ]
+    },
+    {
+      "id": "bounded-retry-delay",
+      "description": "Repeated delivery failures can produce a retry delay above the documented maximum. Keep exponential growth but enforce the configured ceiling.",
+      "candidates": [
+        {
+          "id": "retry.policy.compute_delay",
+          "symbol": "compute_delay",
+          "summary": "Calculates exponential retry delay from attempt count and base duration without applying the maximum.",
+          "excerpt": "return base_delay * power(2, attempt)",
+          "region": {"path": "runtime/retry_policy.src", "start_line": 27, "end_line": 35},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        },
+        {
+          "id": "queue.consumer.schedule_retry",
+          "symbol": "schedule_retry",
+          "summary": "Handles failed delivery and passes the calculated delay to the scheduler.",
+          "excerpt": "scheduler.defer(message, retry.compute_delay(attempt))",
+          "region": {"path": "runtime/queue_consumer.src", "start_line": 88, "end_line": 103},
+          "gold": {"semantic_relevance": true, "repair_role": "structural_bridge"}
+        },
+        {
+          "id": "retry.settings.maximum_delay",
+          "symbol": "maximum_delay",
+          "summary": "Declares the operator-configured maximum retry delay and its units.",
+          "excerpt": "maximum_delay = duration('15m')",
+          "region": {"path": "config/retry_settings.src", "start_line": 12, "end_line": 15},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "metrics.retry_counter_name",
+          "symbol": "retry_counter_name",
+          "summary": "Defines the display name for a counter incremented whenever a retry is scheduled.",
+          "excerpt": "retry_counter_name = 'delivery_retries_total'",
+          "region": {"path": "observability/metric_names.src", "start_line": 22, "end_line": 24},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        }
+      ],
+      "relationships": [
+        {"source": "queue.consumer.schedule_retry", "relationship": "calls", "target": "retry.policy.compute_delay"},
+        {"source": "retry.policy.compute_delay", "relationship": "reads", "target": "retry.settings.maximum_delay"},
+        {"source": "queue.consumer.schedule_retry", "relationship": "records", "target": "metrics.retry_counter_name"}
+      ]
+    },
+    {
+      "id": "response-field-redaction",
+      "description": "A public account response exposes an internal recovery token. Remove that field from public serialization while retaining it in persistence.",
+      "candidates": [
+        {
+          "id": "account.public_view.serialize",
+          "symbol": "serialize_public_account",
+          "summary": "Builds the public account shape and currently copies the recovery token into the response.",
+          "excerpt": "output.recovery_token = account.recovery_token",
+          "region": {"path": "boundary/account_view.src", "start_line": 54, "end_line": 69},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        },
+        {
+          "id": "account.endpoint.get_current",
+          "symbol": "get_current_account",
+          "summary": "Loads the current account and delegates response creation to the public serializer.",
+          "excerpt": "return public_view.serialize(account_store.current(actor))",
+          "region": {"path": "boundary/account_endpoint.src", "start_line": 20, "end_line": 29},
+          "gold": {"semantic_relevance": true, "repair_role": "structural_bridge"}
+        },
+        {
+          "id": "account.contract.public_fields",
+          "symbol": "public_account_fields",
+          "summary": "Lists fields allowed in the public account response and excludes recovery credentials.",
+          "excerpt": "allowed = [id, display_name, created_at]",
+          "region": {"path": "spec/account_boundary.spec", "start_line": 33, "end_line": 42},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "account.store.rotate_token",
+          "symbol": "rotate_recovery_token",
+          "summary": "Generates and persists a replacement recovery token during an explicit rotation operation.",
+          "excerpt": "account.recovery_token = random_secret()",
+          "region": {"path": "storage/account_store.src", "start_line": 112, "end_line": 126},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        }
+      ],
+      "relationships": [
+        {"source": "account.endpoint.get_current", "relationship": "calls", "target": "account.public_view.serialize"},
+        {"source": "account.contract.public_fields", "relationship": "constrains", "target": "account.public_view.serialize"},
+        {"source": "account.endpoint.get_current", "relationship": "depends_on", "target": "account.store.rotate_token"}
+      ]
+    },
+    {
+      "id": "state-transition-authorization",
+      "description": "Read-only operators can approve a pending record even though the transition policy allows approvals only for reviewers. Enforce the existing policy at the transition boundary.",
+      "candidates": [
+        {
+          "id": "transition.approve.authorize",
+          "symbol": "authorize_approval",
+          "summary": "Checks that a record is pending but does not check the actor capability before applying approval.",
+          "excerpt": "require(record.state == pending); record.state = approved",
+          "region": {"path": "domain/approval_transition.src", "start_line": 70, "end_line": 84},
+          "gold": {"semantic_relevance": true, "repair_role": "implementation_target"}
+        },
+        {
+          "id": "command.approve_record.handle",
+          "symbol": "handle_approve_record",
+          "summary": "Resolves the actor and record before invoking the approval transition.",
+          "excerpt": "transition.approve(record, actor)",
+          "region": {"path": "application/approval_command.src", "start_line": 25, "end_line": 38},
+          "gold": {"semantic_relevance": true, "repair_role": "structural_bridge"}
+        },
+        {
+          "id": "policy.approval_capabilities",
+          "symbol": "approval_capabilities",
+          "summary": "Defines reviewer as the sole capability permitted to approve pending records.",
+          "excerpt": "approve_pending -> [reviewer]",
+          "region": {"path": "policy/transition_rules.src", "start_line": 14, "end_line": 20},
+          "gold": {"semantic_relevance": true, "repair_role": "supporting_context"}
+        },
+        {
+          "id": "notification.approval_subject",
+          "symbol": "approval_subject",
+          "summary": "Formats the notification subject emitted after a successful approval.",
+          "excerpt": "return 'Record approved: ' + record.label",
+          "region": {"path": "notification/message_text.src", "start_line": 46, "end_line": 49},
+          "gold": {"semantic_relevance": false, "repair_role": "incidental_context"}
+        }
+      ],
+      "relationships": [
+        {"source": "command.approve_record.handle", "relationship": "calls", "target": "transition.approve.authorize"},
+        {"source": "transition.approve.authorize", "relationship": "governed_by", "target": "policy.approval_capabilities"},
+        {"source": "transition.approve.authorize", "relationship": "emits_to", "target": "notification.approval_subject"}
+      ]
+    }
+  ]
+}

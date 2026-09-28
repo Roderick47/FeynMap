@@ -71,6 +71,8 @@ class IntegrationResolver:
         by_kind: Dict[str, int] = {}
 
         resolved += self._resolve_template_renders(graph, edge_keys, by_kind)
+        resolved += self._resolve_template_composition(graph, edge_keys, by_kind)
+        resolved += self._resolve_template_tags(graph, edge_keys, by_kind)
         resolved += self._resolve_script_loads(graph, edge_keys, by_kind)
         resolved += self._resolve_event_handlers(graph, edge_keys, by_kind)
 
@@ -106,6 +108,95 @@ class IntegrationResolver:
                     count += 1
         if count:
             by_kind["template_render->html"] = count
+        return count
+
+    def _resolve_template_composition(self, graph: SemanticGraph, edge_keys: set, by_kind: Dict[str, int]) -> int:
+        html_nodes = [node for node in graph.nodes if node.language == "html"]
+        count = 0
+        for source in html_nodes:
+            for contract_kind, edge_kind in (
+                ("template_extends", EdgeKind.EXTENDS),
+                ("template_include", EdgeKind.RENDERS),
+            ):
+                for contract in contracts(source, contract_kind):
+                    target_name = _normalize_resource(contract.get("target", ""))
+                    target = _best_path_match(html_nodes, target_name)
+                    if target and target.id != source.id and self._connect(
+                        graph,
+                        edge_keys,
+                        source,
+                        target,
+                        edge_kind,
+                        contract,
+                        contract_kind,
+                    ):
+                        count += 1
+        if count:
+            by_kind["template_composition"] = count
+        return count
+
+    def _resolve_template_tags(self, graph: SemanticGraph, edge_keys: set, by_kind: Dict[str, int]) -> int:
+        python_nodes = [
+            node for node in graph.nodes
+            if node.language == "python" and node.location
+        ]
+        count = 0
+        for source in (node for node in graph.nodes if node.language == "html"):
+            loaded_libraries: List[str] = []
+            for contract in contracts(source, "template_tag_library"):
+                library = str(contract.get("target") or "").strip()
+                if not library:
+                    continue
+                loaded_libraries.append(library)
+                target = _best_path_match(
+                    python_nodes,
+                    "templatetags/%s.py" % library,
+                    prefer_modules=True,
+                )
+                if target and self._connect(
+                    graph,
+                    edge_keys,
+                    source,
+                    target,
+                    EdgeKind.DEPENDS_ON,
+                    contract,
+                    "template_tag_library",
+                ):
+                    count += 1
+
+            for contract in contracts(source, "template_filter"):
+                filter_name = str(contract.get("target") or "").strip()
+                if not filter_name:
+                    continue
+                libraries = [
+                    str(item)
+                    for item in (contract.get("loaded_libraries") or loaded_libraries)
+                    if str(item)
+                ]
+                candidates: List[SemanticNode] = []
+                for node in python_nodes:
+                    if node.name != filter_name:
+                        continue
+                    path = _normalize_resource(node.location.path)
+                    if "/templatetags/" not in ("/" + path):
+                        continue
+                    if libraries:
+                        stem = PurePosixPath(path).stem
+                        if stem not in libraries:
+                            continue
+                    candidates.append(node)
+                if len(candidates) == 1 and self._connect(
+                    graph,
+                    edge_keys,
+                    source,
+                    candidates[0],
+                    EdgeKind.INVOKES,
+                    contract,
+                    "template_filter",
+                ):
+                    count += 1
+        if count:
+            by_kind["template_tag_resolution"] = count
         return count
 
     def _resolve_script_loads(self, graph: SemanticGraph, edge_keys: set, by_kind: Dict[str, int]) -> int:
@@ -346,15 +437,17 @@ def _best_path_match(nodes: Iterable[SemanticNode], target: str, prefer_modules:
     normalized = _normalize_resource(target)
     if not normalized:
         return None
-    candidates: List[SemanticNode] = []
+    strong: List[SemanticNode] = []
+    basename: List[SemanticNode] = []
     for node in nodes:
         if not node.location:
             continue
         path = _normalize_resource(node.location.path)
         if path == normalized or path.endswith("/" + normalized) or normalized.endswith("/" + path):
-            candidates.append(node)
+            strong.append(node)
         elif PurePosixPath(path).name == PurePosixPath(normalized).name:
-            candidates.append(node)
+            basename.append(node)
+    candidates = strong if strong else basename
     if prefer_modules:
         module_candidates = [node for node in candidates if node.kind.value == "module"]
         if module_candidates:

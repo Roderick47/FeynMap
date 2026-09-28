@@ -26,8 +26,9 @@ from feynmap.core import (
 )
 
 from .base import LanguageAdapter
+from .python_source import cached_relative_path, get_python_source_session
 
-EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache"}
+EXCLUDED_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "env", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".pytest_cache", ".feynmap"}
 BUILTIN_NAMES = set(dir(builtins))
 
 
@@ -106,6 +107,7 @@ class PythonAdapter(LanguageAdapter):
 
     def analyze(self, project_path: Path) -> SemanticGraph:
         root = project_path.resolve()
+        source = get_python_source_session(root)
         modules, diagnostics = self._parse_modules(root)
         graph = SemanticGraph(metadata={"language": "python", "adapter": "python-ast", "frameworks_applied": []})
 
@@ -119,7 +121,7 @@ class PythonAdapter(LanguageAdapter):
             graph.add_node(
                 SemanticNode(
                     id=module_id,
-                    name=parsed.module or parsed.path.stem,
+                    name=(parsed.module.rsplit(".", 1)[-1] if parsed.module else parsed.path.stem),
                     qualified_name=parsed.module,
                     kind=NodeKind.MODULE,
                     language="python",
@@ -202,13 +204,20 @@ class PythonAdapter(LanguageAdapter):
 
                 if not isinstance(definition.node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
                     continue
-                collector = _ScopedBodyCollector(definition.node)
-                collector.visit(definition.node)
+                calls, awaits = source.scoped_callable(definition.node)
                 unresolved_calls: List[str] = []
-                await_lines = {getattr(item.value, "lineno", None) for item in collector.awaits if isinstance(item.value, ast.Call)}
-                for call in collector.calls:
+                await_lines = {getattr(item.value, "lineno", None) for item in awaits if isinstance(item.value, ast.Call)}
+                for call in calls:
                     raw_call = _render_expr(call.func)
-                    target_id = self._resolve_call(call.func, parsed, definition, module_ids, definitions_by_qualified, definitions_by_module_name)
+                    target_id = self._resolve_call(
+                        call.func,
+                        parsed,
+                        definition,
+                        module_ids,
+                        definitions_by_qualified,
+                        definitions_by_module_name,
+                        rendered=raw_call,
+                    )
                     if target_id:
                         line = getattr(call, "lineno", getattr(definition.node, "lineno", 1))
                         self._add_edge_once(
@@ -238,22 +247,55 @@ class PythonAdapter(LanguageAdapter):
     def _parse_modules(self, root: Path) -> Tuple[List[ParsedModule], List[str]]:
         modules: List[ParsedModule] = []
         warnings: List[str] = []
-        for path in self._iter_files(root):
-            if path.suffix != ".py":
+        source = get_python_source_session(root)
+        for record in source.records():
+            path = record.path
+            relative = record.relative
+            if record.tree is None:
+                warnings.append("could not parse %s: %s" % (relative, record.error or "unknown parse error"))
                 continue
-            relative = self._relative(root, path)
-            try:
-                text = path.read_text(encoding="utf-8")
-                tree = ast.parse(text, filename=relative)
-            except (OSError, UnicodeDecodeError, SyntaxError) as exc:
-                warnings.append("could not parse %s: %s" % (relative, exc))
-                continue
+            tree = record.tree
             module_name = self._module_name(root, path)
             parsed = ParsedModule(path=path, module=module_name, tree=tree)
             parsed.imports = self._collect_imports(tree, module_name)
             parsed.definitions = self._collect_definitions(path, module_name, tree)
             modules.append(parsed)
-        return modules, warnings
+
+        # A repository-root __init__.py is assigned root.name for compatibility
+        # when the analyzed path itself is a Python package. In a repository that
+        # also contains a real package directory with that same name, however,
+        # root/__init__.py and root/<name>/__init__.py collapse to the same
+        # canonical module identity. Prefer the explicit nested package and
+        # report the root file as shadowed rather than emitting duplicate nodes.
+        by_name: Dict[str, List[ParsedModule]] = {}
+        for parsed in modules:
+            by_name.setdefault(parsed.module, []).append(parsed)
+        deduplicated: List[ParsedModule] = []
+        root_init = (root / "__init__.py").resolve()
+        for module_name in sorted(by_name):
+            group = by_name[module_name]
+            if len(group) == 1:
+                deduplicated.append(group[0])
+                continue
+            non_root = [parsed for parsed in group if parsed.path.resolve() != root_init]
+            if len(non_root) == 1:
+                chosen = non_root[0]
+            else:
+                chosen = sorted(group, key=lambda parsed: self._relative(root, parsed.path))[0]
+            deduplicated.append(chosen)
+            for shadowed in group:
+                if shadowed is chosen:
+                    continue
+                warnings.append(
+                    "shadowed duplicate Python module %s at %s; using %s"
+                    % (
+                        module_name,
+                        self._relative(root, shadowed.path),
+                        self._relative(root, chosen.path),
+                    )
+                )
+        deduplicated.sort(key=lambda parsed: self._relative(root, parsed.path))
+        return deduplicated, warnings
 
     def _collect_definitions(self, path: Path, module: str, tree: ast.Module) -> Dict[str, Definition]:
         definitions: Dict[str, Definition] = {}
@@ -310,8 +352,18 @@ class PythonAdapter(LanguageAdapter):
             evidence=[self._evidence(root, definition.path, getattr(node, "lineno", 1), "python.ast.definition", "Python %s definition" % kind.value)],
         )
 
-    def _resolve_call(self, expr: ast.AST, parsed: ParsedModule, definition: Definition, module_ids: Dict[str, str], by_qualified: Dict[str, Definition], by_module_name: Dict[Tuple[str, str], Definition]) -> Optional[str]:
-        return self._resolve_reference(_render_expr(expr), parsed, definition, module_ids, by_qualified, by_module_name)
+    def _resolve_call(
+        self,
+        expr: ast.AST,
+        parsed: ParsedModule,
+        definition: Definition,
+        module_ids: Dict[str, str],
+        by_qualified: Dict[str, Definition],
+        by_module_name: Dict[Tuple[str, str], Definition],
+        rendered: Optional[str] = None,
+    ) -> Optional[str]:
+        raw = rendered if rendered is not None else _render_expr(expr)
+        return self._resolve_reference(raw, parsed, definition, module_ids, by_qualified, by_module_name)
 
     def _resolve_reference(self, raw: str, parsed: ParsedModule, definition: Definition, module_ids: Dict[str, str], by_qualified: Dict[str, Definition], by_module_name: Dict[Tuple[str, str], Definition]) -> Optional[str]:
         if not raw:
@@ -404,10 +456,7 @@ class PythonAdapter(LanguageAdapter):
 
     @staticmethod
     def _relative(root: Path, path: Path) -> str:
-        try:
-            return path.relative_to(root).as_posix()
-        except ValueError:
-            return path.as_posix()
+        return cached_relative_path(root, path)
 
     def _evidence(self, root: Path, path: Path, line: int, detector: str, detail: str) -> Evidence:
         return Evidence(EvidenceKind.STATIC, detector, detail, SourceLocation(self._relative(root, path), line), 1.0)
@@ -434,17 +483,19 @@ def _qualify(module: str, name: str) -> str:
 def _render_expr(node: Optional[ast.AST]) -> str:
     if node is None:
         return ""
+    # Name and dotted Attribute expressions dominate call targets and render
+    # identically without invoking ast.unparse's general-purpose machinery.
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        left = _render_expr(node.value)
+        return "%s.%s" % (left, node.attr) if left else node.attr
     unparse = getattr(ast, "unparse", None)
     if unparse is not None:
         try:
             return unparse(node)
         except Exception:
             pass
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        left = _render_expr(node.value)
-        return "%s.%s" % (left, node.attr) if left else node.attr
     if isinstance(node, ast.Call):
         return _render_expr(node.func)
     if isinstance(node, ast.Subscript):

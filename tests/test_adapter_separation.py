@@ -1,4 +1,10 @@
+import ast
+from pathlib import Path
+
 from feynmap import EdgeKind, FeynMapEngine, NodeKind
+from feynmap.core import SemanticGraph, SemanticNode, SourceLocation
+from feynmap.adapters.frameworks._python import _CallableLineIndex, _node_for_line
+from feynmap.adapters.python import Definition, ParsedModule, PythonAdapter, _render_expr
 
 
 def _node(graph, name):
@@ -104,3 +110,117 @@ def test_flask_and_fastapi_are_independent_framework_adapters(tmp_path):
     assert fastapi_graph.metadata["framework"] == "fastapi"
     assert _node(fastapi_graph, "items").kind == NodeKind.HANDLER
     assert _node(fastapi_graph, "Item").kind == NodeKind.TRANSFORMER
+
+
+
+def test_resolve_call_reuses_pre_rendered_expression(monkeypatch):
+    adapter = PythonAdapter()
+    tree = ast.parse("helper()")
+    call = tree.body[0].value
+    definition = Definition(
+        id="python:symbol:mod.run",
+        name="run",
+        qualified_name="mod.run",
+        module="mod",
+        path=Path("mod.py"),
+        node=ast.parse("def run():\n    pass\n").body[0],
+    )
+    parsed = ParsedModule(
+        path=Path("mod.py"),
+        module="mod",
+        tree=tree,
+        imports={},
+        definitions={},
+    )
+
+    def fail_render(_node):
+        raise AssertionError("pre-rendered call should not be rendered twice")
+
+    monkeypatch.setattr("feynmap.adapters.python._render_expr", fail_render)
+
+    assert adapter._resolve_call(
+        call.func,
+        parsed,
+        definition,
+        {},
+        {},
+        {},
+        rendered="helper",
+    ) is None
+
+
+
+def test_render_expr_fast_paths_name_and_attribute_without_unparse(monkeypatch):
+    expression = ast.parse("service.client.run()", mode="eval").body.func
+
+    def fail_unparse(_node):
+        raise AssertionError("Name/Attribute fast path should not call ast.unparse")
+
+    monkeypatch.setattr(ast, "unparse", fail_unparse, raising=False)
+
+    assert _render_expr(expression) == "service.client.run"
+
+
+
+def test_framework_callable_line_index_preserves_smallest_enclosing_span():
+    outer = SemanticNode(
+        "outer",
+        "outer",
+        NodeKind.FUNCTION,
+        language="python",
+        location=SourceLocation(path="views.py", line=1, end_line=20),
+    )
+    inner = SemanticNode(
+        "inner",
+        "inner",
+        NodeKind.FUNCTION,
+        language="python",
+        location=SourceLocation(path="views.py", line=5, end_line=8),
+    )
+    other_file = SemanticNode(
+        "other",
+        "other",
+        NodeKind.FUNCTION,
+        language="python",
+        location=SourceLocation(path="other.py", line=1, end_line=50),
+    )
+    ignored_class = SemanticNode(
+        "class",
+        "Container",
+        NodeKind.CLASS,
+        language="python",
+        location=SourceLocation(path="views.py", line=1, end_line=30),
+    )
+    graph = SemanticGraph(nodes=[outer, inner, other_file, ignored_class])
+
+    index = _CallableLineIndex(graph)
+    owners = index.resolve_many("views.py", [1, 6, 10, 25])
+
+    assert owners[1] is outer
+    assert owners[6] is inner
+    assert owners[10] is outer
+    assert 25 not in owners
+    assert _node_for_line(graph, "views.py", 6) is inner
+    assert _node_for_line(graph, "views.py", 25) is None
+
+
+def test_framework_callable_line_index_preserves_graph_order_for_equal_spans():
+    first = SemanticNode(
+        "first",
+        "first",
+        NodeKind.FUNCTION,
+        language="python",
+        location=SourceLocation(path="views.py", line=5, end_line=10),
+    )
+    second = SemanticNode(
+        "second",
+        "second",
+        NodeKind.HANDLER,
+        language="python",
+        location=SourceLocation(path="views.py", line=5, end_line=10),
+    )
+    graph = SemanticGraph(nodes=[first, second])
+
+    index = _CallableLineIndex(graph)
+
+    assert index.resolve("views.py", 7) is first

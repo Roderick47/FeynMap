@@ -227,13 +227,31 @@ Static analysis is necessary but not sufficient for highly dynamic systems. The 
 
 These sources enrich rather than overwrite stronger evidence.
 
-## AI integration
+## AI integration and sparse knowledge activation
 
-After repository orchestration, the next major phase is the persistent AI grounding service/MCP layer.
+The persistent graph and grounding service are inputs to the sparse knowledge-activation substrate, not the final architecture.
 
-Planned tools include `get_symbol`, `find_callers`, `find_dependencies`, `trace_path`, `change_impact`, `validate_claim`, `find_entrypoints`, `find_dead_code`, `find_integrations` and `migration_plan`.
+The intended request path is:
 
-Every response should preserve evidence, confidence and unresolved boundaries so an agent can reason about uncertainty.
+```text
+canonical semantic graph
+        ↓
+cheap region / structural routing
+        ↓
+bounded deterministic or JEV-guided activation
+        ↓
+sufficiency / confidence cutoff
+        ↓
+minimal evidence-preserving context
+        ↓
+LLM / agent / IDE / MCP / API client
+```
+
+FeynMap owns graph truth, evidence, and traversal bounds. A judgment provider may choose which grounded candidates deserve exploration, but it must not invent relationships or silently reinterpret evidence confidence.
+
+MCP and HTTP transports should remain thin adapters over the same substrate contracts. Planned tools such as `get_symbol`, `find_callers`, `find_dependencies`, `trace_path`, `change_impact`, `validate_claim`, `find_entrypoints`, `find_dead_code`, `find_integrations`, and `migration_plan` remain useful consumers.
+
+The hot path is optimized for sparse activation: low candidate-touch ratio, low knowledge-activation ratio, low routing latency, and minimal downstream context without sacrificing task quality. See `SPARSE_KNOWLEDGE_SUBSTRATE.md`.
 
 ## Physics notation
 

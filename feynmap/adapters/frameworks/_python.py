@@ -2,29 +2,22 @@
 from __future__ import annotations
 
 import ast
+import heapq
 import re
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from feynmap.core import Evidence, EvidenceKind, NodeKind, SemanticGraph, SemanticNode
 from feynmap.integration import add_contract
+from feynmap.adapters.python_source import get_python_source_session
 
-EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__"}
+EXCLUDED = {".git", ".venv", "venv", "env", "node_modules", "__pycache__", ".feynmap"}
 DEPENDENCY_FILES = ("requirements.txt", "pyproject.toml", "Pipfile", "poetry.lock", "setup.py", "setup.cfg")
 HTTP_METHODS = ("get", "post", "put", "patch", "delete", "options", "head")
 
 
 def iter_python_files(root: Path) -> Iterable[Path]:
-    for path in root.rglob("*.py"):
-        if not path.is_file():
-            continue
-        try:
-            parts = path.relative_to(root).parts
-        except ValueError:
-            parts = path.parts
-        if any(part in EXCLUDED for part in parts):
-            continue
-        yield path
+    yield from get_python_source_session(root).paths()
 
 
 def dependency_text(root: Path) -> str:
@@ -41,27 +34,11 @@ def dependency_text(root: Path) -> str:
 
 
 def imports_by_file(root: Path) -> Dict[str, Set[str]]:
-    result: Dict[str, Set[str]] = {}
-    for path in iter_python_files(root):
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SyntaxError):
-            continue
-        imports: Set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imports.update(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                imports.add(node.module)
-        result[path.relative_to(root).as_posix()] = imports
-    return result
+    return get_python_source_session(root).imports_by_file()
 
 
 def repository_imports(root: Path) -> Set[str]:
-    combined: Set[str] = set()
-    for imports in imports_by_file(root).values():
-        combined.update(imports)
-    return combined
+    return get_python_source_session(root).repository_imports()
 
 
 def node_python(node: SemanticNode) -> Dict[str, object]:
@@ -117,16 +94,73 @@ def mark_role(node: SemanticNode, framework: str, kind: NodeKind, role: str, det
     node.evidence.append(Evidence(EvidenceKind.FRAMEWORK, "%s.adapter" % framework, detail, node.location, confidence))
 
 
+class _CallableLineIndex:
+    """Per-file callable intervals for framework AST-to-semantic ownership."""
+
+    def __init__(self, graph: SemanticGraph) -> None:
+        by_path: Dict[str, List[Tuple[int, int, int, int, SemanticNode]]] = {}
+        for order, node in enumerate(graph.nodes):
+            if (
+                node.language != "python"
+                or node.location is None
+                or not node.location.path
+                or node.kind not in {NodeKind.FUNCTION, NodeKind.METHOD, NodeKind.HANDLER}
+            ):
+                continue
+            start = node.location.line or 1
+            end = node.location.end_line or start
+            span = end - start
+            by_path.setdefault(node.location.path, []).append(
+                (start, end, span, order, node)
+            )
+        self._by_path = {
+            path: tuple(sorted(entries, key=lambda item: (item[0], item[3])))
+            for path, entries in by_path.items()
+        }
+
+    def resolve_many(
+        self,
+        path: str,
+        lines: Sequence[int],
+    ) -> Dict[int, SemanticNode]:
+        entries = self._by_path.get(path, ())
+        if not entries or not lines:
+            return {}
+
+        result: Dict[int, SemanticNode] = {}
+        active: List[Tuple[int, int, int, SemanticNode]] = []
+        position = 0
+        for line in sorted(set(int(value or 1) for value in lines)):
+            while position < len(entries) and entries[position][0] <= line:
+                start, end, span, order, node = entries[position]
+                heapq.heappush(active, (span, order, end, node))
+                position += 1
+            while active and active[0][2] < line:
+                heapq.heappop(active)
+            if active:
+                result[line] = active[0][3]
+        return result
+
+    def resolve(self, path: str, line: int) -> Optional[SemanticNode]:
+        return self.resolve_many(path, [line]).get(int(line or 1))
+
+
 def attach_decorator_http_contracts(graph: SemanticGraph, root: Path, framework: str) -> None:
     """Extract Flask/FastAPI-style HTTP/WebSocket routes directly from AST decorators."""
-    for path in iter_python_files(root):
-        relative = path.relative_to(root).as_posix()
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SyntaxError):
+    source = get_python_source_session(root)
+    callable_index = _CallableLineIndex(graph)
+    for record in source.records():
+        if record.tree is None:
             continue
-        for definition in (item for item in ast.walk(tree) if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))):
-            semantic_node = _node_for_line(graph, relative, getattr(definition, "lineno", 1))
+        relative = record.relative
+        tree = record.tree
+        definitions = source.ast_index(record.path).functions
+        owner_by_line = callable_index.resolve_many(
+            relative,
+            [getattr(definition, "lineno", 1) for definition in definitions],
+        )
+        for definition in definitions:
+            semantic_node = owner_by_line.get(getattr(definition, "lineno", 1))
             if semantic_node is None or semantic_node.kind != NodeKind.HANDLER:
                 continue
             for decorator in definition.decorator_list:
@@ -162,14 +196,13 @@ def attach_django_url_contracts(graph: SemanticGraph, root: Path) -> None:
         if node.language == "python" and node.kind == NodeKind.HANDLER:
             by_name.setdefault(node.name, []).append(node)
 
-    for path in iter_python_files(root):
-        if path.name != "urls.py":
+    source = get_python_source_session(root)
+    for record in source.records():
+        path = record.path
+        if path.name != "urls.py" or record.tree is None:
             continue
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SyntaxError):
-            continue
-        for call in (item for item in ast.walk(tree) if isinstance(item, ast.Call)):
+        tree = record.tree
+        for call in source.ast_index(record.path).calls:
             call_name = _expr_name(call.func)
             if call_name.rsplit(".", 1)[-1] not in {"path", "re_path"} or len(call.args) < 2:
                 continue
@@ -184,13 +217,19 @@ def attach_django_url_contracts(graph: SemanticGraph, root: Path) -> None:
 
 def attach_template_render_contracts(graph: SemanticGraph, root: Path, framework: str) -> None:
     """Attach static template names to the smallest enclosing semantic callable."""
-    for path in iter_python_files(root):
-        relative = path.relative_to(root).as_posix()
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, SyntaxError):
+    source = get_python_source_session(root)
+    callable_index = _CallableLineIndex(graph)
+    for record in source.records():
+        if record.tree is None:
             continue
-        for call in (item for item in ast.walk(tree) if isinstance(item, ast.Call)):
+        relative = record.relative
+        tree = record.tree
+        calls = source.ast_index(record.path).calls
+        owner_by_line = callable_index.resolve_many(
+            relative,
+            [getattr(call, "lineno", 1) for call in calls],
+        )
+        for call in calls:
             call_name = _expr_name(call.func)
             template: Optional[str] = None
             if framework == "django" and call_name.rsplit(".", 1)[-1] in {"render", "render_to_string"}:
@@ -208,26 +247,14 @@ def attach_template_render_contracts(graph: SemanticGraph, root: Path, framework
                         template = _string(keyword.value) or template
             if not template:
                 continue
-            semantic_node = _node_for_line(graph, relative, getattr(call, "lineno", 1))
+            semantic_node = owner_by_line.get(getattr(call, "lineno", 1))
             if semantic_node:
                 add_contract(semantic_node, "template_render", template, 0.96, framework=framework, line=getattr(call, "lineno", 1))
 
 
 def _node_for_line(graph: SemanticGraph, path: str, line: int) -> Optional[SemanticNode]:
-    candidates: List[SemanticNode] = []
-    for node in graph.nodes:
-        if node.language != "python" or not node.location or node.location.path != path:
-            continue
-        if node.kind not in {NodeKind.FUNCTION, NodeKind.METHOD, NodeKind.HANDLER}:
-            continue
-        start = node.location.line or 1
-        end = node.location.end_line or start
-        if start <= line <= end:
-            candidates.append(node)
-    if not candidates:
-        return None
-    candidates.sort(key=lambda item: (item.location.end_line or item.location.line or 1) - (item.location.line or 1))
-    return candidates[0]
+    """Compatibility wrapper for callers that need a single line lookup."""
+    return _CallableLineIndex(graph).resolve(path, line)
 
 
 def _expr_name(node: ast.AST) -> str:
