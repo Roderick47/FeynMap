@@ -282,6 +282,27 @@ subsequent Tree-sitter JavaScript/TypeScript checkpoint expands testing to
 mixed-language repositories. See
 [`docs/AI_REAL_WORLD_VALIDATION.md`](docs/AI_REAL_WORLD_VALIDATION.md).
 
+## Optional Rust region-routing accelerator
+
+FeynMap uses the Python region router by default. An optional PyO3/maturin
+companion wheel provides a compiled `NativeRegionIndex` for repeat routing over
+one prepared graph. Install the native companion wheel for your platform and
+set `FEYNMAP_NATIVE_ROUTING=1` to opt in, or construct
+`RegionIndex(graph, native_routing=True)` explicitly.
+
+The native index is initialized lazily, reused on subsequent routes and
+automatically falls back to Python if the wheel is missing, the ABI does not
+match or the native call fails. `FEYNMAP_NATIVE_ROUTING_VERIFY=1` optionally
+compares each accelerated route against the original Python router for
+diagnostics. This verification mode incurs extra work.
+
+Our paired S6.8 test showed a roughly 22–24× improvement per reused route,
+but a full six-task S6.9 region-first/minimal-context workflow was approximately
+the same speed with or without Rust, because the additional native index setup
+also costs time. Adaptive tasks that stop with sufficient local evidence do
+not initialize Rust at all. **Rust is opt-in, not a claim of a whole-FeynMap
+22× speedup.** See [optional native routing and full-workflow results](docs/S6_9_OPTIONAL_NATIVE_ROUTING.md).
+
 ## Mission
 
 > **FeynMap keeps a verifiable model of the software system available, then activates the minimum grounded knowledge an AI or developer needs for the task at hand.**
