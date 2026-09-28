@@ -261,6 +261,8 @@ The grounding service contract is now **2.0.0**: callers follow calls/invokes on
 
 Use `feynmap evaluate graph.json annotations.json` to measure explicitly labeled relationships in any canonical semantic graph. The evaluator reports missed and incorrect relationships, unjudged edges, language-pair results, and observations by confidence tier. It uses exact selectors and does not depend on a language adapter. See [evaluation format and mixed-language fixture](docs/LANGUAGE_NEUTRAL_EVALUATION.md). This benchmark foundation does not add new source-language parsers or establish production accuracy.
 
+See also [adversarial resolution hardening](docs/ADVERSARIAL_RESOLUTION.md) for source-authored scope and HTTP regression examples, runtime checks, and outstanding independent-review status.
+
 ## Direction
 
 FeynMap's product direction is now the **sparse knowledge-activation substrate**: keep the full evidence-backed graph available, but touch, activate, and deliver only the minimum grounded knowledge required for the current task. MCP, API, IDE, and agent integrations are delivery surfaces over that substrate rather than the architectural destination.
