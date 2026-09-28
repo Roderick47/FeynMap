@@ -131,8 +131,18 @@ S6.3.3 conformance assets:
   - [x] S6.5.2 add PyO3/maturin project skeleton
   - [x] S6.6 implement native routing kernel
   - [x] S6.7 differential Python/Rust conformance
-  - [ ] S6.8 performance acceptance
+  - [x] S6.8 performance acceptance
   - [ ] S6.9 optional production fast path
+
+S6.8 accepts the **reused route-level accelerator** from five paired, same-run
+1,200-call timing samples. The complete Python→Rust→Python route achieved
+21.76x on Python 3.8 (1,636.03→75.19 us) and 23.69x on Python 3.12
+(1,493.48→63.05 us); both exceed the declared >=2.0x criterion. Extra
+one-time preparation and native construction averaged about 10–11 ms,
+recovered after approximately eight calls in those runs. Full adaptive/minimal
+workflow gains are **not yet established**: normal production routing remains
+Python until optional S6.9 integration and whole-workflow validation.
+See `docs/S6_8_NATIVE_PERFORMANCE_ACCEPTANCE.md`.
 
 S6.7 verifies the existing Python route, compact Python numeric reference and
 compiled Rust on 12 independently expected cases, 108 seeded stress requests
