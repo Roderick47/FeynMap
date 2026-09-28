@@ -15,6 +15,11 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 from .engine import FeynMapEngine
 from .query import FeynMapQuery
 from .routing import RegionIndex
+from .rust_routing_boundary import (
+    RUST_ROUTING_BOUNDARY_VERSION,
+    prepare_region_routing_index,
+    route_through_compact_python_boundary,
+)
 
 
 BENCHMARK_SCHEMA = "feynmap.rust_region_routing_benchmark.v1"
@@ -108,6 +113,41 @@ def run_benchmark(
     warmup_rounds = int(spec["warmup_rounds"])
     measurement_rounds = int(spec["measurement_rounds"])
 
+    compact_boundary = prepare_region_routing_index(index)
+    conformance_tasks = []
+    for task in tasks:
+        reference_route = index.route(
+            task["query"],
+            anchor_node_id=task["anchor_node_id"],
+            limit=limit,
+        )
+        compact_route = route_through_compact_python_boundary(
+            index,
+            compact_boundary,
+            task["query"],
+            anchor_node_id=task["anchor_node_id"],
+            limit=limit,
+        )
+        reference_signature = _route_signature(reference_route)
+        compact_signature = _route_signature(compact_route)
+        if (
+            reference_signature["anchor_region"] != compact_signature["anchor_region"]
+            or reference_signature["candidate_regions"] != compact_signature["candidate_regions"]
+            or reference_signature["selected_regions"] != compact_signature["selected_regions"]
+            or set(reference_signature["scores"]) != set(compact_signature["scores"])
+        ):
+            raise AssertionError(
+                "compact routing boundary changed route semantics for %s"
+                % task["id"]
+            )
+        for region_id, score in reference_signature["scores"].items():
+            if abs(score - compact_signature["scores"][region_id]) > 1e-12:
+                raise AssertionError(
+                    "compact routing score mismatch for %s / %s"
+                    % (task["id"], region_id)
+                )
+        conformance_tasks.append(task["id"])
+
     for _ in range(warmup_rounds):
         for task in tasks:
             index.route(
@@ -145,6 +185,11 @@ def run_benchmark(
         "region_index": {
             "region_count": len(index.regions),
             "build_elapsed_ms": round(float(index_build_ns) / 1_000_000.0, 6),
+        },
+        "boundary_conformance": {
+            "schema_version": RUST_ROUTING_BOUNDARY_VERSION,
+            "equivalent": True,
+            "tasks_checked": conformance_tasks,
         },
         "workload": {
             "task_count": len(tasks),
