@@ -23,7 +23,7 @@ considered by the compatibility-policy and conformance-fixture checkpoints.
 | Canonical semantic graph | `feynmap.semantic_graph` / `1.0.0` | `SemanticGraph.to_dict/from_dict`; snapshots, query, context, future Rust | **freeze-candidate** | Primary cross-runtime graph contract. |
 | Semantic ontology | `NodeKind`, `EdgeKind`, `EvidenceKind` | adapters → semantic graph → all downstream layers | **freeze-candidate** | Freeze with semantic graph compatibility rules; enum additions need explicit policy. |
 | Confidence policy | `CONFIDENCE_POLICY_VERSION = 2.0.0` | engine metadata, query/context/evaluation | **freeze-candidate** | Semantics affect interpretation of graph evidence; must be compatibility-governed. |
-| Analysis contract | `ANALYSIS_CONTRACT_VERSION = 1.1.0` | engine metadata, incremental reuse guards | **freeze-candidate** | Not a JSON schema, but changes can invalidate snapshot/incremental equivalence. |
+| Analysis contract | `ANALYSIS_CONTRACT_VERSION = 1.2.0` | engine metadata, incremental reuse guards | **freeze-candidate** | Not a JSON schema, but changes can invalidate snapshot/incremental equivalence. |
 | Repository snapshot | `feynmap.repository_snapshot` / `1.0.0` | snapshot capture/store/load; future storage backends/Rust | **freeze-candidate** | Explicit portable persistence boundary. |
 | File fingerprint row | nested in repository snapshot | snapshot identity/inventory | **freeze-candidate** | Freeze as a child of snapshot rather than as an independent schema. |
 
