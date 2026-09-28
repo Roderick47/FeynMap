@@ -96,7 +96,7 @@ class RoutingKernelRequest:
 
     query_term_ids: Tuple[int, ...]
     unknown_query_term_count: int
-    anchor_region_index: int
+    anchor_region_index: Optional[int]
     limit: int
 
     @property
@@ -106,7 +106,13 @@ class RoutingKernelRequest:
     def validate(self, kernel: RoutingKernelData) -> None:
         if self.unknown_query_term_count < 0:
             raise ValueError("unknown_query_term_count must be non-negative")
-        if self.anchor_region_index < -1 or self.anchor_region_index >= kernel.region_count:
+        if (
+            self.anchor_region_index is not None
+            and (
+                self.anchor_region_index < 0
+                or self.anchor_region_index >= kernel.region_count
+            )
+        ):
             raise ValueError("anchor_region_index outside region table")
         if self.limit < 1:
             raise ValueError("limit must be positive")
@@ -245,9 +251,9 @@ def prepare_routing_request(
         if token not in prepared.token_to_id
     )
     anchor_index = (
-        prepared.region_index_by_id.get(anchor_region, -1)
+        prepared.region_index_by_id.get(anchor_region)
         if anchor_region is not None
-        else -1
+        else None
     )
     request = RoutingKernelRequest(
         query_term_ids=known,
@@ -311,7 +317,7 @@ def route_compact_python_reference(
 
     anchor = request.anchor_region_index
     neighbor_regions = set()
-    if anchor >= 0:
+    if anchor is not None:
         neighbor_regions.update(
             _row(
                 kernel.adjacency_offsets,
@@ -394,11 +400,11 @@ def route_compact_python_reference(
                 selected.append(region_index)
                 seen.add(region_index)
 
-    if anchor >= 0 and anchor not in selected:
+    if anchor is not None and anchor not in selected:
         selected.insert(0, anchor)
         selected = selected[:limit]
 
-    if not selected and anchor >= 0:
+    if not selected and anchor is not None:
         selected = [anchor]
 
     selected_scores = []
