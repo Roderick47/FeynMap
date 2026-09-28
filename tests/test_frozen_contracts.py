@@ -36,7 +36,7 @@ def test_s6_frozen_contract_set_is_explicit_and_version_pinned():
         for key, contract in contracts.items()
     } == {
         "semantic_graph": "1.0.0",
-        "analysis_contract": "1.1.0",
+        "analysis_contract": "1.2.0",
         "confidence_policy": "2.0.0",
         "repository_snapshot": "1.0.0",
         "grounding_tool_catalog": "2.1.0",
