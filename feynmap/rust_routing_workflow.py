@@ -75,7 +75,7 @@ def _equivalent(reference: Mapping[str, Any], native: Mapping[str, Any]) -> None
                     raise AssertionError("%s: adaptive decision changed in %s" % (context, field))
 
 
-def _run_mode(graph, root: Path, dataset, *, native: bool):
+def _run_mode(graph, root: Path, dataset, *, native: bool, strategy: str):
     seen = []
     original_init = RegionIndex.__init__
 
@@ -94,7 +94,7 @@ def _run_mode(graph, root: Path, dataset, *, native: bool):
                 start = time.perf_counter_ns()
                 result = run_benchmark(
                     str(root), dataset,
-                    strategy="adaptive",
+                    strategy=strategy,
                     context_strategy="minimal",
                 )
                 elapsed = time.perf_counter_ns() - start
@@ -110,7 +110,15 @@ def _run_mode(graph, root: Path, dataset, *, native: bool):
     return result, elapsed, counts
 
 
-def run_workflow(root: Path, dataset, *, samples: int = 5) -> Dict[str, Any]:
+def run_workflow(
+    root: Path,
+    dataset,
+    *,
+    samples: int = 5,
+    strategy: str = "region",
+) -> Dict[str, Any]:
+    if strategy not in {"region", "adaptive"}:
+        raise ValueError("workflow strategy must be region or adaptive")
     if samples < 3 or samples % 2 == 0:
         raise ValueError("samples must be an odd integer >= 3")
     root = root.resolve()
@@ -136,6 +144,7 @@ def run_workflow(root: Path, dataset, *, samples: int = 5) -> Dict[str, Any]:
         for mode in modes:
             result, duration, counters = _run_mode(
                 graph, root, dataset, native=(mode == "native"),
+                strategy=strategy,
             )
             results[mode] = result
             if mode == "python":
@@ -148,7 +157,10 @@ def run_workflow(root: Path, dataset, *, samples: int = 5) -> Dict[str, Any]:
                 native_results.append(result)
                 usage.append(counters)
                 if counters["native_route_calls"] == 0:
-                    raise AssertionError("native option did not execute native routing")
+                    if strategy == "region":
+                        raise AssertionError("region-first workflow never invoked native routing")
+                    if counters["native_setup_attempts"]:
+                        raise AssertionError("unneeded adaptive route incurred native setup")
                 if counters["native_setup_attempts"] != counters["active_native_indexes"]:
                     raise AssertionError("native index was not prepared exactly once per used index")
                 if counters["native_fallbacks"]:
@@ -163,13 +175,17 @@ def run_workflow(root: Path, dataset, *, samples: int = 5) -> Dict[str, Any]:
     python_median = float(statistics.median(python_times))
     native_median = float(statistics.median(native_times))
     ratio = native_median / python_median
-    gate = ratio <= WORKFLOW_REGRESSION_LIMIT
+    activated = any(item["native_route_calls"] > 0 for item in usage)
+    # Adaptive search legitimately stops before region routing on some or all
+    # tasks. In that case native setup must remain zero; the path is verified
+    # for quality and laziness but its speed ratio is informational only.
+    gate = ratio <= WORKFLOW_REGRESSION_LIMIT if activated else True
 
     return {
         "schema": WORKFLOW_SCHEMA,
         "status": "pass" if gate else "regression",
         "task_count": reference["task_count"],
-        "strategy": "adaptive",
+        "strategy": strategy,
         "context_strategy": "minimal",
         "graph": {
             "nodes": len(graph.nodes), "edges": len(graph.edges),
@@ -185,6 +201,7 @@ def run_workflow(root: Path, dataset, *, samples: int = 5) -> Dict[str, Any]:
             "native_to_python_time_ratio": round(ratio, 5),
             "native_workflow_speedup": round(python_median / native_median, 5),
             "regression_limit": WORKFLOW_REGRESSION_LIMIT,
+            "regression_gate_applicable": activated,
             "includes_each_native_index_setup": True,
             "excludes_common_graph_analysis": True,
         },
@@ -199,8 +216,11 @@ def run_workflow(root: Path, dataset, *, samples: int = 5) -> Dict[str, Any]:
         },
         "native_usage": usage,
         "decision": (
-            "optional integration accepted with Python remaining default"
-            if gate else "native remains opt-in; full-workflow regression needs investigation"
+            "adaptive local sufficiency avoided region routing and all native setup"
+            if not activated
+            else "optional native region routing passes full-workflow regression gate"
+            if gate
+            else "native remains opt-in; full-workflow regression needs investigation"
         ),
     }
 
@@ -210,6 +230,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("dataset")
     parser.add_argument("project_root")
     parser.add_argument("--samples", type=int, default=5)
+    parser.add_argument("--strategy", choices=("region", "adaptive"), default="region")
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
     path = Path(args.output)
@@ -220,7 +241,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if native.abi_version() != RUST_ROUTING_BOUNDARY_VERSION:
             raise AssertionError("native ABI mismatch")
         dataset = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
-        result = run_workflow(Path(args.project_root), dataset, samples=args.samples)
+        result = run_workflow(
+            Path(args.project_root), dataset,
+            samples=args.samples, strategy=args.strategy,
+        )
     except Exception as exc:
         result = {
             "schema": WORKFLOW_SCHEMA,
