@@ -4,10 +4,15 @@ These are skipped when the optional wheel is absent from ordinary Python CI.
 The native-build workflow installs the wheel and must execute them on both
 Python 3.8 and Python 3.12.
 """
+import json
+from pathlib import Path
+
 import pytest
 
 native = pytest.importorskip("_feynmap_native_routing")
 
+from feynmap.engine import FeynMapEngine
+from feynmap.query import FeynMapQuery
 from feynmap.core import EdgeKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 from feynmap.routing import RegionIndex
 from feynmap.rust_routing_boundary import (
@@ -136,3 +141,64 @@ def test_native_index_owns_its_arrays_independently_of_python():
     arguments[0][0] = 0.0
     arguments[4].clear()
     assert rust.route(*request.native_route_args()) == before
+
+
+
+def test_native_routes_feynmap_selfhost_queries():
+    """Small recursive smoke; the broader differential corpus belongs to S6.7."""
+    root = Path(__file__).resolve().parents[1]
+    specification = json.loads(
+        (root / "experiments" / "rust_region_routing_s6.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    graph = FeynMapEngine().analyze(
+        str(root),
+        language=specification["analysis"]["language"],
+        framework=specification["analysis"]["framework"],
+    )
+    query_api = FeynMapQuery(graph)
+    index = RegionIndex(graph)
+    prepared = prepare_region_routing_index(index)
+    rust = native.NativeRegionIndex(*prepared.kernel.native_constructor_args())
+
+    for task in specification["tasks"]:
+        anchor_node_id = (
+            query_api.resolve(task["root"]).id
+            if task.get("root")
+            else None
+        )
+        anchor_region = (
+            index.region_for_node(anchor_node_id)
+            if anchor_node_id is not None
+            else None
+        )
+        request = prepare_routing_request(
+            prepared,
+            task["query"],
+            anchor_region=anchor_region,
+            limit=specification["region_limit"],
+        )
+        expected = route_compact_python_reference(prepared.kernel, request)
+        _compare(rust.route(*request.native_route_args()), expected, prepared.kernel)
+
+        original = index.route(
+            task["query"],
+            anchor_node_id=anchor_node_id,
+            limit=specification["region_limit"],
+        )
+        received = RoutingKernelResponse.from_native_result(
+            rust.route(*request.native_route_args())
+        )
+        assert original.candidate_regions == received.candidate_regions, task["id"]
+        selected_ids = tuple(
+            prepared.region_ids[value]
+            for value in received.selected_region_indices
+        )
+        assert original.selected_regions == selected_ids, task["id"]
+        received_scores = dict(zip(selected_ids, received.selected_scores))
+        assert set(original.scores) == set(received_scores), task["id"]
+        for region_id, score in original.scores.items():
+            assert score == pytest.approx(
+                received_scores[region_id], rel=1e-12, abs=1e-12
+            ), (task["id"], region_id)
