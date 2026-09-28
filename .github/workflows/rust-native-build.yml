@@ -8,6 +8,9 @@ on:
       - "feynmap/rust_routing_boundary.py"
       - "tests/test_native_routing_integration.py"
       - "experiments/rust_region_routing_s6.json"
+      - "feynmap/rust_routing_conformance.py"
+      - "tests/test_rust_routing_conformance_spec.py"
+      - "tests/fixtures/contracts/s6_7_routing_oracles.json"
       - ".github/workflows/rust-native-build.yml"
   pull_request:
     paths:
@@ -16,6 +19,9 @@ on:
       - "feynmap/rust_routing_boundary.py"
       - "tests/test_native_routing_integration.py"
       - "experiments/rust_region_routing_s6.json"
+      - "feynmap/rust_routing_conformance.py"
+      - "tests/test_rust_routing_conformance_spec.py"
+      - "tests/fixtures/contracts/s6_7_routing_oracles.json"
       - ".github/workflows/rust-native-build.yml"
   workflow_dispatch:
 
@@ -60,6 +66,17 @@ jobs:
           PY
       - name: Test compiled Rust kernel against Python reference
         run: python -m pytest tests/test_native_routing_integration.py -q
+      - name: Run S6.7 independent and differential conformance on Python 3.8
+        run: |
+          python -m feynmap.rust_routing_conformance \
+            --repo-root . \
+            --output performance-results/s6-7-native-conformance-py38.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: s6-7-native-conformance-py38
+          path: performance-results/s6-7-native-conformance-py38.json
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         with:
           name: feynmap-native-routing-abi3
@@ -96,3 +113,14 @@ jobs:
           PY
       - name: Test same wheel's native kernel on Python 3.12
         run: python -m pytest tests/test_native_routing_integration.py -q
+      - name: Run S6.7 independent and differential conformance on Python 3.12
+        run: |
+          python -m feynmap.rust_routing_conformance \
+            --repo-root . \
+            --output performance-results/s6-7-native-conformance-py312.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: s6-7-native-conformance-py312
+          path: performance-results/s6-7-native-conformance-py312.json
+          if-no-files-found: warn
