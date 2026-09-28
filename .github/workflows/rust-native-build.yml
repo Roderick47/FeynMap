@@ -6,12 +6,16 @@ on:
       - "native/routing_kernel/**"
       - "feynmap/native_routing.py"
       - "feynmap/rust_routing_boundary.py"
+      - "tests/test_native_routing_integration.py"
+      - "experiments/rust_region_routing_s6.json"
       - ".github/workflows/rust-native-build.yml"
   pull_request:
     paths:
       - "native/routing_kernel/**"
       - "feynmap/native_routing.py"
       - "feynmap/rust_routing_boundary.py"
+      - "tests/test_native_routing_integration.py"
+      - "experiments/rust_region_routing_s6.json"
       - ".github/workflows/rust-native-build.yml"
   workflow_dispatch:
 
