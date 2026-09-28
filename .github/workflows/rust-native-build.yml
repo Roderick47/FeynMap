@@ -10,6 +10,10 @@ on:
       - "experiments/rust_region_routing_s6.json"
       - "feynmap/rust_routing_conformance.py"
       - "feynmap/rust_routing_performance.py"
+      - "feynmap/rust_routing_workflow.py"
+      - "feynmap/routing.py"
+      - "tests/test_optional_native_routing.py"
+      - "experiments/sparse_activation_feynmap_s0.json"
       - "tests/test_rust_routing_performance.py"
       - "tests/test_rust_routing_conformance_spec.py"
       - "tests/test_rust_routing_validation.py"
@@ -24,6 +28,10 @@ on:
       - "experiments/rust_region_routing_s6.json"
       - "feynmap/rust_routing_conformance.py"
       - "feynmap/rust_routing_performance.py"
+      - "feynmap/rust_routing_workflow.py"
+      - "feynmap/routing.py"
+      - "tests/test_optional_native_routing.py"
+      - "experiments/sparse_activation_feynmap_s0.json"
       - "tests/test_rust_routing_performance.py"
       - "tests/test_rust_routing_conformance_spec.py"
       - "tests/test_rust_routing_validation.py"
@@ -151,6 +159,18 @@ jobs:
         with:
           name: s6-8-routing-performance-py312
           path: performance-results/s6-8-routing-py312.json
+          if-no-files-found: error
+      - name: S6.9 compare full recursive adaptive/minimal-context workflow
+        run: |
+          python -m feynmap.rust_routing_workflow \
+            experiments/sparse_activation_feynmap_s0.json . \
+            --samples 5 \
+            --output performance-results/s6-9-full-workflow.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: s6-9-full-workflow
+          path: performance-results/s6-9-full-workflow.json
           if-no-files-found: error
 
 
