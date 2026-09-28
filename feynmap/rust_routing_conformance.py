@@ -10,6 +10,7 @@ import argparse
 import json
 import math
 import random
+import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
@@ -319,6 +320,11 @@ def run_selfhost(repo_root: Path, spec_path: Path, native_module) -> int:
 
 
 def run_conformance(repo_root: Path, native_module) -> Dict[str, Any]:
+    if native_module.abi_version() != RUST_ROUTING_BOUNDARY_VERSION:
+        raise AssertionError(
+            "Python/native routing ABI mismatch: %s != %s"
+            % (RUST_ROUTING_BOUNDARY_VERSION, native_module.abi_version())
+        )
     oracle_count, oracle_ids = run_oracles(
         repo_root / "tests/fixtures/contracts/s6_7_routing_oracles.json",
         native_module,
@@ -359,21 +365,31 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     root = Path(args.repo_root).resolve()
     import _feynmap_native_routing as native
 
-    result = run_conformance(root, native)
+    try:
+        result = run_conformance(root, native)
+    except Exception as exc:
+        result = {
+            "schema": CONFORMANCE_SCHEMA,
+            "status": "fail",
+            "error": str(exc),
+            "traceback": traceback.format_exc(),
+        }
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         json.dumps(result, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )
-    print(json.dumps({
-        "status": result["status"],
-        "total_cases": result["total_cases"],
-        "independent_oracles": result["independent_oracles"],
-        "seeded_requests": result["seeded_requests"],
-        "recursive_selfhost_requests": result["recursive_selfhost_requests"],
-    }, sort_keys=True))
-    return 0
+    summary = {
+        key: result[key]
+        for key in (
+            "status", "total_cases", "independent_oracles",
+            "seeded_requests", "recursive_selfhost_requests", "error",
+        )
+        if key in result
+    }
+    print(json.dumps(summary, sort_keys=True))
+    return 0 if result["status"] == "pass" else 1
 
 
 if __name__ == "__main__":
