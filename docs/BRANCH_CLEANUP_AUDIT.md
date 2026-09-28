@@ -24,19 +24,19 @@ branch name when convenient.
 
 At the time of this audit there are 38 non-main branch names.
 
-- 33 contain **zero unique commits** relative to current `main`.
-- 3 of the remaining 5 are historical merge-commit artifacts with **zero file
+- 32 contain **zero unique commits** relative to current `main`.
+- 6 branch names diverge from `main`.
+- 3 of those 6 are historical merge-commit artifacts with **zero file
   differences** relative to content already reachable from `main`.
-- 1 branch contains an adversarial-resolution commit whose useful behavior and
+- 1 contains an adversarial-resolution commit whose useful behavior and
   fixtures were explicitly recovered into modern `main`.
-- 1 branch contains old V2-only work that is intentionally retained as an
-  archival reference until its remaining useful concepts are either reimplemented
-  in V3 or explicitly retired.
+- 1 contains old V2-only work intentionally retained as an archival reference
+  until its remaining useful concepts are either reimplemented in V3 or
+  explicitly retired.
 - 1 separate transport branch contains 9 unique MCP commits and remains a
   deliberate parked experiment.
 
-Because some categories overlap in the statements above, the branch-by-branch
-classification below is authoritative.
+The branch-by-branch classification below is authoritative.
 
 ## Preserve as historical baselines
 
