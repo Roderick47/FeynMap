@@ -9,6 +9,8 @@ on:
       - "tests/test_native_routing_integration.py"
       - "experiments/rust_region_routing_s6.json"
       - "feynmap/rust_routing_conformance.py"
+      - "feynmap/rust_routing_performance.py"
+      - "tests/test_rust_routing_performance.py"
       - "tests/test_rust_routing_conformance_spec.py"
       - "tests/test_rust_routing_validation.py"
       - "tests/fixtures/contracts/s6_7_routing_oracles.json"
@@ -21,6 +23,8 @@ on:
       - "tests/test_native_routing_integration.py"
       - "experiments/rust_region_routing_s6.json"
       - "feynmap/rust_routing_conformance.py"
+      - "feynmap/rust_routing_performance.py"
+      - "tests/test_rust_routing_performance.py"
       - "tests/test_rust_routing_conformance_spec.py"
       - "tests/test_rust_routing_validation.py"
       - "tests/fixtures/contracts/s6_7_routing_oracles.json"
@@ -79,6 +83,17 @@ jobs:
           name: s6-7-native-conformance-py38
           path: performance-results/s6-7-native-conformance-py38.json
           if-no-files-found: warn
+      - name: Measure S6.8 paired Python 3.8 route performance
+        run: |
+          python -m feynmap.rust_routing_performance \
+            experiments/rust_region_routing_s6.json . \
+            --output performance-results/s6-8-routing-py38.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: s6-8-routing-performance-py38
+          path: performance-results/s6-8-routing-py38.json
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: feynmap-native-routing-abi3
@@ -126,3 +141,74 @@ jobs:
           name: s6-7-native-conformance-py312
           path: performance-results/s6-7-native-conformance-py312.json
           if-no-files-found: warn
+      - name: Measure S6.8 paired Python 3.12 route performance
+        run: |
+          python -m feynmap.rust_routing_performance \
+            experiments/rust_region_routing_s6.json . \
+            --output performance-results/s6-8-routing-py312.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: s6-8-routing-performance-py312
+          path: performance-results/s6-8-routing-py312.json
+          if-no-files-found: error
+
+
+  performance-acceptance:
+    needs: [build-abi3, import-python312]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: s6-8-routing-performance-py38
+          path: collected/py38
+      - uses: actions/download-artifact@v4
+        with:
+          name: s6-8-routing-performance-py312
+          path: collected/py312
+      - name: Enforce S6.8 end-to-end acceptance on both interpreters
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          reports = [
+              json.loads(Path("collected/py38/s6-8-routing-py38.json").read_text()),
+              json.loads(Path("collected/py312/s6-8-routing-py312.json").read_text()),
+          ]
+          lines = [
+              "## S6.8 native route performance (paired, same runner per interpreter)",
+              "",
+              "| Python | Python route (us) | Full native route (us) | Speedup | Extra setup (ms) | Break-even calls | Decision |",
+              "|---|---:|---:|---:|---:|---:|---|",
+          ]
+          for report in reports:
+              decision = report["decision"]
+              assert report["workload"]["quality_equivalence"] is True
+              assert report["production_router_unchanged"] is True
+              assert report["workload"]["paired_samples"] >= 5
+              assert report["workload"]["route_calls_per_sample"] == 1200
+              assert decision["minimum_speedup"] == 2.0
+              lines.append(
+                  "| %s | %.2f | %.2f | %.2fx | %.2f | %s | %s |" % (
+                      report["environment"]["python"],
+                      decision["python_mean_route_us"],
+                      decision["native_mean_route_us"],
+                      decision["end_to_end_route_speedup"],
+                      decision["extra_setup_ms"],
+                      decision["break_even_route_calls"],
+                      decision["status"],
+                  )
+              )
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write(summary)
+          if any(report["decision"]["status"] != "pass" for report in reports):
+              raise SystemExit("S6.8: native end-to-end routing did not meet >=2.0x on both interpreters")
+          PY
