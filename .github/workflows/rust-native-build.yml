@@ -2,8 +2,17 @@ name: rust-native-build
 
 on:
   push:
-    branches:
-      - feature/rust-routing-kernel
+    paths:
+      - "native/routing_kernel/**"
+      - "feynmap/native_routing.py"
+      - "feynmap/rust_routing_boundary.py"
+      - ".github/workflows/rust-native-build.yml"
+  pull_request:
+    paths:
+      - "native/routing_kernel/**"
+      - "feynmap/native_routing.py"
+      - "feynmap/rust_routing_boundary.py"
+      - ".github/workflows/rust-native-build.yml"
   workflow_dispatch:
 
 jobs:
