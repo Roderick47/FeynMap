@@ -254,8 +254,9 @@ def run_seeded(native_module, *, sizes: Sequence[int] = SYNTHETIC_SIZES) -> Tupl
         graph = synthetic_graph(size)
         index = RegionIndex(graph)
         prepared = prepare_region_routing_index(index)
-        native_index = native_module.NativeRegionIndex(
-            *prepared.kernel.native_constructor_args()
+        native_index = (
+            native_module.NativeRegionIndex(*prepared.kernel.native_constructor_args())
+            if native_module is not None else None
         )
         region_counts.append(len(index.regions))
         for request_index in range(SYNTHETIC_REQUESTS_PER_GRAPH):
