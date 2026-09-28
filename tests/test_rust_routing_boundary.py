@@ -178,3 +178,37 @@ def test_boundary_tables_are_deterministic_and_numeric():
     assert len(first.kernel.region_term_offsets) == first.kernel.region_count + 1
     assert len(first.kernel.path_term_offsets) == first.kernel.region_count + 1
     assert len(first.kernel.adjacency_offsets) == first.kernel.region_count + 1
+
+
+
+def test_native_abi_arguments_are_compact_and_string_free():
+    graph = SemanticGraph(
+        nodes=[
+            _node("a", "alpha", "a.py", "a.alpha"),
+            _node("b", "beta", "b.py", "b.beta"),
+        ]
+    )
+    index = RegionIndex(graph)
+    prepared = prepare_region_routing_index(index)
+    request = prepare_routing_request(
+        prepared,
+        "alpha unknown_native_term",
+        anchor_region=None,
+        limit=2,
+    )
+
+    constructor_args = prepared.kernel.native_constructor_args()
+    route_args = request.native_route_args()
+
+    assert len(constructor_args) == 9
+    assert route_args[2] is None
+    assert all(
+        not isinstance(value, str)
+        for collection in (
+            prepared.kernel.region_term_ids,
+            prepared.kernel.path_term_ids,
+            prepared.kernel.adjacency_region_indices,
+            request.query_term_ids,
+        )
+        for value in collection
+    )
