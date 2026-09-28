@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin==1.15.0"]
+build-backend = "maturin"
+
+[project]
+name = "feynmap-native-routing"
+version = "0.1.0"
+description = "Optional native routing accelerator for FeynMap"
+requires-python = ">=3.8"
+
+[tool.maturin]
+bindings = "pyo3"
+manifest-path = "Cargo.toml"
+module-name = "_feynmap_native_routing"
