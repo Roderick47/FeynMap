@@ -5,6 +5,7 @@ The native-build workflow installs the wheel and must execute them on both
 Python 3.8 and Python 3.12.
 """
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,9 @@ from feynmap.query import FeynMapQuery
 from feynmap.core import EdgeKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 from feynmap.routing import RegionIndex
 from feynmap.rust_routing_boundary import (
+    RoutingKernelData,
+    RoutingKernelRequest,
+    MAX_NATIVE_U32,
     RoutingKernelResponse,
     prepare_region_routing_index,
     prepare_routing_request,
@@ -202,3 +206,86 @@ def test_native_routes_feynmap_selfhost_queries():
             assert score == pytest.approx(
                 received_scores[region_id], rel=1e-12, abs=1e-12
             ), (task["id"], region_id)
+
+
+
+def _numeric_kernel_fixture():
+    return RoutingKernelData(
+        region_count=2,
+        region_weights=(1.0, 1.0),
+        idf_by_token=(1.0, 2.0, 3.0),
+        unknown_token_idf=4.0,
+        region_term_offsets=(0, 2, 3),
+        region_term_ids=(0, 1, 2),
+        path_term_offsets=(0, 1, 2),
+        path_term_ids=(0, 2),
+        adjacency_offsets=(0, 1, 2),
+        adjacency_region_indices=(1, 0),
+    )
+
+
+@pytest.mark.parametrize(
+    "changed,error",
+    [
+        ({"region_weights": (-1.0, 1.0)}, "finite and non-negative"),
+        ({"region_weights": (float("nan"), 1.0)}, "finite and non-negative"),
+        ({"idf_by_token": (1.0, 0.0, 3.0)}, "finite and positive"),
+        ({"unknown_token_idf": float("inf")}, "finite and positive"),
+        ({"region_term_offsets": (1, 2, 3)}, "start at zero"),
+        ({"region_term_offsets": (0, 3, 2)}, "monotonic"),
+        ({"region_term_offsets": (0, 2, 4)}, "final offset"),
+        ({"region_term_ids": (0, 0, 2)}, "sorted and unique"),
+        ({"path_term_ids": (3, 2)}, "out-of-range"),
+        ({"adjacency_region_indices": (2, 0)}, "out-of-range"),
+    ],
+)
+def test_rust_and_python_reject_same_malformed_csr_contract(changed, error):
+    broken = replace(_numeric_kernel_fixture(), **changed)
+    with pytest.raises(ValueError):
+        broken.validate()
+    with pytest.raises(ValueError, match=error):
+        native.NativeRegionIndex(*broken.native_constructor_args())
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        {"query_term_ids": (0, 0)},
+        {"query_term_ids": (3,)},
+        {"unknown_query_term_count": MAX_NATIVE_U32 + 1},
+        {"anchor_region_index": 2},
+        {"limit": 0},
+        {"limit": MAX_NATIVE_U32 + 1},
+    ],
+)
+def test_rust_and_python_reject_same_invalid_request_domain(changed):
+    kernel = _numeric_kernel_fixture()
+    rust = native.NativeRegionIndex(*kernel.native_constructor_args())
+    request = RoutingKernelRequest((0,), 0, None, 2)
+    broken = replace(request, **changed)
+    with pytest.raises(ValueError):
+        broken.validate(kernel)
+    # Python→Rust u32 conversion may raise OverflowError before Rust can
+    # return ValueError; both reliably reject the invalid ABI request.
+    with pytest.raises((ValueError, OverflowError)):
+        rust.route(*broken.native_route_args())
+
+
+def test_native_empty_index_and_unknown_only_query():
+    kernel = RoutingKernelData(
+        region_count=0,
+        region_weights=(),
+        idf_by_token=(),
+        unknown_token_idf=1.0,
+        region_term_offsets=(0,),
+        region_term_ids=(),
+        path_term_offsets=(0,),
+        path_term_ids=(),
+        adjacency_offsets=(0,),
+        adjacency_region_indices=(),
+    )
+    kernel.validate()
+    rust = native.NativeRegionIndex(*kernel.native_constructor_args())
+    request = RoutingKernelRequest((), 1, None, 3)
+    expected = route_compact_python_reference(kernel, request)
+    _compare(rust.route(*request.native_route_args()), expected, kernel)
