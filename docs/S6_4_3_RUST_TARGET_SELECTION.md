@@ -24,6 +24,11 @@ It performs repeated:
 - locality weighting;
 - candidate sorting and bounded selection.
 
+S6.5.1 deliberately narrows the first native ABI: Python retains canonical
+query tokenization, while path terms are prepared once and Rust receives only
+numeric query/token IDs for scoring and selection. Tokenization can be moved
+later only if a fresh profile justifies it.
+
 These are mechanical operations. They do not make JEV/model judgments and they
 do not alter canonical graph truth.
 
