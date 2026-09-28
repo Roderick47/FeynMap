@@ -1,8 +1,10 @@
 """S6.9: same-graph recursive FeynMap workflow comparison with native opt-in.
 
-Analyze the repository once, then compare the complete six-task adaptive +
-minimal-context workflow with Python routing vs optional native routing. Native
-index construction and any fallback are included in the measured native path.
+Analyze the repository once, then compare complete six-task region-first and
+adaptive workflows, both with minimal context. Each strategy contrasts original
+Python routing and optional Rust routing; native index construction and any
+fallback are included in the measured native path. Adaptive early stops must
+avoid all native setup when region routing is unnecessary.
 """
 from __future__ import annotations
 
