@@ -123,7 +123,7 @@ and covered by conformance fixtures.
 S6.3.3 conformance assets:
 - `tests/fixtures/contracts/s6_contracts_v1.json` pins canonical semantic graph, repository snapshot, active state, tool capability/space, tool-schema-pack, and deterministic identity/digest vectors.
 - `tests/test_contract_conformance.py` verifies canonical round-trips, unsupported-major and unknown-enum rejection, additive optional-field read behavior, deterministic graph/snapshot/tool identities, nested graph-version rejection, active-state snapshot binding, and model-facing tool-schema delivery.
-- [ ] Port latency-critical pieces to Rust where profiling justifies it
+- [x] Port latency-critical pieces to Rust where profiling justifies it (optional, not default)
   - [x] S6.4.1 confirm current measured hot paths
   - [x] S6.4.2 rank Rust candidates by cost, stability, and isolation
   - [x] S6.4.3 select `RegionIndex.route()` as first target and define benchmark
@@ -132,7 +132,23 @@ S6.3.3 conformance assets:
   - [x] S6.6 implement native routing kernel
   - [x] S6.7 differential Python/Rust conformance
   - [x] S6.8 performance acceptance
-  - [ ] S6.9 optional production fast path
+  - [x] S6.9 optional production fast path (opt-in; Python default)
+
+S6.9 integrates Rust lazily into the ordinary `RegionIndex.route()` entrypoint
+behind `FEYNMAP_NATIVE_ROUTING=1` or an explicit constructor flag, retaining
+the Python default and fail-open fallback for missing/mismatched/failing native
+wheels. A per-index lock prevents duplicate concurrent native setup; optional
+shadow verification compares each result against Python.
+
+The first same-graph, five-pair self-hosting workload confirms identical
+selected evidence, delivered tokens and essential recall (6/6):
+region-first/minimal-context Python 612.729 ms vs opt-in native 615.602 ms,
+with six Rust calls, one setup and no fallback. Adaptive/minimal-context
+Python 500.839 ms vs opt-in 505.160 ms; all six tasks stopped locally, so
+Rust performed zero calls and zero setup. This is **not a material whole-
+workflow acceleration claim**: it confirms optional correctness and
+conditional reuse. Python remains default. See
+`docs/S6_9_OPTIONAL_NATIVE_ROUTING.md`.
 
 S6.8 accepts the **reused route-level accelerator** from five paired, same-run
 1,200-call timing samples. The complete Python→Rust→Python route achieved
