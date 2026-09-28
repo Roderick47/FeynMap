@@ -16,6 +16,7 @@ from .routing import RegionIndex, RegionRouteResult, _region_weight, _tokens
 
 RUST_ROUTING_BOUNDARY_SCHEMA = "feynmap.native_region_routing"
 RUST_ROUTING_BOUNDARY_VERSION = "1.0.0"
+MAX_NATIVE_U32 = (1 << 32) - 1
 
 
 @dataclass(frozen=True)
@@ -34,10 +35,18 @@ class RoutingKernelData:
     adjacency_region_indices: Tuple[int, ...]
 
     def validate(self) -> None:
-        if self.region_count < 0:
-            raise ValueError("region_count must be non-negative")
+        if self.region_count < 0 or self.region_count > MAX_NATIVE_U32:
+            raise ValueError("region_count outside native u32 range")
         if len(self.region_weights) != self.region_count:
             raise ValueError("region_weights length must equal region_count")
+        if len(self.idf_by_token) > MAX_NATIVE_U32:
+            raise ValueError("vocabulary exceeds native u32 range")
+        if any(not math.isfinite(value) or value < 0.0 for value in self.region_weights):
+            raise ValueError("region weights must be finite and non-negative")
+        if any(not math.isfinite(value) or value <= 0.0 for value in self.idf_by_token):
+            raise ValueError("token IDF weights must be finite and positive")
+        if not math.isfinite(self.unknown_token_idf) or self.unknown_token_idf <= 0.0:
+            raise ValueError("unknown token IDF must be finite and positive")
         expected_offsets = self.region_count + 1
         for name, offsets, values in (
             ("region terms", self.region_term_offsets, self.region_term_ids),
@@ -52,6 +61,14 @@ class RoutingKernelData:
                 raise ValueError("%s offsets must be monotonic" % name)
             if offsets and offsets[-1] != len(values):
                 raise ValueError("%s final offset must equal value count" % name)
+            if len(values) > MAX_NATIVE_U32 or any(
+                value < 0 or value > MAX_NATIVE_U32 for value in offsets
+            ):
+                raise ValueError("%s exceeds native u32 offset range" % name)
+            for start, end in zip(offsets, offsets[1:]):
+                row = values[start:end]
+                if any(left >= right for left, right in zip(row, row[1:])):
+                    raise ValueError("%s rows must be sorted and unique" % name)
         token_count = len(self.idf_by_token)
         if any(token_id < 0 or token_id >= token_count for token_id in self.region_term_ids):
             raise ValueError("region term id outside vocabulary")
@@ -119,8 +136,11 @@ class RoutingKernelRequest:
         return bool(self.query_term_ids or self.unknown_query_term_count)
 
     def validate(self, kernel: RoutingKernelData) -> None:
-        if self.unknown_query_term_count < 0:
-            raise ValueError("unknown_query_term_count must be non-negative")
+        if (
+            self.unknown_query_term_count < 0
+            or self.unknown_query_term_count > MAX_NATIVE_U32
+        ):
+            raise ValueError("unknown_query_term_count outside native u32 range")
         if (
             self.anchor_region_index is not None
             and (
@@ -129,8 +149,8 @@ class RoutingKernelRequest:
             )
         ):
             raise ValueError("anchor_region_index outside region table")
-        if self.limit < 1:
-            raise ValueError("limit must be positive")
+        if self.limit < 1 or self.limit > MAX_NATIVE_U32:
+            raise ValueError("limit outside native positive u32 range")
         if tuple(sorted(set(self.query_term_ids))) != self.query_term_ids:
             raise ValueError("query term ids must be sorted and unique")
         if any(
