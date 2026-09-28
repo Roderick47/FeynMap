@@ -123,7 +123,73 @@ and covered by conformance fixtures.
 S6.3.3 conformance assets:
 - `tests/fixtures/contracts/s6_contracts_v1.json` pins canonical semantic graph, repository snapshot, active state, tool capability/space, tool-schema-pack, and deterministic identity/digest vectors.
 - `tests/test_contract_conformance.py` verifies canonical round-trips, unsupported-major and unknown-enum rejection, additive optional-field read behavior, deterministic graph/snapshot/tool identities, nested graph-version rejection, active-state snapshot binding, and model-facing tool-schema delivery.
-- [ ] Port latency-critical pieces to Rust where profiling justifies it
+- [x] Port latency-critical pieces to Rust where profiling justifies it (optional, not default)
+  - [x] S6.4.1 confirm current measured hot paths
+  - [x] S6.4.2 rank Rust candidates by cost, stability, and isolation
+  - [x] S6.4.3 select `RegionIndex.route()` as first target and define benchmark
+  - [x] S6.5.1 define Python↔Rust routing-kernel boundary
+  - [x] S6.5.2 add PyO3/maturin project skeleton
+  - [x] S6.6 implement native routing kernel
+  - [x] S6.7 differential Python/Rust conformance
+  - [x] S6.8 performance acceptance
+  - [x] S6.9 optional production fast path (opt-in; Python default)
+
+S6.9 integrates Rust lazily into the ordinary `RegionIndex.route()` entrypoint
+behind `FEYNMAP_NATIVE_ROUTING=1` or an explicit constructor flag, retaining
+the Python default and fail-open fallback for missing/mismatched/failing native
+wheels. A per-index lock prevents duplicate concurrent native setup; optional
+shadow verification compares each result against Python.
+
+The first same-graph, five-pair self-hosting workload confirms identical
+selected evidence, delivered tokens and essential recall (6/6):
+region-first/minimal-context Python 612.729 ms vs opt-in native 615.602 ms,
+with six Rust calls, one setup and no fallback. Adaptive/minimal-context
+Python 500.839 ms vs opt-in 505.160 ms; all six tasks stopped locally, so
+Rust performed zero calls and zero setup. This is **not a material whole-
+workflow acceleration claim**: it confirms optional correctness and
+conditional reuse. Python remains default. See
+`docs/S6_9_OPTIONAL_NATIVE_ROUTING.md`.
+
+S6.8 accepts the **reused route-level accelerator** from five paired, same-run
+1,200-call timing samples. The complete Python→Rust→Python route achieved
+21.76x on Python 3.8 (1,636.03→75.19 us) and 23.69x on Python 3.12
+(1,493.48→63.05 us); both exceed the declared >=2.0x criterion. Extra
+one-time preparation and native construction averaged about 10–11 ms,
+recovered after approximately eight calls in those runs. Full adaptive/minimal
+workflow gains are **not yet established**: normal production routing remains
+Python until optional S6.9 integration and whole-workflow validation.
+See `docs/S6_8_NATIVE_PERFORMANCE_ACCEPTANCE.md`.
+
+S6.7 verifies the existing Python route, compact Python numeric reference and
+compiled Rust on 12 independently expected cases, 108 seeded stress requests
+and six recursive FeynMap self-hosting tasks (126 total per supported Python
+interpreter). It also aligns Python/Rust invalid-input validation and records
+versioned JSON conformance artifacts for the one cp38-abi3 wheel under
+Python 3.8 and 3.12. See `docs/S6_7_DIFFERENTIAL_CONFORMANCE.md`.
+
+S6.6 implements a Rust-owned `NativeRegionIndex` using validated CSR arrays,
+the weighted two-pointer IDF scoring kernel, deterministic ranking and bounded
+general/direct-path selection. Native CI executes the compiled code on Python
+3.8 and the same `abi3` wheel on 3.12, including six recursive self-hosting
+queries. The normal Python router is unchanged pending S6.7/S6.8.
+See `docs/S6_6_NATIVE_ROUTING_KERNEL.md`.
+
+S6.5.2 adds the isolated `native/routing_kernel` PyO3/maturin crate,
+an optional Python loader, and CI that builds one Python-3.8 `abi3` release
+wheel and imports the same binary on Python 3.8 and 3.12. No routing behavior is
+native yet. See `docs/S6_5_2_PYO3_MATURIN_SKELETON.md`.
+
+S6.5.1 defines an internal `feynmap.native_region_routing/1.0.0` ABI:
+Python keeps semantic names/tokenization, transfers deterministic CSR-style
+numeric arrays once, and the future Rust object receives only compact numeric
+per-query requests. A pure-Python compact kernel plus the self-hosting routing
+benchmark prove the boundary reproduces current routing semantics. See
+`docs/S6_5_1_RUST_BOUNDARY.md`.
+
+S6.4.3 first Rust target: deterministic region-routing lexical scoring.
+The Python reference microbenchmark runs 1,200 route calls after one graph/index
+build and records both timing and exact route signatures. See
+`docs/S6_4_3_RUST_TARGET_SELECTION.md`.
 
 S6.2 accepted measured optimizations:
 - bounded repeated tool-routing tokenization cache (S6.2.1)

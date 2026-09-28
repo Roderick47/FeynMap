@@ -1,0 +1,41 @@
+{
+  "schema": "feynmap.rust_region_routing_benchmark.v1",
+  "name": "S6.4.3 Rust target baseline - FeynMap region routing",
+  "analysis": {
+    "language": "auto",
+    "framework": "auto"
+  },
+  "warmup_rounds": 10,
+  "measurement_rounds": 200,
+  "region_limit": 8,
+  "tasks": [
+    {
+      "id": "integration-resolution",
+      "root": "feynmap.engine.FeynMapEngine.analyze",
+      "query": "How does repository analysis resolve cross-language and cross-runtime integration boundaries?"
+    },
+    {
+      "id": "context-bundle",
+      "root": "feynmap.grounding.GroundingService.call",
+      "query": "How is an evidence-preserving token-budgeted context bundle produced from a stored snapshot?"
+    },
+    {
+      "id": "jev-guided-search",
+      "query": "JEV guided targeted graph search candidate selection adaptive traversal"
+    },
+    {
+      "id": "snapshot-persistence",
+      "query": "immutable repository snapshot persistence semantic graph hash current snapshot"
+    },
+    {
+      "id": "adaptive-sufficiency",
+      "root": "feynmap.adaptive.AdaptiveSparseSearch.from_node",
+      "query": "How does adaptive sparse search decide whether local grounded context is sufficient and escalate to region activation or JEV only when needed?"
+    },
+    {
+      "id": "minimal-context",
+      "root": "feynmap.minimal_context.MinimalContextPacker.pack",
+      "query": "How does FeynMap identify critical activated evidence, grow a context budget only when needed, and deliver a minimal grounded context bundle?"
+    }
+  ]
+}

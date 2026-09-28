@@ -1,0 +1,265 @@
+{
+  "schema": "feynmap.native_routing_oracles.v1",
+  "note": "Expected outcomes independently specified from the routing policy; do not regenerate by running Python or Rust.",
+  "cases": [
+    {
+      "id": "empty-graph",
+      "nodes": [],
+      "edges": [],
+      "requests": [
+        {
+          "id": "empty-with-query",
+          "query": "nonexistent",
+          "limit": 8,
+          "expected": {
+            "candidate_regions": 0,
+            "selected_regions": [],
+            "scores": {}
+          }
+        },
+        {
+          "id": "empty-no-query",
+          "query": "",
+          "limit": 1,
+          "expected": {
+            "candidate_regions": 0,
+            "selected_regions": [],
+            "scores": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": "lexical-tie",
+      "nodes": [
+        {
+          "id": "a",
+          "name": "common",
+          "path": "a.py"
+        },
+        {
+          "id": "b",
+          "name": "common",
+          "path": "b.py"
+        }
+      ],
+      "edges": [],
+      "requests": [
+        {
+          "id": "stable-lexical-tie",
+          "query": "common",
+          "limit": 2,
+          "expected": {
+            "candidate_regions": 2,
+            "selected_regions": [
+              "a.py",
+              "b.py"
+            ],
+            "scores": {
+              "a.py": 1,
+              "b.py": 1
+            }
+          }
+        },
+        {
+          "id": "tight-budget",
+          "query": "common",
+          "limit": 1,
+          "expected": {
+            "candidate_regions": 2,
+            "selected_regions": [
+              "a.py"
+            ],
+            "scores": {
+              "a.py": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "direct-path-and-unknown",
+      "nodes": [
+        {
+          "id": "delta",
+          "name": "handler",
+          "path": "delta.py"
+        },
+        {
+          "id": "beta",
+          "name": "helper",
+          "path": "other.py"
+        }
+      ],
+      "edges": [],
+      "requests": [
+        {
+          "id": "path-bonus",
+          "query": "delta",
+          "limit": 2,
+          "expected": {
+            "candidate_regions": 2,
+            "selected_regions": [
+              "delta.py"
+            ],
+            "scores": {
+              "delta.py": 2.5
+            }
+          }
+        },
+        {
+          "id": "unknown-does-not-invent-match",
+          "query": "unmatchedtoken",
+          "limit": 2,
+          "expected": {
+            "candidate_regions": 2,
+            "selected_regions": [],
+            "scores": {}
+          }
+        },
+        {
+          "id": "forced-anchor-no-match",
+          "query": "unmatchedtoken",
+          "anchor_node_id": "beta",
+          "limit": 1,
+          "expected": {
+            "candidate_regions": 2,
+            "selected_regions": [
+              "other.py"
+            ],
+            "scores": {
+              "other.py": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "anchor-and-adjacency",
+      "nodes": [
+        {
+          "id": "root",
+          "name": "root_handler",
+          "path": "a.py"
+        },
+        {
+          "id": "neighbor",
+          "name": "neighbor_handler",
+          "path": "b.py"
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-1",
+          "source": "root",
+          "target": "neighbor"
+        }
+      ],
+      "requests": [
+        {
+          "id": "empty-query-with-anchored-neighbor",
+          "query": "",
+          "anchor_node_id": "root",
+          "limit": 2,
+          "expected": {
+            "candidate_regions": 2,
+            "selected_regions": [
+              "a.py",
+              "b.py"
+            ],
+            "scores": {
+              "a.py": 2,
+              "b.py": 0.1
+            }
+          }
+        },
+        {
+          "id": "only-anchor-under-budget-one",
+          "query": "",
+          "anchor_node_id": "root",
+          "limit": 1,
+          "expected": {
+            "candidate_regions": 2,
+            "selected_regions": [
+              "a.py"
+            ],
+            "scores": {
+              "a.py": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "symbolic-fallback",
+      "nodes": [
+        {
+          "id": "symbol",
+          "name": "ghost",
+          "qualified_name": "ghost.module.run",
+          "path": null
+        }
+      ],
+      "edges": [],
+      "requests": [
+        {
+          "id": "exclude-unanchored-low-weight",
+          "query": "ghost",
+          "limit": 2,
+          "expected": {
+            "candidate_regions": 0,
+            "selected_regions": [],
+            "scores": {}
+          }
+        },
+        {
+          "id": "include-anchored-low-weight",
+          "query": "",
+          "anchor_node_id": "symbol",
+          "limit": 2,
+          "expected": {
+            "candidate_regions": 1,
+            "selected_regions": [
+              "symbol:ghost.module.run"
+            ],
+            "scores": {
+              "symbol:ghost.module.run": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "unicode-casefold",
+      "nodes": [
+        {
+          "id": "international",
+          "name": "Straße",
+          "path": "sources/straße.py"
+        },
+        {
+          "id": "ordinary",
+          "name": "utility",
+          "path": "sources/utility.py"
+        }
+      ],
+      "edges": [],
+      "requests": [
+        {
+          "id": "unicode-uppercase-query",
+          "query": "STRASSE",
+          "limit": 2,
+          "expected": {
+            "candidate_regions": 2,
+            "selected_regions": [
+              "sources/straße.py"
+            ],
+            "scores": {
+              "sources/straße.py": 2.5
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

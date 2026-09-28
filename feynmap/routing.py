@@ -11,6 +11,8 @@ benchmark, inspect, and replace without changing graph truth.
 from __future__ import annotations
 
 import math
+import os
+import threading
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -123,7 +125,12 @@ class RegionFirstSearchResult:
 class RegionIndex:
     """File/module-level summary index for cheap first-stage routing."""
 
-    def __init__(self, graph: SemanticGraph) -> None:
+    def __init__(
+        self,
+        graph: SemanticGraph,
+        *,
+        native_routing: Optional[bool] = None,
+    ) -> None:
         self.graph = graph
         grouped: Dict[str, List[SemanticNode]] = {}
         self.node_region: Dict[str, str] = {}
@@ -171,6 +178,76 @@ class RegionIndex:
             self.adjacency.setdefault(source_region, set()).add(target_region)
             self.adjacency.setdefault(target_region, set()).add(source_region)
 
+        # Opt-in only. Each index owns its own lazy native counterpart; no
+        # graph-wide or process-global native cache may outlive this graph.
+        self._native_requested = (
+            str(os.environ.get("FEYNMAP_NATIVE_ROUTING", "")).strip().lower()
+            in {"1", "true", "yes", "on"}
+            if native_routing is None else bool(native_routing)
+        )
+        self._native_verify = (
+            self._native_requested
+            and str(os.environ.get("FEYNMAP_NATIVE_ROUTING_VERIFY", "")).strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        self._native_status = "pending" if self._native_requested else "disabled"
+        self._native_failure_reason: Optional[str] = None
+        self._native_prepared = None
+        self._native_index = None
+        self._native_setup_attempts = 0
+        self._native_route_calls = 0
+        self._native_fallbacks = 0
+        self._native_lock = threading.Lock() if self._native_requested else None
+
+    @property
+    def native_routing_stats(self) -> Dict[str, Any]:
+        """Per-index diagnostics; no process-global state or graph mutation."""
+
+        return {
+            "requested": self._native_requested,
+            "status": self._native_status,
+            "setup_attempts": self._native_setup_attempts,
+            "native_route_calls": self._native_route_calls,
+            "fallbacks": self._native_fallbacks,
+            "failure_reason": self._native_failure_reason,
+        }
+
+    def _ensure_native_index(self) -> None:
+        if self._native_status != "pending":
+            return
+        # A shared RegionIndex may be reused by multiple agent requests.
+        # Serialize the one-time build so two threads cannot duplicate it.
+        with self._native_lock:
+            if self._native_status != "pending":
+                return
+            self._native_setup_attempts += 1
+            try:
+                from .native_routing import _load_native_module
+                from .rust_routing_boundary import (
+                    RUST_ROUTING_BOUNDARY_VERSION,
+                    prepare_region_routing_index,
+                )
+                module = _load_native_module()
+                if module is None:
+                    raise ImportError("optional native routing wheel is not installed")
+                if module.abi_version() != RUST_ROUTING_BOUNDARY_VERSION:
+                    raise ValueError("native routing ABI version does not match Python")
+                prepared = prepare_region_routing_index(self)
+                native_index = module.NativeRegionIndex(
+                    *prepared.kernel.native_constructor_args()
+                )
+                self._native_prepared = prepared
+                self._native_index = native_index
+                self._native_status = "ready"
+            except Exception as exc:
+                # Fail open to the original Python semantic reference. Do not
+                # retry a broken/missing wheel for every subsequent route.
+                self._native_status = "fallback"
+                self._native_failure_reason = "setup:" + type(exc).__name__
+                self._native_fallbacks += 1
+                self._native_prepared = None
+                self._native_index = None
+
     def region_for_node(self, node_id: str) -> Optional[str]:
         return self.node_region.get(node_id)
 
@@ -193,6 +270,71 @@ class RegionIndex:
         anchor_node_id: Optional[str] = None,
         limit: int = 8,
     ) -> RegionRouteResult:
+        """Original Python behavior by default; native is explicitly opt-in."""
+
+        if self._native_status in {"disabled", "fallback"}:
+            return self._route_python(query, anchor_node_id=anchor_node_id, limit=limit)
+
+        self._ensure_native_index()
+        if self._native_status != "ready":
+            return self._route_python(query, anchor_node_id=anchor_node_id, limit=limit)
+        try:
+            from .rust_routing_boundary import (
+                RoutingKernelResponse,
+                prepare_routing_request,
+                materialize_region_route,
+            )
+            prepared = self._native_prepared
+            anchor = self.region_for_node(anchor_node_id) if anchor_node_id else None
+            request = prepare_routing_request(
+                prepared, query, anchor_region=anchor, limit=limit,
+            )
+            native_result = self._native_index.route(*request.native_route_args())
+            response = RoutingKernelResponse.from_native_result(native_result)
+            response.validate(prepared.kernel)
+            result = materialize_region_route(
+                prepared, query, anchor_region=anchor, response=response,
+            )
+            if self._native_verify:
+                original = self._route_python(
+                    query, anchor_node_id=anchor_node_id, limit=limit,
+                )
+                if (
+                    result.selected_regions != original.selected_regions
+                    or result.candidate_regions != original.candidate_regions
+                    or result.anchor_region != original.anchor_region
+                    or set(result.scores) != set(original.scores)
+                    or any(
+                        not math.isclose(
+                            result.scores[key], original.scores[key],
+                            rel_tol=1e-12, abs_tol=1e-12,
+                        )
+                        for key in original.scores
+                    )
+                ):
+                    raise ValueError("native routing shadow verification mismatch")
+            self._native_route_calls += 1
+            return result
+        except Exception as exc:
+            # Native errors or disagreement must not suppress grounded search.
+            self._native_status = "fallback"
+            self._native_failure_reason = "route:" + type(exc).__name__
+            self._native_fallbacks += 1
+            self._native_prepared = None
+            self._native_index = None
+            return self._route_python(
+                query, anchor_node_id=anchor_node_id, limit=limit,
+            )
+
+    def _route_python(
+        self,
+        query: str,
+        *,
+        anchor_node_id: Optional[str] = None,
+        limit: int = 8,
+    ) -> RegionRouteResult:
+        """Unmodified reference algorithm, retained as the safe fallback."""
+
         query_tokens = set(_tokens(query))
         anchor_region = self.region_for_node(anchor_node_id) if anchor_node_id else None
         neighbor_regions = self.adjacency.get(anchor_region, set()) if anchor_region else set()

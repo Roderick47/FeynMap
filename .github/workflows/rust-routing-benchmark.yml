@@ -1,0 +1,57 @@
+name: rust-routing-benchmark
+
+on:
+  push:
+    branches:
+      - feature/rust-routing-kernel
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install FeynMap
+        run: python -m pip install -e .
+      - name: Run Python reference routing benchmark
+        run: |
+          python -m feynmap.rust_routing_benchmark \
+            experiments/rust_region_routing_s6.json \
+            . \
+            --output performance-results/rust-region-routing-python.json
+      - name: Write benchmark summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          path = "performance-results/rust-region-routing-python.json"
+          with open(path, "r", encoding="utf-8") as handle:
+              result = json.load(handle)
+
+          timing = result["timing"]
+          workload = result["workload"]
+          region_index = result["region_index"]
+          lines = [
+              "## S6.4.3 Rust routing target baseline",
+              "",
+              "| Metric | Python reference |",
+              "|---|---:|",
+              "| Regions | %d |" % region_index["region_count"],
+              "| Route calls | %d |" % workload["route_calls"],
+              "| Route elapsed ms | %.3f |" % timing["route_elapsed_ms"],
+              "| Mean route us | %.3f |" % timing["mean_route_us"],
+              "| Routes / second | %.3f |" % timing["routes_per_second"],
+          ]
+          rendered = "\n".join(lines) + "\n"
+          print(rendered)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+              handle.write(rendered)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rust-region-routing-python-baseline
+          path: performance-results/rust-region-routing-python.json
