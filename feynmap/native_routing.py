@@ -1,7 +1,8 @@
 """Optional loader for the native FeynMap routing extension.
 
-S6.5.2 only proves that the compiled PyO3 module can be discovered and that its
-internal ABI matches Python. Routing behavior is introduced later.
+The S6.6 compiled module exposes NativeRegionIndex, but normal FeynMap routing
+continues to use its Python reference until differential and performance gates
+are accepted in S6.7-S6.9. This module only checks optional availability/ABI.
 """
 from __future__ import annotations
 
