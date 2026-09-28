@@ -63,6 +63,21 @@ class RoutingKernelData:
         ):
             raise ValueError("adjacency region index outside region table")
 
+    def native_constructor_args(self) -> Tuple[object, ...]:
+        """Exact one-time arguments for the future Rust NativeRegionIndex."""
+
+        return (
+            self.region_weights,
+            self.idf_by_token,
+            self.unknown_token_idf,
+            self.region_term_offsets,
+            self.region_term_ids,
+            self.path_term_offsets,
+            self.path_term_ids,
+            self.adjacency_offsets,
+            self.adjacency_region_indices,
+        )
+
 
 @dataclass(frozen=True)
 class PreparedRegionRoutingIndex:
@@ -124,6 +139,16 @@ class RoutingKernelRequest:
         ):
             raise ValueError("query term id outside vocabulary")
 
+    def native_route_args(self) -> Tuple[object, ...]:
+        """Exact per-call arguments for NativeRegionIndex.route()."""
+
+        return (
+            self.query_term_ids,
+            self.unknown_query_term_count,
+            self.anchor_region_index,
+            self.limit,
+        )
+
 
 @dataclass(frozen=True)
 class RoutingKernelResponse:
@@ -145,6 +170,20 @@ class RoutingKernelResponse:
             for region_id in self.selected_region_indices
         ):
             raise ValueError("selected region index outside region table")
+
+    @classmethod
+    def from_native_result(
+        cls,
+        payload: Sequence[object],
+    ) -> "RoutingKernelResponse":
+        if len(payload) != 3:
+            raise ValueError("native routing result must contain three values")
+        candidate_regions, selected_indices, selected_scores = payload
+        return cls(
+            candidate_regions=int(candidate_regions),
+            selected_region_indices=tuple(int(value) for value in selected_indices),
+            selected_scores=tuple(float(value) for value in selected_scores),
+        )
 
 
 def _csr_rows(rows: Sequence[Sequence[int]]) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
