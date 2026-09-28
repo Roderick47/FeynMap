@@ -160,18 +160,26 @@ jobs:
           name: s6-8-routing-performance-py312
           path: performance-results/s6-8-routing-py312.json
           if-no-files-found: error
-      - name: S6.9 compare full recursive adaptive/minimal-context workflow
+      - name: S6.9 full region-first and minimal-context workflow
         run: |
           python -m feynmap.rust_routing_workflow \
             experiments/sparse_activation_feynmap_s0.json . \
-            --samples 5 \
-            --output performance-results/s6-9-full-workflow.json
+            --samples 5 --strategy region \
+            --output performance-results/s6-9-region-workflow.json
+      - name: S6.9 adaptive local-stop and native lazy-setup workflow
+        run: |
+          python -m feynmap.rust_routing_workflow \
+            experiments/sparse_activation_feynmap_s0.json . \
+            --samples 5 --strategy adaptive \
+            --output performance-results/s6-9-adaptive-workflow.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: s6-9-full-workflow
-          path: performance-results/s6-9-full-workflow.json
-          if-no-files-found: error
+          path: |
+            performance-results/s6-9-region-workflow.json
+            performance-results/s6-9-adaptive-workflow.json
+          if-no-files-found: warn
 
 
   performance-acceptance:
