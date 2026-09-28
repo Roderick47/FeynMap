@@ -198,6 +198,19 @@ FeynMap now treats a repository as a heterogeneous software system rather than c
 - [x] Track integration resolution at individual-contract granularity
 - [x] Add mixed-language and non-web regression tests
 
+### Pre-Rust branch consolidation ✅
+
+- [x] Consolidate the S0-S6 substrate line into `main`
+- [x] Recover independently useful adversarial-resolution work
+- [x] Close superseded stacked PRs
+- [x] Park the old stdio MCP transport as an explicit draft experiment
+- [x] Audit all remaining branches for unique commits/content
+- [x] Preserve V2-only leftovers as an archival reference rather than an active branch
+- [ ] Django/DRF permission-policy extraction as grounded V3 framework evidence
+- [ ] Explicit routed/unrouted Django handler coverage in V3
+
+See `docs/BRANCH_CLEANUP_AUDIT.md` for the branch-by-branch disposition.
+
 ### Integration hardening backlog
 
 - [ ] embedded-language regions (inline `<script>`, Vue/Svelte single-file components, templated JS/CSS)
