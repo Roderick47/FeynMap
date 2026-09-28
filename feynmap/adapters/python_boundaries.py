@@ -311,8 +311,8 @@ def _expr_name(node: ast.AST) -> str:
 
 
 def _string(node: ast.AST) -> Optional[str]:
-    if isinstance(node, ast.Str):
-        return node.s
+    # Python 3.8+ normalizes string syntax to Constant. Avoid deprecated
+    # ast.Str/.s aliases so the parser remains compatible with newer Python.
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     return None

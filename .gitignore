@@ -16,4 +16,5 @@ feyn_change_impact.json
 feynmap.semantic.json
 feynmap.migration.json
 feynmap.self-analysis.json
-/native/routing_kernel/target/\n/native-dist/\n
+/native/routing_kernel/target/
+/native-dist/
