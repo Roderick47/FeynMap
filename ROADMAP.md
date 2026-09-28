@@ -206,6 +206,58 @@ The older phases below remain valid capability work. Their priority is now
 judged by how much they improve graph truth, activation quality, context
 efficiency, or delivery of the substrate.
 
+### Post-S6 review hardening — active priority
+
+The S6.9 Rust routing kernel is a safe **optional** acceleration path, not
+a reason to port more algorithms now. An external exploratory review exposed
+possible real-project graph and retrieval failures; address known crashes
+and independently reproduce semantic misses before extending the substrate.
+See `docs/POST_S6_EXTERNAL_REVIEW_TRIAGE.md` for exact findings and gates.
+
+**P0 — crash-free source ingestion and repository hygiene**
+
+- [x] Skip vendor/generated `*.min.js` by default, with diagnostics
+- [x] Disambiguate same-line JavaScript symbol identity collisions using source offsets without renumbering unrelated identities
+- [x] Fix malformed Rust `.gitignore` entries and remove tracked bytecode
+- [x] Remove obsolete root `__init__.py` / `main_broken.py` from active checkout
+- [x] Replace deprecated AST string aliases with `ast.Constant.value` in identified helpers
+- [ ] Pin external MDN Django, Flask microblog and DRF checkouts and capture independent semantic/route/retrieval expectations
+
+**P1 — framework grounding: resolve before ranking**
+
+- [ ] Django class-based-view `model` / `queryset` / template-name model and template relationships
+- [ ] Remove AppConfig hub-edge pollution from task-relevant search without losing framework membership evidence
+- [ ] Django static named reverse and template `{% url %}` resolution, with unknown/dynamic handling
+- [ ] Flask registered Blueprint + decorator `url_prefix` composition
+- [ ] DRF permissions, serializer/model associations and explicit routed/unrouted coverage
+- [ ] Split missing clients, genuinely unresolved contracts, built-in calls and actionable missing relationships in diagnostics
+
+**P2 — retrieval policy and downstream context**
+
+- [ ] Role-aware implementation/test/migration/vendor evidence channels and budgets
+- [ ] Independent throttling/serializer/migration fixtures; preserve test evidence when genuinely required
+- [ ] Measure essential implementation recall, distractor tokens, unsupported claims and real task quality
+
+**P3 — first usable integration surface**
+
+- [ ] Task-oriented `feynmap context '<task>'` CLI exposing the existing SparseContextPipeline and immutable snapshot identity
+- [ ] Make claim-validation/evidence status accessible in the local development workflow
+- [ ] Rebuild optional read-only stdio MCP from current main; parked PR #22 is reference only
+
+**S7 — real external AI agent validation**
+
+- [ ] S7.1 freeze the initial eight-task SWE-bench Verified pilot with the existing R1 sealed harness
+- [ ] S7.2 configure and run the current four pinned experimental agent arms
+- [ ] S7.3 pre-register a separate 15–20-task held-out corpus with fair no-context and repo-map comparators; explicitly version any new comparison arms
+- [ ] S7.4 record official task success, patch accuracy, unsupported claims, searches, elapsed time and *total* model/tool token cost
+
+**P4 — packaging and controlled adoption**
+
+- [ ] Migrate generic `py-modules` (`main`, `config`, `pipeline`, etc.) into package-qualified legacy code with clean-wheel compatibility checks
+- [ ] Preserve experiment lineage before relocating old versioned ranker/repair-role modules
+- [ ] Maintain proprietary licensing; define external beta access terms instead of changing the license implicitly
+
+
 ## Phase 0 — V3 foundation
 
 - [x] Canonical language-neutral semantic graph
