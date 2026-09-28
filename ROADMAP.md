@@ -130,9 +130,16 @@ S6.3.3 conformance assets:
   - [x] S6.5.1 define Python↔Rust routing-kernel boundary
   - [x] S6.5.2 add PyO3/maturin project skeleton
   - [x] S6.6 implement native routing kernel
-  - [ ] S6.7 differential Python/Rust conformance
+  - [x] S6.7 differential Python/Rust conformance
   - [ ] S6.8 performance acceptance
   - [ ] S6.9 optional production fast path
+
+S6.7 verifies the existing Python route, compact Python numeric reference and
+compiled Rust on 12 independently expected cases, 108 seeded stress requests
+and six recursive FeynMap self-hosting tasks (126 total per supported Python
+interpreter). It also aligns Python/Rust invalid-input validation and records
+versioned JSON conformance artifacts for the one cp38-abi3 wheel under
+Python 3.8 and 3.12. See `docs/S6_7_DIFFERENTIAL_CONFORMANCE.md`.
 
 S6.6 implements a Rust-owned `NativeRegionIndex` using validated CSR arrays,
 the weighted two-pointer IDF scoring kernel, deterministic ranking and bounded
