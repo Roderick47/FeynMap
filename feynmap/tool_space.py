@@ -21,6 +21,8 @@ from typing import Any, Dict, Iterable, Mapping, Optional, Protocol, Sequence, T
 
 TOOL_CAPABILITY_SCHEMA = "feynmap.tool_capability"
 TOOL_CAPABILITY_SCHEMA_VERSION = "1.0.0"
+TOOL_CAPABILITY_SPACE_SCHEMA = "feynmap.tool_capability_space"
+TOOL_CAPABILITY_SPACE_SCHEMA_VERSION = "1.0.0"
 
 
 class ToolContract(Protocol):
@@ -228,8 +230,8 @@ class ToolCapabilitySpace:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "schema": "feynmap.tool_capability_space",
-            "schema_version": TOOL_CAPABILITY_SCHEMA_VERSION,
+            "schema": TOOL_CAPABILITY_SPACE_SCHEMA,
+            "schema_version": TOOL_CAPABILITY_SPACE_SCHEMA_VERSION,
             "namespace": self.namespace,
             "contract_version": self.contract_version,
             "tool_count": len(self.nodes),
