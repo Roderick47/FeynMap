@@ -1,8 +1,10 @@
-"""Optional loader for the native FeynMap routing extension.
+"""Optional native extension discovery for FeynMap routing.
 
-The S6.6 compiled module exposes NativeRegionIndex, but normal FeynMap routing
-continues to use its Python reference until differential and performance gates
-are accepted in S6.7-S6.9. This module only checks optional availability/ABI.
+S6.9 integrates the compiled NativeRegionIndex only when explicitly opted into
+by RegionIndex(native_routing=True) or FEYNMAP_NATIVE_ROUTING=1.
+Python remains the default and mandatory fallback; availability alone does not
+switch on native routing. Each RegionIndex prepares and owns its native index
+lazily, only if region routing is actually invoked.
 """
 from __future__ import annotations
 
