@@ -50,7 +50,11 @@ class JavaScriptAdapter(LanguageAdapter):
     extensions = tuple(sorted(JS_EXTENSIONS))
 
     def detect_score(self, project_path: Path) -> float:
-        count = sum(1 for path in self._iter_files(project_path) if path.suffix.lower() in JS_EXTENSIONS)
+        count = sum(
+            1 for path in self._iter_files(project_path)
+            if path.suffix.lower() in JS_EXTENSIONS
+            and not path.name.lower().endswith(".min.js")
+        )
         if count == 0:
             return 0.0
         manifest_bonus = 0.15 if (project_path / "package.json").exists() else 0.0
@@ -65,12 +69,19 @@ class JavaScriptAdapter(LanguageAdapter):
         for path in self._iter_files(root):
             if path.suffix.lower() not in JS_EXTENSIONS:
                 continue
+            # Generated/vendor minified bundles are not meaningful source-level
+            # semantic regions. Keep ordinary JS beside them analyzable.
+            if path.name.lower().endswith(".min.js"):
+                warnings.append(
+                    "skipped minified JavaScript: %s" % self._relative(root, path)
+                )
+                continue
             try:
                 text = path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as exc:
                 warnings.append("could not parse %s: %s" % (self._relative(root, path), exc))
                 continue
-            parsed.append((path, text, self._definitions(root, path, code_mask(text))))
+            parsed.append((path, text, self._definitions(root, path, code_mask(text), warnings)))
 
         module_nodes: Dict[str, SemanticNode] = {}
         definitions_by_name: Dict[str, List[JSDefinition]] = {}
@@ -223,7 +234,13 @@ class JavaScriptAdapter(LanguageAdapter):
             graph.diagnostics["warnings"] = warnings + graph.diagnostics.get("warnings", [])
         return graph
 
-    def _definitions(self, root: Path, path: Path, text: str) -> List[JSDefinition]:
+    def _definitions(
+        self,
+        root: Path,
+        path: Path,
+        text: str,
+        warnings: Optional[List[str]] = None,
+    ) -> List[JSDefinition]:
         definitions: List[JSDefinition] = []
         class_spans: List[Tuple[str, int, int]] = []
         relative = self._relative(root, path)
@@ -266,7 +283,34 @@ class JavaScriptAdapter(LanguageAdapter):
                 line = self._line(text, absolute)
                 definitions.append(JSDefinition(self._id(relative, "%s.%s" % (class_name, name), line), name, NodeKind.METHOD, path, absolute, end, line, self._line(text, end), parent=class_name))
 
-        return sorted(definitions, key=lambda item: (item.start, item.kind.value, item.name))
+        ordered = sorted(definitions, key=lambda item: (item.start, item.kind.value, item.name))
+        seen_ids: Set[str] = set()
+        for definition in ordered:
+            if definition.id in seen_ids:
+                # Repeated same-name declarations can share a single line,
+                # especially in compact bundles. Preserve historical IDs for
+                # unambiguous symbols; disambiguate only true collisions.
+                identity_name = (
+                    "%s.%s" % (definition.parent, definition.name)
+                    if definition.parent else definition.name
+                )
+                collision = 0
+                while True:
+                    candidate = self._id(
+                        relative, identity_name, definition.line,
+                        offset=definition.start, occurrence=collision,
+                    )
+                    if candidate not in seen_ids:
+                        definition.id = candidate
+                        break
+                    collision += 1
+                if warnings is not None:
+                    warnings.append(
+                        "disambiguated same-line JavaScript symbol %s at %s:%d offset %d"
+                        % (identity_name, relative, definition.line, definition.start)
+                    )
+            seen_ids.add(definition.id)
+        return ordered
 
     def _attach_integration_contracts(self, module: SemanticNode, definitions: List[JSDefinition], graph: SemanticGraph, relative: str, text: str) -> None:
         node_by_id = {node.id: node for node in graph.nodes}
@@ -376,8 +420,19 @@ class JavaScriptAdapter(LanguageAdapter):
         return text.count("\n", 0, max(0, position)) + 1
 
     @staticmethod
-    def _id(relative_path: str, name: str, line: int) -> str:
+    def _id(
+        relative_path: str,
+        name: str,
+        line: int,
+        offset: Optional[int] = None,
+        occurrence: int = 0,
+    ) -> str:
+        # Keep pre-existing stable IDs except when two declarations would
+        # otherwise collide on path/name/line. Offset disambiguation does not
+        # renumber unrelated symbols in a repository.
         raw = "%s|%s|%s" % (relative_path, name, line)
+        if offset is not None:
+            raw += "|%d|%d" % (offset, occurrence)
         return "javascript:symbol:%s" % hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
     @staticmethod
