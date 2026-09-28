@@ -129,10 +129,17 @@ S6.3.3 conformance assets:
   - [x] S6.4.3 select `RegionIndex.route()` as first target and define benchmark
   - [x] S6.5.1 define Python↔Rust routing-kernel boundary
   - [x] S6.5.2 add PyO3/maturin project skeleton
-  - [ ] S6.6 implement native routing kernel
+  - [x] S6.6 implement native routing kernel
   - [ ] S6.7 differential Python/Rust conformance
   - [ ] S6.8 performance acceptance
   - [ ] S6.9 optional production fast path
+
+S6.6 implements a Rust-owned `NativeRegionIndex` using validated CSR arrays,
+the weighted two-pointer IDF scoring kernel, deterministic ranking and bounded
+general/direct-path selection. Native CI executes the compiled code on Python
+3.8 and the same `abi3` wheel on 3.12, including six recursive self-hosting
+queries. The normal Python router is unchanged pending S6.7/S6.8.
+See `docs/S6_6_NATIVE_ROUTING_KERNEL.md`.
 
 S6.5.2 adds the isolated `native/routing_kernel` PyO3/maturin crate,
 an optional Python loader, and CI that builds one Python-3.8 `abi3` release
