@@ -26,11 +26,11 @@ fn validate_rows(
     if offsets.first() != Some(&0) {
         return Err(invalid(format!("{name}: offsets must start at zero")));
     }
-    if offsets.last().map(|value| *value as usize) != Some(values.len()) {
-        return Err(invalid(format!("{name}: final offset must equal value count")));
-    }
     if offsets.windows(2).any(|window| window[0] > window[1]) {
         return Err(invalid(format!("{name}: offsets must be monotonic")));
+    }
+    if offsets.last().map(|value| *value as usize) != Some(values.len()) {
+        return Err(invalid(format!("{name}: final offset must equal value count")));
     }
     for (row_index, window) in offsets.windows(2).enumerate() {
         let row = &values[window[0] as usize..window[1] as usize];
