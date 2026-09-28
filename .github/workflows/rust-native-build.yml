@@ -172,6 +172,54 @@ jobs:
             experiments/sparse_activation_feynmap_s0.json . \
             --samples 5 --strategy adaptive \
             --output performance-results/s6-9-adaptive-workflow.json
+      - name: Enforce S6.9 quality, genuine Rust usage and adaptive laziness
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          region = json.loads(Path("performance-results/s6-9-region-workflow.json").read_text())
+          adaptive = json.loads(Path("performance-results/s6-9-adaptive-workflow.json").read_text())
+          for report, strategy in ((region, "region"), (adaptive, "adaptive")):
+              assert report["status"] == "pass", (strategy, report.get("error"))
+              assert report["strategy"] == strategy
+              assert report["quality"]["full_recall_tasks"] == 6
+              assert report["quality"]["identical_route_selection"] is True
+              assert report["quality"]["identical_delivered_nodes"] is True
+              assert report["quality"]["identical_essential_recall"] is True
+              assert report["quality"]["identical_delivered_context_tokens"] is True
+              assert all(row["native_fallbacks"] == 0 for row in report["native_usage"])
+          assert region["measurement"]["regression_gate_applicable"] is True
+          assert all(row["native_route_calls"] > 0 for row in region["native_usage"])
+          assert all(
+              row["active_native_indexes"] == row["native_setup_attempts"] == 1
+              for row in region["native_usage"]
+          )
+          if not adaptive["measurement"]["regression_gate_applicable"]:
+              assert all(
+                  row["native_route_calls"] == row["native_setup_attempts"] == 0
+                  for row in adaptive["native_usage"]
+              )
+          lines = [
+              "## S6.9 optional Rust integration: complete recursive workflow",
+              "",
+              "| Workload | Python median ms | Opt-in native median ms | Native/Python | Native route calls/sample | Outcome |",
+              "|---|---:|---:|---:|---:|---|",
+          ]
+          for report in (region, adaptive):
+              m = report["measurement"]
+              calls = report["native_usage"][0]["native_route_calls"]
+              lines.append("| %s + minimal | %.3f | %.3f | %.4f | %d | %s |" % (
+                  report["strategy"], m["python_median_ms"],
+                  m["native_median_ms"], m["native_to_python_time_ratio"],
+                  calls, report["status"],
+              ))
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write(summary)
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
