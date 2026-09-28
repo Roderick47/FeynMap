@@ -12,20 +12,23 @@ about FeynMap's usefulness as a code-understanding substrate.
 To avoid fragmented work, substrate development has one authoritative
 integration line at a time.
 
-Current integration branch:
+Current authoritative branch:
 
 ```text
-feature/tool-space-routing
+main
 ```
 
-Earlier S0-S5 branches are historical checkpoints/ancestors of this branch, not
-parallel implementations. New substrate checkpoints should continue on the
-authoritative integration line unless work is intentionally isolated as an
-experiment with an explicit merge/discard decision.
+The S0-S6 integration line was consolidated into `main` through PR #34.
+Branches such as `feature/sparse-knowledge-substrate`,
+`feature/region-first-activation`, `feature/adaptive-sufficiency`,
+`feature/minimal-sufficient-context`, `feature/active-state`, and
+`feature/tool-space-routing` are historical checkpoints/ancestors, not
+parallel development targets.
 
-After the current substrate line is consolidated into `main`, `main`
-becomes the authoritative baseline and future feature branches should remain
-short-lived.
+New substrate work starts from current `main`. Feature branches should be
+short-lived and must have an explicit merge/discard decision. The separate
+`phase-2b-stdio-mcp` line remains an intentionally isolated transport/package
+experiment until it is re-evaluated against current `main`.
 
 ## Required recursive loop
 
