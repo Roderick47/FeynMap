@@ -124,6 +124,20 @@ S6.3.3 conformance assets:
 - `tests/fixtures/contracts/s6_contracts_v1.json` pins canonical semantic graph, repository snapshot, active state, tool capability/space, tool-schema-pack, and deterministic identity/digest vectors.
 - `tests/test_contract_conformance.py` verifies canonical round-trips, unsupported-major and unknown-enum rejection, additive optional-field read behavior, deterministic graph/snapshot/tool identities, nested graph-version rejection, active-state snapshot binding, and model-facing tool-schema delivery.
 - [ ] Port latency-critical pieces to Rust where profiling justifies it
+  - [x] S6.4.1 confirm current measured hot paths
+  - [x] S6.4.2 rank Rust candidates by cost, stability, and isolation
+  - [x] S6.4.3 select `RegionIndex.route()` as first target and define benchmark
+  - [ ] S6.5.1 define Python↔Rust routing-kernel boundary
+  - [ ] S6.5.2 add PyO3/maturin project skeleton
+  - [ ] S6.6 implement native routing kernel
+  - [ ] S6.7 differential Python/Rust conformance
+  - [ ] S6.8 performance acceptance
+  - [ ] S6.9 optional production fast path
+
+S6.4.3 first Rust target: deterministic region-routing lexical scoring.
+The Python reference microbenchmark runs 1,200 route calls after one graph/index
+build and records both timing and exact route signatures. See
+`docs/S6_4_3_RUST_TARGET_SELECTION.md`.
 
 S6.2 accepted measured optimizations:
 - bounded repeated tool-routing tokenization cache (S6.2.1)
