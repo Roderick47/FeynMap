@@ -150,6 +150,29 @@ The benchmark deliberately excludes repository analysis and index construction
 from the route timing. Otherwise a fast routing kernel could be hidden by work
 that is not part of the first Rust port.
 
+## Initial Python reference baseline
+
+The first GitHub Actions run of the new route-only benchmark produced:
+
+| Metric | Python reference |
+|---|---:|
+| Graph nodes | 2,038 |
+| Graph edges | 6,857 |
+| Regions | 308 |
+| Region-index build | 102.510 ms |
+| Measured route calls | 1,200 |
+| Route elapsed | 1,694.872 ms |
+| Mean route | 1,412.393 us |
+| Throughput | 708.018 routes/s |
+
+The index-build number is recorded for context but is **not** part of the first
+Rust speedup target. The selected port is the repeated route kernel after the
+index exists.
+
+The numbers are runner-specific. Acceptance compares Python and Rust on the
+same benchmark/runner and uses repeated-run medians rather than treating this
+single baseline as a universal latency claim.
+
 ## Correctness requirements for the future Rust implementation
 
 For the same graph, query, anchor and limit, Rust must match the Python
