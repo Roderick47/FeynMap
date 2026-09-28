@@ -13,6 +13,8 @@ tokens delivered, and routing latency while preserving task quality.
 
 See `docs/SPARSE_KNOWLEDGE_SUBSTRATE.md` for the architecture and definitions.
 
+Recursive development is now the default project discipline: substrate work stays on one authoritative integration line, FeynMap self-analyzes in CI, and manual-fallback misses become benchmark evidence. See `docs/RECURSIVE_DEVELOPMENT.md`.
+
 ### S0 — Measure the current activation path 🚧
 
 - [x] Evidence-backed canonical graph
@@ -107,11 +109,16 @@ history rather than copied graph truth, and snapshot changes invalidate reuse.
 
 - [x] Profile the Python hot path before porting
 - [x] Cache only measured bottlenecks
-- [ ] Freeze substrate contracts
+- [x] Freeze substrate contracts
   - [x] S6.3.1 inventory current external/cross-runtime contracts
   - [x] S6.3.2 define compatibility/versioning rules
   - [x] S6.3.3 add canonical conformance fixtures
-  - [ ] S6.3.4 freeze accepted contract set
+  - [x] S6.3.4 freeze accepted contract set
+
+S6.3.4 freezes the accepted portable contract set in `feynmap/contracts.py` and
+`docs/S6_3_4_FROZEN_CONTRACTS.md`. Provisional grounding/context/judgment
+payloads remain explicitly outside the frozen set until separately versioned
+and covered by conformance fixtures.
 
 S6.3.3 conformance assets:
 - `tests/fixtures/contracts/s6_contracts_v1.json` pins canonical semantic graph, repository snapshot, active state, tool capability/space, tool-schema-pack, and deterministic identity/digest vectors.
