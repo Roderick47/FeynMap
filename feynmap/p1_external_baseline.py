@@ -207,12 +207,17 @@ def _source_probes(graph, probe: Mapping[str, Any]) -> Dict[str, Any]:
         expected_name = str(probe["expected_target"])
         name_matches = [
             item for item in server
-            if expected_name in [
-                str(item.get(key) or "") for key in (
-                    "name", "route_name", "url_name", "endpoint",
-                )
-            ]
+            if item.get("name") == expected_name
+            and item.get("framework") == "django"
+            and item.get("derivation") == "django.urls.static_registration"
+            and item.get("evidence_kind") == "static"
+            and _path(item.get("source_file") or "") == _path(probe["source_file"])
+            and (
+                not probe.get("source_line")
+                or item.get("source_line") == int(probe["source_line"])
+            )
         ]
+        result["matching_named_contracts"] = name_matches
         result["observed_contracts"] = server
         result["passed"] = bool(name_matches)
         result["status"] = (
