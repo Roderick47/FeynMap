@@ -111,6 +111,9 @@ def collect(manifest: Mapping[str, Any],
                         "migration_required": 0, "migration_delivered": 0,
                         "labeled_distractor_chars": 0,
                         "labeled_distractor_nodes": 0,
+                        "role_node_payload_chars": {},
+                        "shared_non_node_payload_chars": 0,
+                        "all_payload_chars": 0,
                         "delivered_tokens": 0, "delivered_nodes": 0,
                         "pack_ms": 0.0,
                     })
@@ -280,6 +283,16 @@ def collect(manifest: Mapping[str, Any],
                         if row["channel"] == "migration":
                             stat["migration_required"] += 1
                             stat["migration_delivered"] += bool(row["delivered"])
+                    for role, chars in (accounting.get("source_role_node_chars") or {}).items():
+                        stat["role_node_payload_chars"][role] = (
+                            stat["role_node_payload_chars"].get(role, 0) + chars
+                        )
+                    stat["shared_non_node_payload_chars"] += accounting.get(
+                        "common_edges_anchors_metadata_separator_chars", 0
+                    )
+                    stat["all_payload_chars"] += accounting.get(
+                        "deterministic_full_json_characters", 0
+                    )
                     stat["labeled_distractor_chars"] += accounting.get(
                         "preauthored_distractor_node_chars", 0
                     )
@@ -328,6 +341,13 @@ def collect(manifest: Mapping[str, Any],
         failures.append("not every original preauthored task was reported")
     summaries = []
     for (fixture, budget, arm), metric in sorted(counters.items()):
+        if (
+            sum(metric["role_node_payload_chars"].values())
+            + metric["shared_non_node_payload_chars"]
+            != metric["all_payload_chars"]
+        ):
+            failures.append(fixture + "/" + budget + "/" + arm
+                            + ": aggregate source-channel characters do not reconcile")
         summary = {
             "fixture": fixture, "budget": budget, "arm": arm,
             **metric,
@@ -353,6 +373,13 @@ def collect(manifest: Mapping[str, Any],
             ),
             "labeled_distractor_token_equivalent_approx": round(
                 metric["labeled_distractor_chars"] / 4, 2
+            ),
+            "role_node_payload_token_equivalents_approx": {
+                role: round(chars / 4, 2)
+                for role, chars in sorted(metric["role_node_payload_chars"].items())
+            },
+            "shared_non_node_payload_token_equivalent_approx": round(
+                metric["shared_non_node_payload_chars"] / 4, 2
             ),
             "mean_estimated_context_tokens": round(
                 metric["delivered_tokens"] / metric["tasks"], 2
@@ -417,6 +444,29 @@ def as_markdown(result: Mapping[str, Any]) -> str:
             val("mean_estimated_context_tokens"),
         ))
     lines.extend([
+        "",
+        "## Aggregated source-role JSON character contributions (char/4 heuristic)",
+        "",
+        "| Cohort | Budget | Arm | Implementation | Tests | Migrations | "
+        "Vendor/generated | Common edges/anchors/metadata |",
+        "|---|---|---|---:|---:|---:|---:|---:|",
+    ])
+    for row in result["summaries"]:
+        roles = row.get("role_node_payload_token_equivalents_approx") or {}
+        lines.append("| %s | %s | %s | %.2f | %.2f | %.2f | %.2f | %.2f |" % (
+            row["fixture"], row["budget"], row["arm"],
+            roles.get("implementation", 0.0),
+            roles.get("test", 0.0),
+            roles.get("migration", 0.0),
+            roles.get("vendor_generated", 0.0),
+            row["shared_non_node_payload_token_equivalent_approx"],
+        ))
+    lines.extend([
+        "",
+        "These are additive role-attributed node JSON characters divided by "
+        "four, not actual model-token billing. Shared costs also include "
+        "other classified channels only where explicitly displayed in the "
+        "machine-readable role map; full role+shared characters reconcile.",
         "",
         "Critical: each row separates source-author required evidence activated "
         "from evidence actually delivered; conditional recall uses only the "
