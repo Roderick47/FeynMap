@@ -256,3 +256,65 @@ def test_nested_blueprint_registration_composes_parent_and_child(tmp_path):
     graph = _analyze(tmp_path)
     routes = _servers(graph, "app.ping")
     assert [item["target"] for item in routes] == ["/v1/child/ping"]
+
+
+def test_imported_flask_application_identity_registers_blueprint_and_direct_view(tmp_path):
+    _write(tmp_path, {
+        "webapp.py": (
+            "from flask import Flask\n"
+            "web = Flask(__name__)\n"
+        ),
+        "feature/__init__.py": (
+            "from flask import Blueprint\n"
+            "bp = Blueprint('feature', __name__)\n"
+        ),
+        "feature/views.py": (
+            "from feature import bp\n"
+            "from webapp import web as imported_app\n"
+            "@bp.route('/feature', methods=['POST'])\n"
+            "def blueprint_view(): return 'ok'\n"
+            "@imported_app.route('/plain')\n"
+            "def direct_view(): return 'ok'\n"
+        ),
+        "registration.py": (
+            "from webapp import web as application\n"
+            "from feature import bp as feature_bp\n"
+            "application.register_blueprint(feature_bp, url_prefix='/api')\n"
+        ),
+    })
+    graph = _analyze(tmp_path)
+    assert [item["target"] for item in _servers(
+        graph, "feature.views.blueprint_view"
+    )] == ["/api/feature"]
+    assert [item["target"] for item in _servers(
+        graph, "feature.views.direct_view"
+    )] == ["/plain"]
+    assert graph.metadata["flask_blueprint_composition"][
+        "flask_application_identities"
+    ] == ["webapp.web"]
+
+
+def test_relative_import_inside_package_app_factory_resolves_blueprint(tmp_path):
+    _write(tmp_path, {
+        "app/__init__.py": (
+            "from flask import Flask\n"
+            "def create_app():\n"
+            "    application = Flask(__name__)\n"
+            "    from .api import bp as local_bp\n"
+            "    application.register_blueprint(local_bp, url_prefix='/api')\n"
+            "    return application\n"
+        ),
+        "app/api/__init__.py": (
+            "from flask import Blueprint\n"
+            "bp = Blueprint('api', __name__)\n"
+        ),
+        "app/api/views.py": (
+            "from . import bp\n"
+            "@bp.route('/status')\n"
+            "def status(): return 'ok'\n"
+        ),
+    })
+    graph = _analyze(tmp_path)
+    assert [item["target"] for item in _servers(
+        graph, "app.api.views.status"
+    )] == ["/api/status"]
