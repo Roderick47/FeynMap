@@ -288,3 +288,47 @@ def test_import_alias_resolves_only_exact_serializer_class(tmp_path):
     targets = [node.qualified_name for _, node in
                _edges(graph, view, "view_serializer")]
     assert targets == ["app.serializers.BookSerializer"]
+
+
+
+def test_custom_permission_subclass_has_exact_imported_policy_identity(tmp_path):
+    files = _app()
+    files["app/policies.py"] = (
+        "from rest_framework.permissions import BasePermission as Policy\n"
+        "class IsOwner(Policy): pass\n"
+    )
+    files["app/views.py"] += (
+        "\nfrom app.policies import IsOwner as Ownership\n"
+        "class OwnerOnlyView(View):\n"
+        "    permission_classes = [Ownership]\n"
+    )
+    _write(tmp_path, files)
+    graph = _analyze(tmp_path)
+    view = _one(graph, "app.views.OwnerOnlyView")
+    permission = _one(graph, "app.policies.IsOwner")
+    assert permission.attributes["drf_permission"]["derivation"] == (
+        "source_proven_permission_inheritance"
+    )
+    assert [(edge.kind, node.id) for edge, node in _edges(
+        graph, view, "view_permission"
+    )] == [(EdgeKind.DEPENDS_ON, permission.id)]
+
+
+def test_router_call_inside_other_nested_scope_does_not_bind_global_router(tmp_path):
+    files = _app()
+    del files["app/urls.py"]
+    files["app/router.py"] = (
+        "from rest_framework.routers import DefaultRouter\n"
+        "from app.views import BookView\n"
+        "router = DefaultRouter()\n"
+        "def maybe_register():\n"
+        "    router.register('not-executed', BookView, basename='unproven')\n"
+    )
+    _write(tmp_path, files)
+    graph = _analyze(tmp_path)
+    view = _one(graph, "app.views.BookView")
+    assert not graph.metadata["django_drf"]["router_declarations"]
+    assert next(
+        item for item in graph.metadata["django_drf"]["route_coverage"]
+        if item["view_node_id"] == view.id
+    )["status"] == "no_static_registration_proven"
