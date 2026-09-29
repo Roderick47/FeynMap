@@ -10,6 +10,7 @@ compacted using the same transport-neutral representation as stored context.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -228,10 +229,14 @@ class MinimalContextPacker:
     ) -> MinimalContextResult:
         requested = (budget or MinimalContextBudget()).normalized()
         policy = delivery_policy.normalized() if delivery_policy is not None else None
-        critical = (
-            self._role_critical_node_ids(result, policy)
-            if policy is not None else self._critical_node_ids(result)
-        )
+        if policy is not None and policy.mode == "symbol_evidence":
+            critical, critical_edges = self._symbol_evidence_critical(result, policy)
+        else:
+            critical = (
+                self._role_critical_node_ids(result, policy)
+                if policy is not None else self._critical_node_ids(result)
+            )
+            critical_edges = ()
         payload_cache = _PackPayloadCache(nodes={}, edges={})
 
         caps: List[int] = []
@@ -255,6 +260,7 @@ class MinimalContextPacker:
                 result,
                 budget=current_budget,
                 critical_node_ids=critical,
+                critical_edge_ids=critical_edges,
                 payload_cache=payload_cache,
                 delivery_policy=policy,
             )
@@ -276,6 +282,177 @@ class MinimalContextPacker:
                 return packed
         assert last is not None
         return last
+
+    @staticmethod
+    def _identifier_terms(value: str) -> Set[str]:
+        """Match snake_case and camelCase identically across source languages.
+
+        The source name and task text are normalized only for *selection*.
+        Neither source location nor the evidence/confidence tier is rewritten.
+        """
+        spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(value or ""))
+        return _tokens(spaced)
+
+    def _symbol_evidence_critical(
+        self,
+        result: GuidedSearchResult,
+        policy: DeliveryChannelPolicy,
+    ) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+        """Bounded, source-grounded *symbol* witnesses for opt-in P2.3a.
+
+        Important: This examines only query text, activated graph facts,
+        stored source-edge evidence and role labels. It receives no gold
+        required_file/required_symbol information from any experiment.
+        """
+        if not result.hits:
+            return (), ()
+        hit_by_id = {hit.node.id: hit for hit in result.hits}
+        active_ids = set(hit_by_id)
+        active_edges = [
+            edge for edge in result.edges
+            if edge.source in active_ids and edge.target in active_ids
+        ]
+        node_scores = self._node_scores(result, hit_by_id, active_edges)
+        intent = task_channel(result.query)
+        query_raw = result.query.casefold()
+        query_terms = self._identifier_terms(result.query)
+        # Generic task vocabulary cannot, on its own, make every test case,
+        # serializer, field, migration or dependency a required witness.
+        stop = {
+            "which", "where", "what", "when", "why", "how", "does", "this",
+            "that", "from", "with", "before", "after", "into", "some",
+            "uses", "used", "using", "source", "code", "file", "function",
+            "method", "class", "tests", "test", "migration", "migrations",
+            "implementation", "module", "request", "requests", "values",
+            "value", "ticket", "stock", "framework",
+        }
+        query_meaningful = query_terms - stop
+        candidates: List[Tuple[float, str, bool]] = []
+        strong_ids: Set[str] = set()
+        for hit in result.hits:
+            node = hit.node
+            name = str(node.name or "")
+            if not name or not (node.location and node.location.path):
+                continue
+            # A lexically matched location is not enough: protect the actual
+            # named source definition, not an arbitrary node from that file.
+            meaningful = self._identifier_terms(name) - stop
+            common = meaningful & query_meaningful
+            exact = bool(
+                len(name) >= 4 and re.search(
+                    r"(?<![\w])" + re.escape(name.casefold()) + r"(?![\w])",
+                    query_raw,
+                )
+            )
+            strong = bool(
+                exact
+                or len(common) >= 2
+                or (len(meaningful) == 1 and bool(common)
+                    and len(next(iter(meaningful))) >= 4)
+            )
+            role = file_channel(node.location.path)
+            intent_bonus = 0.0
+            if role == intent:
+                intent_bonus = 0.7
+            elif role == IMPLEMENTATION:
+                intent_bonus = 0.22
+            # Rank named definitions over generic module/file witnesses,
+            # without encoding repository- or label-specific exceptions.
+            score = (
+                (6.0 if exact else 0.0)
+                + 1.8 * len(common)
+                + 1.5 * (len(common) / float(max(1, len(meaningful))))
+                + 0.35 * node_scores.get(node.id, 0.0)
+                + intent_bonus
+            )
+            if strong:
+                strong_ids.add(node.id)
+                candidates.append((score, node.id, exact))
+
+        candidates.sort(key=lambda row: (-row[0], row[1]))
+        # Reserve at most eight source-definition witnesses, leaving room for
+        # their explicit dependencies under a 12-node tight budget.
+        ordered: List[str] = [node_id for _, node_id, _ in candidates[:8]]
+        if not ordered:
+            # Empty lexical evidence is unknown, not a license to invent
+            # essential symbols. Use deterministic S2 source roots as anchors.
+            ordered = [
+                root.id for root in result.roots if root.id in active_ids
+            ][:2]
+            if not ordered:
+                ordered = [result.hits[0].node.id]
+
+        behavioral = {
+            EdgeKind.CALLS, EdgeKind.USES_DATA, EdgeKind.VALIDATES,
+            EdgeKind.INVOKES, EdgeKind.READS,
+            EdgeKind.WRITES, EdgeKind.SERIALIZES, EdgeKind.ROUTES_TO,
+            EdgeKind.REQUESTS, EdgeKind.RENDERS,
+        }
+        # Behavioral evidence has to be actually stored and source backed.
+        # A graph's inferred relationship is retained only at its recorded
+        # confidence tier; this routine creates no relationship of its own.
+        def source_backed(edge: SemanticEdge) -> bool:
+            return (
+                edge.kind in behavioral
+                and any(
+                    item.location is not None
+                    for item in edge.evidence
+                )
+            )
+
+        # Preserve a short outward continuation of explicitly named source
+        # functions even if a callee's vocabulary differs from the question.
+        # Example: a dispatch service method calls a separately named policy.
+        neighbors: List[Tuple[float, str, str]] = []
+        for edge in active_edges:
+            if not source_backed(edge):
+                continue
+            if edge.source not in strong_ids or edge.target in ordered:
+                continue
+            source = hit_by_id[edge.source].node
+            target = hit_by_id[edge.target].node
+            if not source.location or not target.location:
+                continue
+            role = file_channel(target.location.path)
+            if role in {VENDOR} and intent != VENDOR:
+                continue
+            if role == TEST and intent != TEST:
+                continue
+            # Direct, activated CALLS/USES_DATA facts outrank bare import or
+            # containment; cross-file continuations get a modest preference.
+            score = (
+                node_scores.get(edge.target, 0.0)
+                + 1.6 * _delivery_edge_priority(edge)
+                + (0.45 if source.location.path != target.location.path else 0.0)
+                + (0.65 if role == intent else 0.0)
+            )
+            neighbors.append((score, edge.target, edge.id))
+        neighbors.sort(key=lambda row: (-row[0], row[1], row[2]))
+        for _, node_id, _ in neighbors[:3]:
+            if node_id not in ordered and len(ordered) < 10:
+                ordered.append(node_id)
+
+        chosen = set(ordered)
+        essential_edge_candidates: List[Tuple[float, str]] = []
+        for edge in active_edges:
+            if not source_backed(edge):
+                continue
+            if edge.source not in chosen or edge.target not in chosen:
+                continue
+            # Only direct relationships involving the task-matched witnesses,
+            # not every incidental edge between ten activated nodes.
+            if edge.source not in strong_ids and edge.target not in strong_ids:
+                continue
+            essential_edge_candidates.append((
+                _delivery_edge_priority(edge)
+                + (0.4 if edge.source in strong_ids else 0.0)
+                + (0.2 if edge.target in strong_ids else 0.0),
+                edge.id,
+            ))
+        essential_edge_candidates.sort(key=lambda row: (-row[0], row[1]))
+        return tuple(ordered), tuple(
+            edge_id for _, edge_id in essential_edge_candidates[:5]
+        )
 
     def _role_critical_node_ids(
         self,
