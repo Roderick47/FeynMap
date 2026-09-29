@@ -585,6 +585,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     if row.get("kind") == "http_server"
                 ],
                 "missing_essential_files": item["observed"].get("missing_essential_files"),
+                "activated_files": item["observed"].get("activated_files"),
+                "activated_top": [
+                    (node.get("file"), node.get("name"))
+                    for node in item["observed"].get("top_activated_nodes", [])[:12]
+                ],
+                "delivered_top": [
+                    (node.get("file"), node.get("name"))
+                    for node in item["observed"].get("delivered_nodes", [])[:24]
+                ],
                 "delivered_files": item["observed"].get("delivered_files"),
                 "delivered_channels": item["observed"].get("delivered_channels_by_node_count"),
                 "minified_assets": item["observed"].get("minified_assets"),
