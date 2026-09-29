@@ -12,6 +12,9 @@ on:
       - "feynmap/integration.py"
       - "feynmap/repository.py"
       - "feynmap/context_pipeline.py"
+      - "feynmap/delivery_channels.py"
+      - "feynmap/minimal_context.py"
+      - "tests/test_p2_delivery_channels.py"
       - "experiments/p1_external_framework_manifest.json"
       - "tests/test_p1_external_baseline.py"
       - "tests/test_django_cbv_semantics.py"
@@ -32,6 +35,9 @@ on:
       - "feynmap/integration.py"
       - "feynmap/repository.py"
       - "feynmap/context_pipeline.py"
+      - "feynmap/delivery_channels.py"
+      - "feynmap/minimal_context.py"
+      - "tests/test_p2_delivery_channels.py"
       - "experiments/p1_external_framework_manifest.json"
       - "tests/test_p1_external_baseline.py"
       - "tests/test_django_cbv_semantics.py"
@@ -406,6 +412,86 @@ jobs:
                   ),
               ])
 
+          # P2.1 shadow is explicitly opt-in and consumes the SAME activation
+          # as each frozen P1 query. Gold file labels are used only here,
+          # after packing, to measure essential implementation delivery.
+          # P1 original scoring remains unchanged and must pass all gates.
+          p21_gaps = []
+          p21_summary = []
+          from math import ceil
+          expected_drf_queries = (
+              "throttling-implementation-recall",
+              "serializer-implementation-recall",
+          )
+          for probe_id in expected_drf_queries:
+              row = drf_probes.get(probe_id) or {}
+              observation = row.get("observed") or {}
+              shadow = observation.get("p2_role_aware_shadow") or {}
+              if shadow.get("policy") != "implementation_first":
+                  p21_gaps.append(probe_id + ":missing_shadow_policy")
+                  continue
+              if (
+                  shadow.get("same_activation_as_default") is not True
+                  or shadow.get("all_selected_items_from_activation") is not True
+              ):
+                  p21_gaps.append(probe_id + ":shadow_not_source_grounded")
+              if (
+                  shadow.get("essential_delivered") is not True
+                  or shadow.get("missing_essential_files") != []
+              ):
+                  p21_gaps.append(probe_id + ":missing_essential_implementation")
+              channels = shadow.get("delivered_channels_by_node_count") or {}
+              if (
+                  sum(channels.values()) != shadow.get("delivered_nodes")
+                  or not isinstance(shadow.get("delivered_tokens"), int)
+                  or shadow["delivered_tokens"] > 3200
+                  or shadow["delivered_tokens"] <= 0
+                  or not isinstance(shadow.get("delivered_nodes"), int)
+                  or shadow["delivered_nodes"] > 24
+                  or shadow["delivered_nodes"] <= 0
+                  or not isinstance(shadow.get("delivered_edges"), int)
+                  or shadow["delivered_edges"] > 24
+                  or shadow.get("sufficient") is not True
+              ):
+                  p21_gaps.append(probe_id + ":budget_channel_or_sufficiency_inconsistent")
+              if probe_id == "serializer-implementation-recall":
+                  if (
+                      channels.get("implementation", 0) < 2
+                      or channels.get("test", 0) > int(ceil(24 * 0.35))
+                  ):
+                      p21_gaps.append(probe_id + ":implementation_floor_or_test_cap")
+              p21_summary.append({
+                  "id": probe_id,
+                  "legacy": observation.get("p2_default_vs_shadow") or {},
+                  "shadow": {
+                      "delivered_files": shadow.get("delivered_files"),
+                      "delivered_tokens": shadow.get("delivered_tokens"),
+                      "delivered_nodes": shadow.get("delivered_nodes"),
+                      "channels": channels,
+                      "essential_delivered": shadow.get("essential_delivered"),
+                  },
+              })
+          if p21_gaps:
+              failed = True
+              lines.extend([
+                  "", "P2.1 role-aware shadow gate: FAIL " + "; ".join(p21_gaps),
+              ])
+          else:
+              lines.extend([
+                  "",
+                  "**P2.1 role-aware shadow: PASS — both pinned DRF implementation "
+                  "queries deliver all source-authored essential files from the "
+                  "same activated graph, under the unchanged 3,200-token / "
+                  "24-node / 24-edge budget.**",
+                  "",
+                  "The original P1 probe remains independently scored using "
+                  "legacy default delivery (10/11), not reinterpreted as a "
+                  "shadow pass. No downstream LLM accuracy is asserted.",
+                  "",
+                  "Source-channel shadow accounting: "
+                  + json.dumps(p21_summary, sort_keys=True),
+              ])
+
           summary = "\n".join(lines) + "\n"
           print(summary)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
@@ -434,6 +520,9 @@ jobs:
               "p1_5_blueprint_gaps": p15_gaps,
               "p1_6_drf_diagnostic_gate": "fail" if p16_gaps else "pass",
               "p1_6_drf_diagnostic_gaps": p16_gaps,
+              "p2_1_role_aware_shadow_gate": "fail" if p21_gaps else "pass",
+              "p2_1_role_aware_shadow_gaps": p21_gaps,
+              "p2_1_role_aware_shadow_detail": p21_summary,
               "note": "Known unresolved later probes stay visible; P1.2's five verified facts must not regress.",
           }
           Path("p1-external-summary.json").write_text(json.dumps(report, indent=2) + "\n")
