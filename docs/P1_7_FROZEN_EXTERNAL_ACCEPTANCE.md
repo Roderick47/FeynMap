@@ -1,5 +1,31 @@
 # P1.7 — Frozen external replay and acceptance
 
+**Status: accepted with one explicitly unmet delivery probe.** The
+[replay and conformance run 36526547547](https://github.com/Roderick47/FeynMap/actions/runs/36526547547)
+and [full Python 3.8/3.12 + recursive test run 36526547551](https://github.com/Roderick47/FeynMap/actions/runs/36526547551)
+passed after the duplicate-probe integrity guard was corrected. The
+machine-readable artifact and report are attached to the replay run; a
+durable condensed checkpoint is in
+`experiments/results/p1_7_20260929_frozen_acceptance.json`.
+
+### Measured before/after (single independent replay per source)
+
+| Pinned development fixture | P1.1b positive probes | P1.7 positive probes | Edges before → after | Analysis ms before → after |
+|---|---:|---:|---:|---:|
+| MDN Django Local Library | 0/6 | **6/6** | 581 → 675 | 178.6 → 235.5 |
+| Flask Microblog | 0/2 | **2/2** | 607 → 607 | 166.4 → 251.519 |
+| Django REST Framework | 2/3 | **2/3** | 8,040 → 8,113 | 2,328.6 → 3,837.85 |
+| **All known positive expectations** | **2/11** | **10/11** | — | — |
+
+Eight positive expectations were recovered; **none** of the originally passing
+two regressed. DRF `fields.py` activation was restored, but the original
+serializer delivery probe remains correctly unmet. The additional source
+passes increase observed execution time in this one-run comparison; no
+latency improvement is claimed. The raw diagnostic reconciliation and
+all six P1.2–P1.7 acceptance/conformance jobs passed, as did the independent
+three-job full test workflow.
+
+
 **Question:** On three independently pinned *known development* repositories,
 does P1.1 -> P1.6 recover the original source-authored relationships without
 regressing accepted truths, inflating evidence tiers, inventing targets or
