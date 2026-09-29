@@ -1,0 +1,153 @@
+{
+  "schema": "feynmap.external_framework_baseline.v1",
+  "purpose": "Immutable source-authored fixtures for P1.1; these expected facts were written from pinned source revisions, not generated from FeynMap output.",
+  "disclaimer": "These are newly pinned example revisions. The precise commits reviewed by Claude were not supplied, so counts quoted in the review are not assumed to apply verbatim.",
+  "fixtures": [
+    {
+      "id": "mdn-django-local-library",
+      "repository": "mdn/django-locallibrary-tutorial",
+      "commit": "92f1c1e7bdd4ada5209a3c69876ce29e6cee3d96",
+      "framework": "django",
+      "language": "python",
+      "probes": [
+        {
+          "id": "cbv-book-list-model",
+          "category": "framework_relationship",
+          "source_file": "catalog/views.py",
+          "source_symbol": "BookListView",
+          "source_line": 36,
+          "target_file": "catalog/models.py",
+          "target_symbol": "Book",
+          "relationship": "uses_model",
+          "expected_status": "supported",
+          "basis": "Class body explicitly contains model = Book."
+        },
+        {
+          "id": "cbv-book-detail-model",
+          "category": "framework_relationship",
+          "source_file": "catalog/views.py",
+          "source_symbol": "BookDetailView",
+          "source_line": 41,
+          "target_file": "catalog/models.py",
+          "target_symbol": "Book",
+          "relationship": "uses_model",
+          "expected_status": "supported",
+          "basis": "Class body explicitly contains model = Book."
+        },
+        {
+          "id": "cbv-book-list-default-template",
+          "category": "framework_inference",
+          "source_file": "catalog/views.py",
+          "source_symbol": "BookListView",
+          "target_file": "catalog/templates/catalog/book_list.html",
+          "relationship": "renders_template",
+          "expected_status": "framework_inferred",
+          "basis": "Django generic ListView with model Book uses convention catalog/book_list.html; the template exists in this pinned revision."
+        },
+        {
+          "id": "cbv-book-detail-default-template",
+          "category": "framework_inference",
+          "source_file": "catalog/views.py",
+          "source_symbol": "BookDetailView",
+          "target_file": "catalog/templates/catalog/book_detail.html",
+          "relationship": "renders_template",
+          "expected_status": "framework_inferred",
+          "basis": "Django generic DetailView with model Book uses convention catalog/book_detail.html; the template exists."
+        },
+        {
+          "id": "cbv-explicit-template",
+          "category": "framework_relationship",
+          "source_file": "catalog/views.py",
+          "source_symbol": "LoanedBooksByUserListView",
+          "source_line": 85,
+          "target_file": "catalog/templates/catalog/bookinstance_list_borrowed_user.html",
+          "relationship": "renders_template",
+          "expected_status": "supported",
+          "basis": "Explicit template_name attribute."
+        },
+        {
+          "id": "named-url-books",
+          "category": "http_route",
+          "source_file": "catalog/urls.py",
+          "source_line": 8,
+          "source_symbol": "BookListView",
+          "relationship": "url_name",
+          "expected_target": "books",
+          "expected_status": "supported",
+          "basis": "path('books/', views.BookListView.as_view(), name='books')."
+        }
+      ]
+    },
+    {
+      "id": "grinberg-microblog",
+      "repository": "miguelgrinberg/microblog",
+      "commit": "a975ef64864354867c88e0ed3a17ba7d17dca752",
+      "framework": "flask",
+      "language": "python",
+      "probes": [
+        {
+          "id": "api-token-post",
+          "category": "http_route",
+          "source_file": "app/api/tokens.py",
+          "source_symbol": "get_token",
+          "route_line": 6,
+          "registration_file": "app/__init__.py",
+          "expected_path": "/api/tokens",
+          "expected_method": "POST",
+          "expected_status": "supported",
+          "basis": "@bp.route('/tokens', methods=['POST']) and app.register_blueprint(api_bp, url_prefix='/api')."
+        },
+        {
+          "id": "api-token-delete",
+          "category": "http_route",
+          "source_file": "app/api/tokens.py",
+          "source_symbol": "revoke_token",
+          "route_line": 14,
+          "registration_file": "app/__init__.py",
+          "expected_path": "/api/tokens",
+          "expected_method": "DELETE",
+          "expected_status": "supported",
+          "basis": "@bp.route('/tokens', methods=['DELETE']) and app.register_blueprint(api_bp, url_prefix='/api')."
+        }
+      ]
+    },
+    {
+      "id": "django-rest-framework",
+      "repository": "encode/django-rest-framework",
+      "commit": "b578eab1cad040414b758131af1e17aa000b51e2",
+      "framework": "django",
+      "language": "python",
+      "probes": [
+        {
+          "id": "throttling-implementation-recall",
+          "category": "retrieval",
+          "query": "Where does Django REST Framework decide whether a request exceeds throttling rates?",
+          "essential_files": [
+            "rest_framework/throttling.py"
+          ],
+          "expected_status": "required_evidence",
+          "basis": "Pinned revision defines BaseThrottle, SimpleRateThrottle, AnonRateThrottle, UserRateThrottle and ScopedRateThrottle here; measure whether implementation is selected, not only tests."
+        },
+        {
+          "id": "serializer-implementation-recall",
+          "category": "retrieval",
+          "query": "How are serializer fields and validation resolved?",
+          "essential_files": [
+            "rest_framework/serializers.py",
+            "rest_framework/fields.py"
+          ],
+          "expected_status": "required_evidence",
+          "basis": "Implementation-bearing files; additional independently labelled symbols needed before scoring at symbol level."
+        },
+        {
+          "id": "vendored-js-no-crash",
+          "category": "ingestion",
+          "expected_status": "no_crash",
+          "basis": "The post-S6.9 JS hardening must not fail on shipped static bundles; record skipped minified diagnostics separately."
+        }
+      ]
+    }
+  ],
+  "acceptance": "P1.1 captures current results without modifying the expected facts. Missing results become documented baseline gaps; later P1.2–P1.7 fixes must not retroactively edit the locked source expectations.",
+  "held_out_policy": "Do not reuse these three known review repositories/tasks as the independently held-out S7 agent repair corpus."
+}
