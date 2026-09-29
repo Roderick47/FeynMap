@@ -24,7 +24,7 @@ scored using the legacy default.
 ## Policy
 
 Source paths are classified as implementation, test, migration,
-vendor/generated, documentation or configuration. A name that happens to
+vendor/generated, documentation, configuration or unknown when a source location is absent. A name that happens to
 contain `test` in an implementation symbol does not change its channel.
 An explicit test/migration/vendor request may prefer that channel; ordinary
 implementation questions first reserve up to two distinct activated source
