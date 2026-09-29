@@ -13,6 +13,7 @@ on:
       - "tests/test_p1_external_baseline.py"
       - "tests/test_django_cbv_semantics.py"
       - "tests/test_django_app_membership.py"
+      - "tests/test_django_named_urls.py"
       - ".github/workflows/p1-external-baseline.yml"
   pull_request:
     paths:
@@ -240,6 +241,32 @@ jobs:
                   "region-locality isolation verified; Flask control 0).**",
               ])
 
+          # P1.4: the immutable MDN named registration is now a required,
+          # source-authored fact. Presence of an arbitrary name string or
+          # generic route contract alone does not meet this gate.
+          p14_gaps = []
+          named = by_id.get("named-url-books") or {}
+          matching = (named.get("observed") or {}).get("matching_named_contracts") or []
+          if named.get("passed") is not True or len(matching) != 1:
+              p14_gaps.append("MDN named-url-books missing/ambiguous")
+          else:
+              contract = matching[0]
+              if (
+                  contract.get("target") != "/books/"
+                  or contract.get("route_name") != "books"
+                  or float(contract.get("confidence", 0)) < 0.9
+              ):
+                  p14_gaps.append("MDN named-url-books wrong registration evidence/path")
+          if p14_gaps:
+              failed = True
+              lines.extend(["", "P1.4 Django named URL gate: FAIL " + "; ".join(p14_gaps)])
+          else:
+              lines.extend([
+                  "",
+                  "**P1.4 Django named URL gate: PASS "
+                  "(MDN books registration, source line, static provenance and route).**",
+              ])
+
           summary = "\n".join(lines) + "\n"
           print(summary)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
@@ -262,7 +289,9 @@ jobs:
               "p1_2_missing_or_wrong_tier": p12_gaps,
               "p1_3_app_config_hub_gate": "fail" if p13_gaps else "pass",
               "p1_3_membership_or_edge_mismatch": p13_gaps,
-              "note": "Known unresolved P1.3-6 probes stay visible; P1.2's five verified facts must not regress.",
+              "p1_4_named_url_gate": "fail" if p14_gaps else "pass",
+              "p1_4_named_url_gaps": p14_gaps,
+              "note": "Known unresolved later probes stay visible; P1.2's five verified facts must not regress.",
           }
           Path("p1-external-summary.json").write_text(json.dumps(report, indent=2) + "\n")
           if failed or os.environ["P1_JOB_RESULT"] != "success":
