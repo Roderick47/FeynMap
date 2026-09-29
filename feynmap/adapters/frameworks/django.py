@@ -1,11 +1,10 @@
 """Django semantic enrichment for generic Python graphs."""
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path, PurePosixPath
 from typing import Dict, List, Optional
 
-from feynmap.core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode
+from feynmap.core import Evidence, EvidenceKind, NodeKind, SemanticGraph, SemanticNode
 from ..base import FrameworkAdapter
 from .django_cbv import enrich_django_cbvs
 from ._python import (
@@ -66,7 +65,7 @@ class DjangoAdapter(FrameworkAdapter):
         # The existing language-neutral integration resolver later attaches
         # template contracts to actual HTML nodes, where present.
         enrich_django_cbvs(graph, project_path)
-        self._attach_app_config_relationships(graph)
+        self._record_app_config_membership(graph)
         attach_django_url_contracts(graph, project_path)
         attach_template_render_contracts(graph, project_path, self.name)
         return finalize(graph, self.name)
@@ -77,12 +76,16 @@ class DjangoAdapter(FrameworkAdapter):
         return "" if parent == "." else parent
 
     @classmethod
-    def _attach_app_config_relationships(cls, graph: SemanticGraph) -> None:
-        """Connect Django request handlers to their nearest AppConfig.
+    def _record_app_config_membership(cls, graph: SemanticGraph) -> None:
+        """Record source-tree membership, NOT an application dependency edge.
 
-        Django initializes an installed app through AppConfig before its request
-        handlers participate in the application. The relationship is structural
-        framework wiring rather than a Python call, so model it explicitly.
+        A sibling apps.py AppConfig suggests a source-code app boundary. It
+        does not prove the app is installed, the handler is called by that
+        config, or a change to the config behaviorally impacts all handlers.
+
+        Keep these structural observations in graph metadata, outside generic
+        edge traversal, region adjacency and claim validation. Preserve source
+        provenance for explicit inspection and snapshot round-trips.
         """
         configs: List[SemanticNode] = []
         for node in graph.nodes:
@@ -94,66 +97,78 @@ class DjangoAdapter(FrameworkAdapter):
                 and has_base(node, "AppConfig")
             ):
                 mark_role(
-                    node,
-                    "django",
-                    NodeKind.SERVICE,
-                    "app_configuration",
-                    "Django AppConfig lifecycle class detected",
-                    0.96,
+                    node, "django", NodeKind.SERVICE, "app_configuration",
+                    "Django AppConfig class detected in apps.py", 0.96,
                 )
                 configs.append(node)
-        if not configs:
-            return
 
-        configs.sort(
-            key=lambda node: (
-                -len(cls._app_root(node.location.path).split("/")),
-                node.id,
-            )
-        )
-        edge_keys = {(edge.source, edge.target, edge.kind.value) for edge in graph.edges}
-        for node in graph.nodes:
-            if node.language != "python" or node.kind != NodeKind.HANDLER or not node.location:
+        associations: List[Dict[str, object]] = []
+        unresolved: List[Dict[str, object]] = []
+        for handler in sorted(graph.nodes, key=lambda node: node.id):
+            if (
+                handler.language != "python"
+                or handler.kind != NodeKind.HANDLER
+                or not handler.location
+            ):
                 continue
-            handler_path = node.location.path
-            matches: List[SemanticNode] = []
+            handler_path = handler.location.path
+            matches = []
             for config in configs:
-                app_root = cls._app_root(config.location.path)
-                if not app_root:
-                    if "/" not in handler_path:
-                        matches.append(config)
-                    continue
-                if handler_path == app_root or handler_path.startswith(app_root + "/"):
-                    matches.append(config)
+                root = cls._app_root(config.location.path)
+                if (
+                    (not root and "/" not in handler_path)
+                    or (root and handler_path.startswith(root + "/"))
+                ):
+                    matches.append((len(PurePosixPath(root).parts), config, root))
             if not matches:
                 continue
-            config = matches[0]
-            key = (node.id, config.id, EdgeKind.DEPENDS_ON.value)
-            if key in edge_keys:
-                continue
-            raw = "%s|%s|django_app_config" % (node.id, config.id)
-            graph.add_edge(
-                SemanticEdge(
-                    id="edge:framework:%s" % hashlib.sha1(raw.encode("utf-8")).hexdigest()[:14],
-                    source=node.id,
-                    target=config.id,
-                    kind=EdgeKind.DEPENDS_ON,
-                    confidence=0.86,
-                    evidence=[
-                        Evidence(
-                            EvidenceKind.FRAMEWORK,
-                            "django.app_config",
-                            "Django handler belongs to app initialized by AppConfig",
-                            node.location,
-                            0.86,
-                        )
-                    ],
-                    attributes={
-                        "framework": {
-                            "name": "django",
-                            "relationship": "app_config",
-                        }
-                    },
-                )
+            nearest_depth = max(depth for depth, _, _ in matches)
+            nearest = sorted(
+                ((config, root) for depth, config, root in matches
+                 if depth == nearest_depth),
+                key=lambda item: item[0].id,
             )
-            edge_keys.add(key)
+            if len(nearest) != 1:
+                unresolved.append({
+                    "handler_node_id": handler.id,
+                    "reason": "ambiguous_nearest_app_config",
+                    "candidate_config_node_ids": [config.id for config, _ in nearest],
+                })
+                continue
+            config, root = nearest[0]
+            evidence = Evidence(
+                EvidenceKind.FRAMEWORK,
+                "django.app_config.source_tree_membership",
+                "Handler and AppConfig share nearest source directory; "
+                "runtime installation or behavioral dependence is not established",
+                handler.location,
+                0.65,
+            )
+            associations.append({
+                "handler_node_id": handler.id,
+                "app_config_node_id": config.id,
+                "app_root": root,
+                "handler_source_path": handler_path,
+                "app_config_source_path": config.location.path,
+                "scope": "source_tree_only",
+                "confidence_tier": "inferred",
+                "evidence": evidence.to_dict(),
+            })
+
+        graph.metadata["django_app_membership"] = {
+            "version": "1.0.0",
+            "relationship": "source_tree_membership_not_behavioral_dependency",
+            "associations": associations,
+            "unresolved": unresolved,
+        }
+
+
+def django_app_memberships(graph: SemanticGraph, handler_node_id: Optional[str] = None) -> List[Dict[str, object]]:
+    """Read inferred structural membership without traversing behavioral edges."""
+    payload = graph.metadata.get("django_app_membership") or {}
+    entries = payload.get("associations", []) if isinstance(payload, dict) else []
+    return [
+        item for item in entries
+        if isinstance(item, dict)
+        and (handler_node_id is None or item.get("handler_node_id") == handler_node_id)
+    ]
