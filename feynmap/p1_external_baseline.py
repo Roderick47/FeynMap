@@ -23,6 +23,7 @@ from typing import Any, Dict, Mapping, Optional, Sequence
 
 from .adapters.javascript import JavaScriptAdapter
 from .context_pipeline import SparseContextPipeline
+from .delivery_channels import DeliveryChannelPolicy, channel_counts, file_channel
 from .engine import FeynMapEngine
 from .core import EdgeKind, EvidenceKind
 from .integration import contracts
@@ -261,6 +262,44 @@ def _retrieval_probe(graph, probe: Mapping[str, Any]) -> Dict[str, Any]:
         max_nodes=64,
     )
     elapsed_ms = (time.perf_counter() - started) * 1000.0
+
+    # P2.1 shadow: rerun only the delivery policy on the EXACT same activated
+    # evidence, not a second search. Do not overwrite P1's locked probe score;
+    # selection sees task text+graph, never essential_files or gold labels.
+    role_started = time.perf_counter()
+    role_aware = pipeline.packer.pack(
+        outcome.activation.search,
+        budget=MinimalContextBudget(max_tokens=3200, max_nodes=24, max_edges=24),
+        delivery_policy=DeliveryChannelPolicy(),
+    )
+    role_elapsed_ms = (time.perf_counter() - role_started) * 1000.0
+    role_nodes = [
+        graph.node(node_id) for node_id in role_aware.selected_node_ids
+    ]
+    role_nodes = [node for node in role_nodes if node is not None]
+    role_paths = sorted({
+        _node_path(node) for node in role_nodes if _node_path(node)
+    })
+    shadow_essential = [_path(path) for path in probe["essential_files"]]
+    shadow = {
+        "policy": "implementation_first",
+        "same_activation_as_default": True,
+        "selected_node_ids": list(role_aware.selected_node_ids),
+        "selected_edge_ids": list(role_aware.selected_edge_ids),
+        "delivered_files": role_paths,
+        "missing_essential_files": [
+            path for path in shadow_essential if path not in role_paths
+        ],
+        "essential_delivered": all(path in role_paths for path in shadow_essential),
+        "delivered_channels_by_node_count": channel_counts(role_nodes),
+        "delivered_nodes": role_aware.delivered_nodes,
+        "delivered_tokens": role_aware.delivered_tokens,
+        "sufficient": role_aware.sufficient,
+        "critical_node_ids": list(role_aware.critical_node_ids),
+        "packing_iterations": role_aware.packing_iterations,
+        "packer_elapsed_ms": round(role_elapsed_ms, 3),
+        "note": "Source-channel preference only; no gold labels or graph changes. This is a shadow measurement and does not modify the frozen P1 score.",
+    }
     activated = list(outcome.activation.search.hits)
     delivered = [
         graph.node(node_id) for node_id in outcome.context.selected_node_ids
@@ -296,6 +335,7 @@ def _retrieval_probe(graph, probe: Mapping[str, Any]) -> Dict[str, Any]:
             "selected_regions": list(route.selected_regions),
             "candidate_regions": route.candidate_regions,
         },
+        "p2_role_aware_shadow": shadow,
         "measurement_note": (
             "Channel shares count delivered nodes, not tokens. "
             "No downstream model was called; essential file labels are deliberately coarse."
