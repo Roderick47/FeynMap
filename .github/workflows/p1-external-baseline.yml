@@ -1,0 +1,169 @@
+name: p1-external-semantic-baseline
+
+on:
+  push:
+    paths:
+      - "feynmap/p1_external_baseline.py"
+      - "experiments/p1_external_framework_manifest.json"
+      - "tests/test_p1_external_baseline.py"
+      - ".github/workflows/p1-external-baseline.yml"
+  pull_request:
+    paths:
+      - "feynmap/p1_external_baseline.py"
+      - "experiments/p1_external_framework_manifest.json"
+      - "tests/test_p1_external_baseline.py"
+      - ".github/workflows/p1-external-baseline.yml"
+  workflow_dispatch:
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - fixture: mdn-django-local-library
+            repository: mdn/django-locallibrary-tutorial
+            commit: 92f1c1e7bdd4ada5209a3c69876ce29e6cee3d96
+          - fixture: grinberg-microblog
+            repository: miguelgrinberg/microblog
+            commit: a975ef64864354867c88e0ed3a17ba7d17dca752
+          - fixture: django-rest-framework
+            repository: encode/django-rest-framework
+            commit: b578eab1cad040414b758131af1e17aa000b51e2
+    steps:
+      - name: Checkout exact FeynMap source
+        uses: actions/checkout@v4
+        with:
+          path: feynmap-source
+      - name: Checkout pinned external source (no dependencies installed)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.repository }}
+          ref: ${{ matrix.commit }}
+          path: external-source
+          persist-credentials: false
+      - name: Verify immutable external revision
+        shell: bash
+        run: |
+          actual="$(git -C external-source rev-parse HEAD)"
+          expected="${{ matrix.commit }}"
+          echo "Pinned external checkout: $actual"
+          test "$actual" = "$expected"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install FeynMap only
+        working-directory: feynmap-source
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+      - name: Analyze frozen external source and score source-authored probes
+        shell: bash
+        working-directory: feynmap-source
+        run: |
+          mkdir -p performance-results
+          python -m feynmap.p1_external_baseline \
+            --manifest experiments/p1_external_framework_manifest.json \
+            --fixture "${{ matrix.fixture }}" \
+            --project-root ../external-source \
+            --output "performance-results/p1-${{ matrix.fixture }}.json"
+      - name: Upload full P1.1b diagnostics even if a run exposes an analysis error
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p1-external-baseline-${{ matrix.fixture }}
+          path: feynmap-source/performance-results/p1-${{ matrix.fixture }}.json
+          if-no-files-found: warn
+
+  collect:
+    if: always()
+    needs: baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: p1-external-baseline-*
+          path: collected
+          merge-multiple: true
+      - name: Check report integrity but do NOT require unsupported semantic relations to pass yet
+        env:
+          P1_JOB_RESULT: ${{ needs.baseline.result }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest = json.loads(
+              Path("experiments/p1_external_framework_manifest.json").read_text()
+          )
+          reports = {}
+          for file in Path("collected").glob("p1-*.json"):
+              payload = json.loads(file.read_text())
+              name = payload["fixture_id"]
+              if name in reports:
+                  raise SystemExit("duplicate external fixture report: " + name)
+              reports[name] = payload
+
+          lines = [
+              "## P1.1b immutable-source framework baseline",
+              "",
+              "| External source | Graph nodes | Graph edges | Source-authored probes met | Missing facts | Analysis ms | Peak RSS KB |",
+              "|---|---:|---:|---:|---|---:|---:|",
+          ]
+          failed = False
+          for fixture in manifest["fixtures"]:
+              name = fixture["id"]
+              report = reports.get(name)
+              if not report:
+                  lines.append("| %s | — | — | — | Missing report | — | — |" % name)
+                  failed = True
+                  continue
+              if report["status"] == "analysis_error":
+                  lines.append("| %s | — | — | — | Analysis error: %s | — | — |" % (
+                      name, report["error"].replace("|", "/")
+                  ))
+                  failed = True
+                  continue
+              if report["expected_commit"] != fixture["commit"] or report["actual_commit"] != fixture["commit"]:
+                  raise SystemExit("checksum mismatch for " + name)
+              if report["probe_count"] != len(fixture["probes"]):
+                  raise SystemExit("probe count mismatch for " + name)
+              graph = report["graph"]
+              lines.append("| %s | %d | %d | %d/%d | %s | %.1f | %s |" % (
+                  name, graph["nodes"], graph["edges"], report["matched_probes"],
+                  report["probe_count"], ", ".join(report["missing_probes"]) or "none",
+                  report["analysis_elapsed_ms"], report["process_peak_rss_kb"],
+              ))
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write(summary)
+          report = {
+              "schema": "feynmap.p1_external_baseline_collection.v1",
+              "status": "analysis_error" if failed else "baseline_captured_with_known_gaps",
+              "fixtures": [
+                  {
+                      "id": entry["id"],
+                      "commit": entry["commit"],
+                      "analysis_status": reports.get(entry["id"], {}).get("status", "missing_report"),
+                      "passed": reports.get(entry["id"], {}).get("matched_probes"),
+                      "total": len(entry["probes"]),
+                      "missing_probes": reports.get(entry["id"], {}).get("missing_probes", []),
+                  }
+                  for entry in manifest["fixtures"]
+              ],
+              "note": "A source-grounded semantic miss is expected baseline data, not a CI failure.",
+          }
+          Path("p1-external-summary.json").write_text(json.dumps(report, indent=2) + "\n")
+          if failed or os.environ["P1_JOB_RESULT"] != "success":
+              raise SystemExit("At least one pinned external checkout could not be analyzed")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p1-external-baseline-summary
+          path: p1-external-summary.json
+          if-no-files-found: warn
