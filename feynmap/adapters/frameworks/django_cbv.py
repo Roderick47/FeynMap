@@ -357,13 +357,18 @@ def enrich_django_cbvs(graph: SemanticGraph, root: Path) -> None:
                     stats["model_edges_added"] += 1
 
             template_expr = attrs.get("template_name")
+            methods = {
+                item.name for item in definition.body
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            custom_template_selection = "get_template_names" in methods
             if template_expr is not None:
                 label = _template_label(template_expr)
                 # A declaration is a source fact, but a RENDERS edge needs a
                 # unique in-repository template; absent/ambiguous is unknown.
                 notes["declared_template_name"] = label
                 paths = template_paths.get(label or "", ())
-                if label and len(paths) == 1:
+                if label and len(paths) == 1 and not custom_template_selection:
                     add_contract(
                         view, "template_render", label, 0.98,
                         framework="django", derivation="django.cbv.explicit_template",
@@ -374,17 +379,17 @@ def enrich_django_cbvs(graph: SemanticGraph, root: Path) -> None:
                     stats["explicit_template_contracts"] += 1
                     notes["template_evidence"] = "explicit"
                 else:
-                    notes["unresolved"].append("template_name:missing_dynamic_or_ambiguous")
+                    notes["unresolved"].append(
+                        "template_name:custom_get_template_names"
+                        if custom_template_selection
+                        else "template_name:missing_dynamic_or_ambiguous"
+                    )
                     stats["unresolved_template"] += 1
             elif generic in _DEFAULT_SUFFIXES:
                 # A custom implementation may choose a different template.
                 # Do not infer a default when it overrides get_template_names.
-                if any(
-                    isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
-                    and item.name == "get_template_names"
-                    for item in definition.body
-                ):
-                    notes["unresolved"].append("template:custom_get_template_names")
+                if custom_template_selection or "get_queryset" in methods or "get_object" in methods:
+                    notes["unresolved"].append("template:custom_queryset_object_or_template")
                     stats["unresolved_template"] += 1
                 elif attrs.get("queryset") is not None and "queryset" not in resolved_bindings:
                     notes["unresolved"].append("template:queryset_model_unknown")
