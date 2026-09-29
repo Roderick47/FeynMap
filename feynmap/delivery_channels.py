@@ -1,7 +1,7 @@
 """P2: evidence-channel labels derived from source location, not graph assertions.
 
 These are delivery *policies*, not runtime-truth or source-proven relationships.
-Unknown locations default to implementation/other, not to a fabricated file.
+Unknown locations remain a distinct unknown channel, never a fabricated file.
 Classify migration before tests (test fixtures can contain migration files).
 """
 from __future__ import annotations
