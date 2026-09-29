@@ -718,6 +718,8 @@ class MinimalContextPacker:
                     selected_nodes | nodes,
                     selected_edges | {edge.id},
                     candidate_anchors,
+                    payload_cache=payload_cache,
+                    delivery_policy=delivery_policy,
                 ):
                     selected_nodes.update(nodes)
                     selected_edges.add(edge.id)
@@ -813,6 +815,7 @@ class MinimalContextPacker:
                 selected_edges | set(closure_edges),
                 candidate_anchors,
                 payload_cache=payload_cache,
+                delivery_policy=delivery_policy,
             ):
                 selected_nodes.update(closure_nodes)
                 selected_edges.update(closure_edges)
@@ -844,6 +847,7 @@ class MinimalContextPacker:
                 selected_edges | set(closure_edges),
                 candidate_anchors,
                 payload_cache=payload_cache,
+                delivery_policy=delivery_policy,
             ):
                 selected_nodes.update(closure_nodes)
                 selected_edges.update(closure_edges)
@@ -878,6 +882,7 @@ class MinimalContextPacker:
                 selected_edges | {edge.id},
                 candidate_anchors,
                 payload_cache=payload_cache,
+                delivery_policy=delivery_policy,
             ):
                 selected_nodes.update(nodes)
                 selected_edges.add(edge.id)
