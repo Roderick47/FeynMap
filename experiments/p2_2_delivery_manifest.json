@@ -12,7 +12,7 @@
   "source_fixtures": {
     "stockroom-independent": {
       "kind": "checked_in_new_source_fixture",
-      "root": "tests/fixtures/p2_channels",
+      "root": "experiments/fixtures/p2_channels",
       "language": "python",
       "framework": "none",
       "blobs": {
@@ -27,7 +27,7 @@
         "tests/test_opening_stock.py": "e15432b130735ccaf36f7a6afe65666219e9587c",
         "vendor/generated_stock_report.py": "92eb6c59c93f5fc5ea3b6e0a4cc347a2c6623097"
       },
-      "source_review": "Static source inspection before evaluation: apply_stock_movement explicitly calls validate_adjustment; test_negative_stock_is_rejected invokes apply_stock_movement; Migration.forwards uses stock_default_value; unrelated discount/pricing/vendor are intentional distractors. Files and blob IDs are frozen before obtaining retrieval output."
+      "source_review": "Static source inspection before evaluation: apply_stock_movement explicitly calls validate_adjustment; test_negative_stock_is_rejected invokes apply_stock_movement; Migration.forwards uses stock_default_value; unrelated discount/pricing/vendor are intentional distractors. Files and blob IDs are frozen before obtaining retrieval output. Fixture resides under experiments/, outside pytest collection."
     },
     "drf-calibration": {
       "kind": "reused_p1_public_revision_new_symbol_criteria",
