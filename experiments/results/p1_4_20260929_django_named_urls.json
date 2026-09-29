@@ -1,0 +1,63 @@
+{
+  "schema": "feynmap.p1_4_django_named_urls.v1",
+  "recorded_on": "2026-09-29",
+  "pr": 41,
+  "source": {
+    "repository": "mdn/django-locallibrary-tutorial",
+    "commit": "92f1c1e7bdd4ada5209a3c69876ce29e6cee3d96"
+  },
+  "acceptance": {
+    "workflow_run": 36522700164,
+    "workflow_url": "https://github.com/Roderick47/FeynMap/actions/runs/36522700164",
+    "result": "passed",
+    "mdn": {
+      "source_authored_probes_before": "5/6",
+      "source_authored_probes_after": "6/6",
+      "named_url": {
+        "source_file": "catalog/urls.py",
+        "source_line": 8,
+        "handler": "BookListView",
+        "registration_name": "books",
+        "full_name": "books",
+        "composed_route": "/catalog/books/",
+        "evidence_kind": "static",
+        "derivation": "django.urls.static_registration",
+        "expected_status": "supported"
+      },
+      "nodes": 266,
+      "edges_before": 606,
+      "edges_after": 675,
+      "synthetic_appconfig_dependencies": 0,
+      "retained_structural_memberships": 29
+    },
+    "flask": {
+      "source_authored_probes": "0/2",
+      "nodes": 279,
+      "edges": 607
+    },
+    "drf": {
+      "source_authored_probes": "2/3",
+      "nodes": 4128,
+      "edges": 8020,
+      "synthetic_appconfig_dependencies": 0,
+      "retained_structural_memberships": 20
+    },
+    "total_source_authored_before": "7/11",
+    "total_source_authored_after": "8/11",
+    "p1_2_gate": "pass",
+    "p1_3_gate": "pass",
+    "p1_4_gate": "pass",
+    "analysis_errors": 0
+  },
+  "tests": {
+    "python_3_8": "pass",
+    "python_3_12": "pass",
+    "recursive_self_check": "pass"
+  },
+  "interpretation": [
+    "The independent MDN route name and include-composed path are now present with static registration provenance.",
+    "The change to graph edge totals is not itself a quality metric; acceptance requires source-backed correctness.",
+    "Dynamic, unknown, or ambiguous name expressions do not fabricate resolved relationships.",
+    "Flask Blueprint prefix composition remains P1.5 and DRF retrieval remains a later checkpoint."
+  ]
+}
