@@ -252,7 +252,7 @@ jobs:
           else:
               contract = matching[0]
               if (
-                  contract.get("target") != "/books/"
+                  contract.get("target") != "/catalog/books/"
                   or contract.get("route_name") != "books"
                   or float(contract.get("confidence", 0)) < 0.9
               ):
