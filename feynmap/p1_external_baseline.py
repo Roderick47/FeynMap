@@ -21,6 +21,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
 
+from .adapters.javascript import JavaScriptAdapter
 from .context_pipeline import SparseContextPipeline
 from .engine import FeynMapEngine
 from .integration import contracts
@@ -295,6 +296,46 @@ def _retrieval_probe(graph, probe: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _minified_js_probe(root: Path) -> Dict[str, Any]:
+    """Exercise the actual adapter against vendored files at the pinned SHA."""
+
+    minified_paths = sorted(
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*.min.js")
+        if ".git" not in path.parts
+    )
+    if not minified_paths:
+        return {
+            "status": "no_minified_assets_in_revision",
+            "passed": False,
+            "minified_assets": [],
+            "note": "No vendor file was present; cannot claim the crash regression was exercised.",
+        }
+    started = time.perf_counter()
+    graph = JavaScriptAdapter().analyze(root)
+    graph.validate()
+    warnings = list(graph.diagnostics.get("warnings", []))
+    skipped = [
+        path for path in minified_paths
+        if any("skipped minified JavaScript: " + path in warning for warning in warnings)
+    ]
+    included = sorted(
+        {_node_path(node) for node in graph.nodes} & set(minified_paths)
+    )
+    passed = len(skipped) == len(minified_paths) and not included
+    return {
+        "status": "minified_assets_skipped_without_crash" if passed else "minified_skip_incomplete",
+        "passed": passed,
+        "minified_assets": minified_paths,
+        "skipped_assets": skipped,
+        "incorrectly_included_assets": included,
+        "javascript_adapter_elapsed_ms": round((time.perf_counter() - started) * 1000.0, 3),
+        "javascript_graph_nodes": len(graph.nodes),
+        "javascript_warnings": warnings[:12],
+        "note": "Static adapter run on pinned source; third-party JS was not executed.",
+    }
+
+
 def _graph_summary(graph) -> Dict[str, Any]:
     channels = Counter(node.language or "unknown" for node in graph.nodes)
     kinds = Counter(edge.kind.value for edge in graph.edges)
@@ -371,7 +412,7 @@ def evaluate_fixture(
         elif probe["category"] == "retrieval":
             observed = _retrieval_probe(graph, probe)
         elif probe["category"] == "ingestion":
-            observed = {"status": "analysis_completed", "passed": True}
+            observed = _minified_js_probe(project_root)
         else:
             raise ValueError("unsupported probe category: %s" % probe["category"])
         probes.append({
@@ -473,6 +514,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "missing_essential_files": item["observed"].get("missing_essential_files"),
                 "delivered_files": item["observed"].get("delivered_files"),
                 "delivered_channels": item["observed"].get("delivered_channels_by_node_count"),
+                "minified_assets": item["observed"].get("minified_assets"),
+                "minified_skipped": item["observed"].get("skipped_assets"),
             }
             for item in report["probes"]
         ]
