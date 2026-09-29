@@ -19,7 +19,7 @@ from .delivery_channels import (
     IMPLEMENTATION, TEST, MIGRATION, VENDOR, DeliveryChannelPolicy,
     file_channel, task_channel,
 )
-from .core import EdgeKind, SemanticEdge, SemanticGraph, SemanticNode
+from .core import EdgeKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode
 from .core.model import TIER_RANK
 from .judgment.search import GuidedSearchResult, SearchHit, _edge_search_priority
 
@@ -323,12 +323,20 @@ class MinimalContextPacker:
             "that", "from", "with", "before", "after", "into", "some",
             "uses", "used", "using", "source", "code", "file", "function",
             "method", "class", "tests", "test", "migration", "migrations",
-            "implementation", "module", "request", "requests", "values",
+            "implementation", "module", "values",
             "value", "ticket", "stock", "framework",
         }
         query_meaningful = query_terms - stop
         candidates: List[Tuple[float, str, bool]] = []
+        partial_candidates: List[Tuple[float, str]] = []
         strong_ids: Set[str] = set()
+        other_requested_channels = set()
+        if "migration" in query_terms or "migrations" in query_terms:
+            other_requested_channels.add(MIGRATION)
+        if "test" in query_terms or "tests" in query_terms or (
+            re.search(r"\b(?:test|spec)[A-Z]", result.query) is not None
+        ):
+            other_requested_channels.add(TEST)
         for hit in result.hits:
             node = hit.node
             name = str(node.name or "")
@@ -368,11 +376,62 @@ class MinimalContextPacker:
             if strong:
                 strong_ids.add(node.id)
                 candidates.append((score, node.id, exact))
+            elif (
+                common
+                and node.kind not in {NodeKind.MODULE, NodeKind.FILE}
+                and (
+                    role == intent
+                    or role == IMPLEMENTATION
+                    or role in other_requested_channels
+                )
+            ):
+                # One lexical concept (e.g. an invoked method with a
+                # different verb) is still a meaningful activated *symbol*.
+                # Restrict such weak witnesses by task-relevant source role
+                # and rank them below exact named declarations. This is the
+                # generic complement to source-edge continuation when static
+                # analysis legitimately cannot resolve a dynamic import.
+                file_common = (
+                    self._identifier_terms(node.location.path) & query_meaningful
+                )
+                partial_score = (
+                    score
+                    + 0.45 * len(file_common)
+                    + (0.65 if role == intent else 0.0)
+                    + (0.55 if role in other_requested_channels else 0.0)
+                )
+                partial_candidates.append((partial_score, node.id))
 
         candidates.sort(key=lambda row: (-row[0], row[1]))
         # Reserve at most eight source-definition witnesses, leaving room for
         # their explicit dependencies under a 12-node tight budget.
         ordered: List[str] = [node_id for _, node_id, _ in candidates[:8]]
+        # Do not stop merely because an unrelated module/class represented
+        # the same file: choose bounded partly-matched source definitions as
+        # additional witnesses. A query-named class gives its own activated
+        # methods a small structural preference, without inventing CONTAINS
+        # edges or claiming the method has executed.
+        named_classes = [
+            hit_by_id[node_id].node for node_id in ordered
+            if hit_by_id[node_id].node.kind == NodeKind.CLASS
+            and hit_by_id[node_id].node.qualified_name
+        ]
+        promoted: List[Tuple[float, str]] = []
+        for score, node_id in partial_candidates:
+            node = hit_by_id[node_id].node
+            parent_bonus = 0.0
+            for parent in named_classes:
+                if node.qualified_name and node.qualified_name.startswith(
+                    parent.qualified_name + "."
+                ):
+                    parent_bonus = 1.4
+                    break
+            promoted.append((score + parent_bonus, node_id))
+        promoted.sort(key=lambda row: (-row[0], row[1]))
+        for _, node_id in promoted[:3]:
+            if node_id not in ordered and len(ordered) < 10:
+                ordered.append(node_id)
+
         if not ordered:
             # Empty lexical evidence is unknown, not a license to invent
             # essential symbols. Use deterministic S2 source roots as anchors.
