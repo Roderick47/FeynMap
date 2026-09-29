@@ -91,6 +91,14 @@ def test_source_model_edges_and_default_template_are_not_mistaken_for_verified(t
     assert edge.evidence[0].detector == "django.cbv.model_assignment"
     assert edge.evidence[0].location.path == "catalog/views.py"
     assert edge.attributes["django_cbv"]["resolved_model"] == "catalog.models.Book"
+    # Incoming model edges must expose its actual CBV consumers to impact search.
+    consumers = {
+        graph.node(item.source).qualified_name
+        for item in graph.incoming(book.id)
+        if item.kind == EdgeKind.USES_DATA
+    }
+    assert "catalog.views.BookListView" in consumers
+    assert "catalog.views.BookDetailView" in consumers
 
     default = _render_edges(graph, view)
     assert len(default) == 1
