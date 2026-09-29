@@ -80,9 +80,35 @@ def _source_probes(graph, probe: Mapping[str, Any]) -> Dict[str, Any]:
     source = _matching_nodes(
         graph, str(probe["source_file"]), str(probe["source_symbol"])
     )
+    # A named Django URL is *registered* in urls.py, but its SemanticNode is
+    # the actual handler in a sibling views.py (or views package). P1.1a
+    # records the registration file, not a fictional handler node inside it.
+    # Resolve only the uniquely named handler in that application's directory.
+    if (
+        not source
+        and probe["category"] == "http_route"
+        and probe.get("expected_target")
+    ):
+        registration = _path(probe["source_file"])
+        app_parent = str(Path(registration).parent).replace("\\", "/")
+        source = [
+            node for node in graph.nodes
+            if node.name == probe["source_symbol"]
+            and _node_path(node) != registration
+            and (
+                app_parent == "."
+                or _node_path(node).startswith(app_parent + "/")
+            )
+            and node.kind.value in {"handler", "class"}
+        ]
     result: Dict[str, Any] = {
         "source_nodes": [_node_record(item) for item in source],
         "source_node_count": len(source),
+        "source_registration_file": (
+            _path(probe["source_file"])
+            if probe["category"] == "http_route" and probe.get("expected_target")
+            else None
+        ),
         "observed_edges": [],
         "observed_contracts": [],
         "status": "unmeasured",
