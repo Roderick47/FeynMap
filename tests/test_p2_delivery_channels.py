@@ -7,7 +7,7 @@ from feynmap.core import (
     SemanticGraph, SemanticNode, SourceLocation,
 )
 from feynmap.delivery_channels import (
-    CONFIGURATION, DOCUMENTATION, IMPLEMENTATION, MIGRATION, TEST, VENDOR,
+    CONFIGURATION, DOCUMENTATION, IMPLEMENTATION, MIGRATION, TEST, VENDOR, UNKNOWN,
     DeliveryChannelPolicy, channel_counts, file_channel, task_channel,
 )
 from feynmap.judgment.search import GuidedSearchResult, SearchHit
@@ -106,6 +106,7 @@ def test_source_channel_labels_are_path_based_and_bounded():
         "catalog/migrations/0001_initial.py": MIGRATION,
         "tests/migrations/0002.py": MIGRATION,
         "vendor/tests/test_dependency.py": VENDOR,
+        "vendor/migrations/0001_initial.py": VENDOR,
         "rest_framework/static/rest_framework/js/jquery.min.js": VENDOR,
         "generated/client.js": VENDOR,
         "docs/user-guide.md": DOCUMENTATION,
@@ -115,7 +116,7 @@ def test_source_channel_labels_are_path_based_and_bounded():
     }
     for path, expected in cases.items():
         assert file_channel(path) == expected, path
-    assert file_channel(None) == IMPLEMENTATION
+    assert file_channel(None) == UNKNOWN
     assert task_channel("Why does serializer validation work?") == IMPLEMENTATION
     assert task_channel("Which test fixture covers it?") == TEST
     assert task_channel("Explain the schema migration") == MIGRATION
