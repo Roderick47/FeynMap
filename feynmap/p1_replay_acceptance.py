@@ -241,8 +241,10 @@ def compare_replay(manifest: Mapping[str, Any],
         current_ids = [row.get("id") for row in new_probes]
         if (
             len(target_ids) != len(set(target_ids))
-            or len(target_ids) != len(set(old_ids))
-            or len(target_ids) != len(set(current_ids))
+            or len(old_ids) != len(set(old_ids))
+            or len(current_ids) != len(set(current_ids))
+            or len(old_ids) != len(target_ids)
+            or len(current_ids) != len(target_ids)
             or set(old_ids) != set(target_ids)
             or set(current_ids) != set(target_ids)
         ):
