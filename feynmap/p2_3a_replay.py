@@ -332,6 +332,29 @@ def as_markdown(result: Mapping[str, Any]) -> str:
             row["delivered_migration_symbols"], row["required_migration_symbols"],
             row["mean_estimated_context_tokens"],
         ))
+    lines.extend([
+        "",
+        "## Per-task source labels (all arms used exactly one shared activation)",
+        "",
+        "| Task | Budget | Arm | Required symbols delivered | Omitted required symbols | "
+        "Sufficiency flag | Estimated context | Critical nodes |",
+        "|---|---|---|---:|---|---|---:|---:|",
+    ])
+    for task in result["tasks"]:
+        for budget in task["budgets"]:
+            for arm in budget["arms"]:
+                required = arm["required_symbols"]
+                omitted = [
+                    row["name"] + " (" + row["outcome"] + ")"
+                    for row in required if not row["delivered"]
+                ]
+                lines.append("| %s | %s | %s | %s/%s | %s | %s | %s | %s |" % (
+                    task["id"], budget["id"], arm["arm"],
+                    sum(row["delivered"] for row in required), len(required),
+                    ", ".join(omitted) or "none",
+                    arm["sufficient"], arm["estimated_context_tokens"],
+                    arm["critical_node_count"],
+                ))
     lines.extend(["", "Losses vs legacy (same source activation):", ""])
     if not result["required_symbol_losses_vs_legacy"]:
         lines.append("- None on this source-labelled development fixture.")
