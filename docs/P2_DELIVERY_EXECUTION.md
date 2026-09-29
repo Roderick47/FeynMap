@@ -14,8 +14,7 @@ evidence-tier consistency, context tokens, supported claims and task outcomes.
 ## P2.1 — Role-aware delivery (this PR, #45)
 
 Source location maps each activated node to a conservative delivery role:
-implementation, test, migration, vendor/generated, documentation, or
-configuration. Classification is path-only; it cannot create a dependency or
+implementation, test, migration, vendor/generated, documentation, configuration, or unknown for missing locations. Classification is path-only; it cannot create a dependency or
 downgrade an otherwise valid source node. Migration wins over test path
 collisions; generated/vendor wins over nested test names.
 
