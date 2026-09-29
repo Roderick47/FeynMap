@@ -7,8 +7,8 @@ from typing import Dict, List, Optional
 from feynmap.core import Evidence, EvidenceKind, NodeKind, SemanticGraph, SemanticNode
 from ..base import FrameworkAdapter
 from .django_cbv import enrich_django_cbvs
+from .django_urls import enrich_django_named_urls
 from ._python import (
-    attach_django_url_contracts,
     attach_template_render_contracts,
     dependency_text,
     finalize,
@@ -66,7 +66,7 @@ class DjangoAdapter(FrameworkAdapter):
         # template contracts to actual HTML nodes, where present.
         enrich_django_cbvs(graph, project_path)
         self._record_app_config_membership(graph)
-        attach_django_url_contracts(graph, project_path)
+        enrich_django_named_urls(graph, project_path)
         attach_template_render_contracts(graph, project_path, self.name)
         return finalize(graph, self.name)
 
