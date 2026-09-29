@@ -59,6 +59,10 @@ def merge_language_graphs(
         if isinstance(django_membership, dict):
             merged.metadata["django_app_membership"] = django_membership
 
+        django_urls = graph.metadata.get("django_named_urls")
+        if isinstance(django_urls, dict):
+            merged.metadata["django_named_urls"] = django_urls
+
         applied = graph.metadata.get("frameworks_applied", [])
         if isinstance(applied, list):
             for name in applied:
