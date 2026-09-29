@@ -1,0 +1,86 @@
+{
+  "schema": "feynmap.p1_6_drf_grounding_and_diagnostics.v1",
+  "recorded_on": "2026-09-29",
+  "pull_request": 43,
+  "locked_manifest": "experiments/p1_external_framework_manifest.json",
+  "source": {
+    "repository": "encode/django-rest-framework",
+    "commit": "b578eab1cad040414b758131af1e17aa000b51e2"
+  },
+  "acceptance": {
+    "workflow_run": 36525528345,
+    "workflow_url": "https://github.com/Roderick47/FeynMap/actions/runs/36525528345",
+    "p1_2_gate": "pass",
+    "p1_3_gate": "pass",
+    "p1_4_gate": "pass",
+    "p1_5_gate": "pass",
+    "p1_6_gate": "pass",
+    "tests_workflow_run": 36525528304,
+    "python_3_8": "pass",
+    "python_3_12": "pass",
+    "recursive_self_check": "pass",
+    "all_external_source_authored_probes_before": "10/11",
+    "all_external_source_authored_probes_after": "10/11",
+    "fixtures": {
+      "mdn_django": "6/6",
+      "grinberg_microblog": "2/2",
+      "drf": "2/3"
+    }
+  },
+  "drf_graph": {
+    "nodes": 4128,
+    "edges": 8113,
+    "source_grounded_field_bridge": {
+      "source": "rest_framework.serializers.SerializerMetaclass._get_declared_fields",
+      "source_file": "rest_framework/serializers.py",
+      "target": "rest_framework.fields.Field",
+      "target_file": "rest_framework/fields.py",
+      "edge_kind": "uses_data",
+      "source_expression": "isinstance(obj, Field)",
+      "evidence_kind": "static_analysis",
+      "unique_edge_count": 1
+    },
+    "serializer_implementation_recall": {
+      "query": "How are serializer fields and validation resolved?",
+      "essential_files": [
+        "rest_framework/serializers.py",
+        "rest_framework/fields.py"
+      ],
+      "previously_activated_files": [
+        "rest_framework/serializers.py"
+      ],
+      "now_activated_both_essential_files": true,
+      "now_delivered_files": [
+        "rest_framework/serializers.py"
+      ],
+      "missing_delivered_file": "rest_framework/fields.py",
+      "status": "activation_passed_delivery_still_missing",
+      "explanation": "The existing context packer excludes fields.py. P2 covers implementation-vs-test allocation; no fabricated edge or relaxed locked oracle was introduced."
+    },
+    "integration_diagnostics": {
+      "raw_unmatched_contract_count": 54,
+      "actionable_review_candidate_count": 18,
+      "non_actionable_or_unproven_count": 36,
+      "python_intrinsic_unresolved_calls": 1069,
+      "note": "Potential review candidates are not verified defects. Generic unresolved Python calls are separate from unmatched integration contracts."
+    }
+  },
+  "scope": {
+    "source_backed": [
+      "exact serializer_class to in-repository serializer",
+      "exact ModelSerializer Meta.model to Django model",
+      "literal permission_classes to uniquely resolved policy classes",
+      "class-body declared serializer fields and Meta lists",
+      "static Django URL proof versus router declaration-only and lack-of-static-route-proof",
+      "literal SerializerMetaclass Field use",
+      "unmatched integration categories and separate built-in call count"
+    ],
+    "unknown_not_promoted": [
+      "dynamic serializer, model, permission or router expressions",
+      "unmounted DRF router declared endpoints",
+      "handler absent from known static routes",
+      "external policy targets without in-repository definition"
+    ],
+    "deferred": "P2 delivery policy remains responsible for the remaining DRF fields.py context omission."
+  }
+}
