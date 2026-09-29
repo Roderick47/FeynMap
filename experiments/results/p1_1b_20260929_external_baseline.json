@@ -1,0 +1,172 @@
+{
+  "schema": "feynmap.p1_external_baseline_summary.v1",
+  "recorded_date": "2026-09-29",
+  "workflow_run_id": 36506425924,
+  "workflow_url": "https://github.com/Roderick47/FeynMap/actions/runs/36506425924",
+  "functional_feynmap_commit": "31d33c23ab271235d80a33a42279a66b0cc13deb",
+  "analysis_configuration": {
+    "language": "auto",
+    "framework": "explicit per fixture",
+    "python": "3.12",
+    "context_strategy": "SparseContextPipeline.concept / adaptive + MinimalContextPacker",
+    "context_max_tokens": 3200,
+    "context_max_nodes": 24,
+    "context_max_edges": 24
+  },
+  "measurement_caveats": [
+    "Single GitHub-hosted Linux runner per repository, not a statistical latency measurement.",
+    "Peak RSS is the process high-water mark in kilobytes, not graph-only allocated memory.",
+    "Unresolved contracts are raw analyzer diagnostics, not confirmed defects.",
+    "These known, pinned development cases are not the separate held-out S7 AI-agent repair benchmark.",
+    "Context role breakdowns count selected nodes, not their share of model tokens."
+  ],
+  "totals": {
+    "fixtures": 3,
+    "probes": 11,
+    "met": 2,
+    "unmet": 9,
+    "analysis_crashes": 0
+  },
+  "fixtures": [
+    {
+      "id": "mdn-django-local-library",
+      "repository": "mdn/django-locallibrary-tutorial",
+      "commit": "92f1c1e7bdd4ada5209a3c69876ce29e6cee3d96",
+      "graph_nodes": 266,
+      "graph_edges": 581,
+      "analysis_elapsed_ms": 178.6,
+      "process_peak_rss_kb": 29224,
+      "raw_unresolved_contracts": 36,
+      "app_config_membership_edges": 29,
+      "matched_probes": 0,
+      "total_probes": 6,
+      "observed": [
+        {
+          "id": "cbv-book-list-model",
+          "status": "missing_relationship"
+        },
+        {
+          "id": "cbv-book-detail-model",
+          "status": "missing_relationship"
+        },
+        {
+          "id": "cbv-book-list-default-template",
+          "status": "missing_relationship"
+        },
+        {
+          "id": "cbv-book-detail-default-template",
+          "status": "missing_relationship"
+        },
+        {
+          "id": "cbv-explicit-template",
+          "status": "missing_relationship"
+        },
+        {
+          "id": "named-url-books",
+          "status": "route_present_but_name_missing",
+          "existing_handler_contract": {
+            "target": "/books/",
+            "methods": [
+              "ANY"
+            ],
+            "source_file": "catalog/urls.py"
+          }
+        }
+      ]
+    },
+    {
+      "id": "grinberg-microblog",
+      "repository": "miguelgrinberg/microblog",
+      "commit": "a975ef64864354867c88e0ed3a17ba7d17dca752",
+      "graph_nodes": 279,
+      "graph_edges": 607,
+      "analysis_elapsed_ms": 166.4,
+      "process_peak_rss_kb": 29868,
+      "raw_unresolved_contracts": 40,
+      "app_config_membership_edges": 0,
+      "matched_probes": 0,
+      "total_probes": 2,
+      "observed": [
+        {
+          "id": "api-token-post",
+          "status": "path_or_method_mismatch",
+          "observed_path": "/tokens",
+          "observed_methods": [
+            "POST"
+          ],
+          "expected_path": "/api/tokens"
+        },
+        {
+          "id": "api-token-delete",
+          "status": "path_or_method_mismatch",
+          "observed_path": "/tokens",
+          "observed_methods": [
+            "DELETE"
+          ],
+          "expected_path": "/api/tokens"
+        }
+      ]
+    },
+    {
+      "id": "django-rest-framework",
+      "repository": "encode/django-rest-framework",
+      "commit": "b578eab1cad040414b758131af1e17aa000b51e2",
+      "graph_nodes": 4128,
+      "graph_edges": 8040,
+      "analysis_elapsed_ms": 2328.6,
+      "process_peak_rss_kb": 102024,
+      "raw_unresolved_contracts": 49,
+      "app_config_membership_edges": 20,
+      "matched_probes": 2,
+      "total_probes": 3,
+      "observed": [
+        {
+          "id": "throttling-implementation-recall",
+          "status": "all_essential_delivered",
+          "delivered_files": [
+            "rest_framework/exceptions.py",
+            "rest_framework/management/commands/generateschema.py",
+            "rest_framework/request.py",
+            "rest_framework/schemas/openapi.py",
+            "rest_framework/throttling.py",
+            "tests/test_exceptions.py"
+          ],
+          "delivered_channel_node_counts": {
+            "implementation_or_other": 10,
+            "test": 1
+          }
+        },
+        {
+          "id": "serializer-implementation-recall",
+          "status": "essential_implementation_missing",
+          "essential_files": [
+            "rest_framework/serializers.py",
+            "rest_framework/fields.py"
+          ],
+          "missing_essential_files": [
+            "rest_framework/fields.py"
+          ],
+          "delivered_files": [
+            "rest_framework/serializers.py",
+            "tests/test_bound_fields.py",
+            "tests/test_model_serializer.py",
+            "tests/test_validation.py",
+            "tests/test_validators.py"
+          ],
+          "delivered_channel_node_counts": {
+            "implementation_or_other": 2,
+            "test": 8
+          }
+        },
+        {
+          "id": "vendored-js-no-crash",
+          "status": "minified_assets_skipped_without_crash",
+          "skipped_minified_assets": [
+            "rest_framework/static/rest_framework/js/bootstrap.min.js",
+            "rest_framework/static/rest_framework/js/jquery-3.7.1.min.js"
+          ]
+        }
+      ]
+    }
+  ]
+}
