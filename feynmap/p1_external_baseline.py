@@ -693,6 +693,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 ],
                 "delivered_files": item["observed"].get("delivered_files"),
                 "delivered_channels": item["observed"].get("delivered_channels_by_node_count"),
+                "p2_role_aware_shadow": {
+                    key: value for key, value in
+                    (item["observed"].get("p2_role_aware_shadow") or {}).items()
+                    if key in {
+                        "essential_delivered", "missing_essential_files",
+                        "delivered_files", "delivered_channels_by_node_count",
+                        "delivered_nodes", "delivered_tokens", "sufficient",
+                        "packer_elapsed_ms",
+                    }
+                },
                 "minified_assets": item["observed"].get("minified_assets"),
                 "minified_skipped": item["observed"].get("skipped_assets"),
             }
