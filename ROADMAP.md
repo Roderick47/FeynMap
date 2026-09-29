@@ -221,7 +221,7 @@ See `docs/POST_S6_EXTERNAL_REVIEW_TRIAGE.md` for exact findings and gates.
 - [x] Fix malformed Rust `.gitignore` entries and remove tracked bytecode
 - [x] Remove obsolete root `__init__.py` / `main_broken.py` from active checkout
 - [x] Replace deprecated AST string aliases with `ast.Constant.value` in identified helpers
-- [ ] Pin external MDN Django, Flask microblog and DRF checkouts and capture independent semantic/route/retrieval expectations
+- [x] Pin external MDN Django, Flask microblog and DRF checkouts and capture independent semantic/route/retrieval expectations
 
 **P1 — framework grounding: resolve before ranking**
 
@@ -229,15 +229,28 @@ Develop in seven individually accepted checkpoints. See
 `docs/P1_FRAMEWORK_SEMANTICS_EXECUTION.md`; source-authored and pinned probes
 are in `experiments/p1_external_framework_manifest.json`.
 
-- [ ] **P1.1 External baseline:** fixed MDN Django, Microblog and DRF revisions
+- [x] **P1.1 External baseline:** fixed MDN Django, Microblog and DRF revisions
   - [x] P1.1a Verify external source facts, pin three immutable commits and freeze an initial probe manifest
-  - [ ] P1.1b Run FeynMap against those exact checkouts; record current graph, missing relationships, selected context and diagnostic evidence
+  - [x] P1.1b Run FeynMap against those exact checkouts; record current graph, missing relationships, selected context and diagnostic evidence (2/11 independent probes met; zero analysis crashes)
 - [ ] **P1.2 Django CBV grounding:** imported `model`, `queryset`, explicit and convention-backed template relationships
 - [ ] **P1.3 AppConfig hub treatment:** preserve membership evidence without polluting task-relevant impact and sparse routing
 - [ ] **P1.4 Django named URL resolution:** static `reverse`, `reverse_lazy`, namespace and template `{% url %}` relationships
 - [ ] **P1.5 Flask Blueprint composition:** resolve registrations and combine `url_prefix` with route decorators
 - [ ] **P1.6 DRF/diagnostics:** serializer/model/permission wiring, routed/unrouted coverage, and actionable unresolved-count separation
 - [ ] **P1.7 External replay:** compare all original pinned cases before/after with no fabricated relationships or recall regression
+
+**P1.1b frozen findings (29 Sep 2026):**
+`docs/P1_1B_EXTERNAL_BASELINE_RESULTS.md` and
+`experiments/results/p1_1b_20260929_external_baseline.json` preserve the
+2/11 result (MDN 0/6; Microblog 0/2; DRF 2/3), with exact revisions,
+source evidence, route/context output, diagnostics, time and peak RSS.
+MDN has 29 AppConfig membership edges but lacks the selected model/template
+links and URL name; Microblog retains raw `/tokens` instead of `/api/tokens`;
+DRF delivers throttling.py but not essential fields.py for the serializer
+query (8/10 delivered nodes are tests). Both pinned DRF minified JS bundles
+are safely skipped when the JS adapter is exercised directly. Known missing
+graph facts are baseline data, not CI failures; no analyzer semantic changes
+were made during P1.1b. **Next: P1.2 Django CBV relationships.**
 
 **P2 — retrieval policy and downstream context**
 
