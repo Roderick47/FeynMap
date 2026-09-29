@@ -38,6 +38,7 @@ def _report(spec):
                     "kind": ("renders" if probe["relationship"] == "renders_template"
                              else "uses_data"),
                     "detectors": ["source_or_framework_evidence"],
+                    "target_file": probe["target_file"],
                 }],
             }
         elif pid == "named-url-books":
@@ -45,6 +46,7 @@ def _report(spec):
                 "passed": passed, "status": "matched_named_route",
                 "matching_named_contracts": [{
                     "target": "/catalog/books/", "name": "books",
+                    "route_name": "books", "confidence": 0.98,
                     "framework": "django",
                     "source_file": "catalog/urls.py", "source_line": 8,
                     "derivation": "django.urls.static_registration",
@@ -60,6 +62,8 @@ def _report(spec):
                     "source_file": "app/api/tokens.py",
                     "source_line": probe["route_line"],
                     "registration_file": "app/__init__.py",
+                    "registration_line": 5, "url_prefix": "/api",
+                    "confidence": 0.98,
                     "blueprint_declaration_file": "app/api/__init__.py",
                     "blueprint_id": "app.api.bp",
                     "derivation": "flask.blueprint.registered_route",
@@ -71,6 +75,7 @@ def _report(spec):
                 "passed": passed, "status": "all_essential_delivered",
                 "activated_files": ["rest_framework/throttling.py"],
                 "delivered_files": ["rest_framework/throttling.py"],
+                "missing_essential_files": [],
                 "delivered_channels_by_node_count": {
                     "implementation_or_other": 10, "test": 1,
                 },
@@ -95,8 +100,15 @@ def _report(spec):
             observed = {
                 "passed": passed,
                 "status": "minified_assets_skipped_without_crash",
-                "minified_assets": ["bootstrap.min.js", "jquery.min.js"],
-                "skipped_assets": ["bootstrap.min.js", "jquery.min.js"],
+                "minified_assets": [
+                    "rest_framework/static/rest_framework/js/bootstrap.min.js",
+                    "rest_framework/static/rest_framework/js/jquery-3.7.1.min.js",
+                ],
+                "skipped_assets": [
+                    "rest_framework/static/rest_framework/js/bootstrap.min.js",
+                    "rest_framework/static/rest_framework/js/jquery-3.7.1.min.js",
+                ],
+                "incorrectly_included_assets": [],
             }
         else:
             raise AssertionError("fixture manifest unexpectedly expanded")
@@ -238,6 +250,25 @@ def test_missing_or_duplicate_or_mutated_positive_probes_fail_integrity():
             report["probes"][0]["expected_status"] = "verified"
         result = compare_replay(manifest, baseline, reports)
         assert result["status"] == "failed", kind
+
+
+def test_cannot_claim_success_with_wrong_edge_target_or_js_skip():
+    manifest, baseline, reports = _expected()
+    row = next(item for item in reports["mdn-django-local-library"]["probes"]
+               if item["id"] == "cbv-book-list-model")
+    row["observed"]["matching_edges"][0]["target_file"] = "catalog/unrelated.py"
+    result = compare_replay(manifest, baseline, reports)
+    assert result["status"] == "failed"
+    assert any("unique source edge/evidence tier" in issue
+               for issue in result["errors"])
+
+    manifest, baseline, reports = _expected()
+    row = next(item for item in reports["django-rest-framework"]["probes"]
+               if item["id"] == "vendored-js-no-crash")
+    row["observed"]["skipped_assets"].pop()
+    result = compare_replay(manifest, baseline, reports)
+    assert result["status"] == "failed"
+    assert any("minified assets" in issue for issue in result["errors"])
 
 
 def test_raw_blueprint_fragment_and_missing_field_bridge_are_rejected():
