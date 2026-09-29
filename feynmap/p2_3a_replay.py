@@ -21,7 +21,7 @@ from .context_pipeline import SparseContextPipeline
 from .engine import FeynMapEngine
 from .p1_replay_acceptance import git_blob_sha
 from .p2_delivery_experiment import (
-    _measure_arm, _source_definitions, _validate_labels, _validate_source_blobs,
+    _measure_arm, _graph_identity, _source_definitions, _validate_labels, _validate_source_blobs,
     compact_json, load_frozen_manifest, source_path,
 )
 
@@ -134,6 +134,7 @@ def compare(
     analysis_ms = round((time.perf_counter() - start) * 1000.0, 3)
     if graph.diagnostics.get("errors"):
         raise ValueError("P2.3a source graph validation errors")
+    frozen_graph_identity = _graph_identity(graph)
     pipeline = SparseContextPipeline(graph)
     reports = []
     for task in tasks:
@@ -182,6 +183,8 @@ def compare(
             report["budgets"].append({
                 "id": budget["id"], "limits": budget, "arms": measured,
             })
+        if _graph_identity(graph) != frozen_graph_identity:
+            raise ValueError(task["id"] + ": packer modified canonical semantic graph")
         reports.append(report)
 
     summaries = []
@@ -287,6 +290,7 @@ def compare(
         "fresh_source": not existing_p2,
         "source_files_verified": verified["files_verified"],
         "graph_nodes": len(graph.nodes), "graph_edges": len(graph.edges),
+        "source_graph_identity_sha256": frozen_graph_identity,
         "graph_analysis_elapsed_ms": analysis_ms,
         "task_count": len(reports),
         "tasks": reports, "summaries": summaries,
@@ -305,9 +309,72 @@ def compare(
     }
 
 
+def development_acceptance(result: Mapping[str, Any]) -> List[str]:
+    """Gate the explicitly *development* comparison, not a held-out claim.
+
+    This source-authored quality rubric is applied after every arm is packed;
+    source labels are never sent back into ranking or search.
+    """
+    errors: List[str] = []
+    cohort = result["cohort"]
+    for budget in ("tight", "standard"):
+        by_arm = {
+            row["arm"]: row for row in result["summaries"]
+            if row["budget"] == budget
+        }
+        new = by_arm["p2_3a_symbol_evidence"]
+        old = by_arm["legacy"]
+        p21 = by_arm[
+            "p2_1_source_first" if result["fresh_source"] else
+            "source_first_p21"
+        ]
+        if (
+            new["delivered_required_symbols"] < old["delivered_required_symbols"]
+            or new["delivered_required_symbols"] < p21["delivered_required_symbols"]
+        ):
+            errors.append(cohort + "/" + budget +
+                          ": source-labelled aggregate regression")
+        for channel in ("test", "migration"):
+            if new["delivered_" + channel + "_symbols"] < old[
+                "delivered_" + channel + "_symbols"
+            ]:
+                errors.append(cohort + "/" + budget +
+                              ": genuinely required " + channel + " evidence lost")
+        if (
+            cohort != "p2_2_drf-calibration_diagnostic_not_fresh"
+            or budget == "standard"
+        ):
+            if (
+                new["delivered_required_symbols"]
+                != new["activated_required_symbols"]
+            ):
+                errors.append(cohort + "/" + budget +
+                              ": activated source symbols omitted at development acceptance")
+
+    for task in result["tasks"]:
+        for budget in task["budgets"]:
+            trial = next(row for row in budget["arms"]
+                         if row["arm"] == "p2_3a_symbol_evidence")
+            if trial["sufficient"] and trial.get("unresolved_query_identifiers"):
+                errors.append(task["id"] + "/" + budget["id"] +
+                              ": named missing activation incorrectly marked sufficient")
+            if trial["sufficient"] and any(
+                row["activated"] and not row["delivered"]
+                for row in trial["required_symbols"]
+            ):
+                errors.append(task["id"] + "/" + budget["id"] +
+                              ": task-required activated symbol omitted while sufficient")
+    return errors
+
+
 def as_markdown(result: Mapping[str, Any]) -> str:
     lines = [
         "# P2.3a symbol-evidence delivery",
+        "",
+        "**Development acceptance:** " + (
+            "PASS" if not result.get("development_gate_errors") else
+            "FAIL: " + "; ".join(result["development_gate_errors"])
+        ),
         "",
         "**%s** · %s cases · %s source files verified · "
         "%s required-symbol losses vs default legacy across budgets." % (
@@ -398,7 +465,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             existing_p2=args.previous_p2,
             previous_fixture=args.previous_fixture,
         )
-        status = 0
+        report["development_gate_errors"] = development_acceptance(report)
+        status = int(bool(report["development_gate_errors"]))
     except Exception as exc:
         report = {
             "schema": RESULT_SCHEMA,
@@ -409,7 +477,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         status = 1
     output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n",
                       encoding="utf-8")
-    if status:
+    if report.get("status") == "integrity_or_analysis_error":
         markdown.write_text("# P2.3a failed source/measurement integrity\n\n"
                             + report["error"] + "\n", encoding="utf-8")
         print(report["error"], file=sys.stderr)
