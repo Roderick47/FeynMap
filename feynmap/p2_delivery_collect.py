@@ -275,17 +275,20 @@ def as_markdown(result: Mapping[str, Any]) -> str:
             result["arm_count"], result["policy_label_regression_count"],
         ),
         "",
-        "| Cohort | Budget | Arm | File recall | Symbol recall | "
-        "Test recall | Migration recall | Approx labeled distractor equivalents | "
-        "Mean context estimator |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|",
+        "| Cohort | Budget | Arm | File activated/delivered | "
+        "Symbol activated/delivered | Conditional symbol delivery | "
+        "Required test recall | Required migration recall | "
+        "Approx named distractor equivalents | Mean context estimator |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in result["summaries"]:
         def val(key):
             return "n/a" if row.get(key) is None else str(row[key])
-        lines.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+        lines.append("| %s | %s | %s | %s/%s → %s | %s/%s → %s | %s | %s | %s | %s | %s |" % (
             row["fixture"], row["budget"], row["arm"],
-            val("file_recall"), val("symbol_recall"),
+            row["file_activated"], row["file_required"], row["file_delivered"],
+            row["symbol_activated"], row["symbol_required"], row["symbol_delivered"],
+            val("conditional_symbol_delivery_recall"),
             val("required_test_evidence_recall"),
             val("required_migration_evidence_recall"),
             val("labeled_distractor_token_equivalent_approx"),
@@ -293,8 +296,10 @@ def as_markdown(result: Mapping[str, Any]) -> str:
         ))
     lines.extend([
         "",
-        "Critical: file presence is not granular symbol recall; the latter is "
-        "listed separately. Missing activation cannot be repaired by a packer. "
+        "Critical: each row separates source-author required evidence activated "
+        "from evidence actually delivered; conditional recall uses only the "
+        "activated required-symbol denominator. File presence is not granular "
+        "symbol recall. Missing activation cannot be repaired by a packer. "
         "Only preauthored source labels count as distractors, and exact "
         "model-token cost and downstream answer correctness are **unmeasured**.",
         "",
