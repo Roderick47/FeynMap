@@ -225,12 +225,19 @@ See `docs/POST_S6_EXTERNAL_REVIEW_TRIAGE.md` for exact findings and gates.
 
 **P1 — framework grounding: resolve before ranking**
 
-- [ ] Django class-based-view `model` / `queryset` / template-name model and template relationships
-- [ ] Remove AppConfig hub-edge pollution from task-relevant search without losing framework membership evidence
-- [ ] Django static named reverse and template `{% url %}` resolution, with unknown/dynamic handling
-- [ ] Flask registered Blueprint + decorator `url_prefix` composition
-- [ ] DRF permissions, serializer/model associations and explicit routed/unrouted coverage
-- [ ] Split missing clients, genuinely unresolved contracts, built-in calls and actionable missing relationships in diagnostics
+Develop in seven individually accepted checkpoints. See
+`docs/P1_FRAMEWORK_SEMANTICS_EXECUTION.md`; source-authored and pinned probes
+are in `experiments/p1_external_framework_manifest.json`.
+
+- [ ] **P1.1 External baseline:** fixed MDN Django, Microblog and DRF revisions
+  - [x] P1.1a Verify external source facts, pin three immutable commits and freeze an initial probe manifest
+  - [ ] P1.1b Run FeynMap against those exact checkouts; record current graph, missing relationships, selected context and diagnostic evidence
+- [ ] **P1.2 Django CBV grounding:** imported `model`, `queryset`, explicit and convention-backed template relationships
+- [ ] **P1.3 AppConfig hub treatment:** preserve membership evidence without polluting task-relevant impact and sparse routing
+- [ ] **P1.4 Django named URL resolution:** static `reverse`, `reverse_lazy`, namespace and template `{% url %}` relationships
+- [ ] **P1.5 Flask Blueprint composition:** resolve registrations and combine `url_prefix` with route decorators
+- [ ] **P1.6 DRF/diagnostics:** serializer/model/permission wiring, routed/unrouted coverage, and actionable unresolved-count separation
+- [ ] **P1.7 External replay:** compare all original pinned cases before/after with no fabricated relationships or recall regression
 
 **P2 — retrieval policy and downstream context**
 
