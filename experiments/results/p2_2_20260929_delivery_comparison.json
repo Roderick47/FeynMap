@@ -1,0 +1,207 @@
+{
+  "schema": "feynmap.p2_2_frozen_delivery_checkpoint.v1",
+  "recorded_on": "2026-09-29",
+  "status": "comparison_complete_with_policy_regressions",
+  "manifest": {
+    "path": "experiments/p2_2_delivery_manifest.json",
+    "git_blob": "13595728204cf2bac4cd4242ec6217654ee59cab",
+    "source_authored_before_results": true
+  },
+  "reference_replay": {
+    "run_id": 36555370204,
+    "url": "https://github.com/Roderick47/FeynMap/actions/runs/36555370204",
+    "source_comparison": "pass",
+    "conformance_python_3_8": "pass",
+    "conformance_python_3_12": "pass",
+    "collector": "measured_with_policy_regressions",
+    "full_raw_reports": "attached workflow artifacts"
+  },
+  "fixture_cohorts": [
+    {
+      "id": "stockroom-independent",
+      "root": "experiments/fixtures/p2_channels",
+      "source_files_blobs_pinned": 10,
+      "tasks": 5,
+      "description": "New independently authored but not third-party reviewed source-labelled local development fixture."
+    },
+    {
+      "id": "drf-calibration",
+      "repository": "encode/django-rest-framework",
+      "commit": "b578eab1cad040414b758131af1e17aa000b51e2",
+      "source_files_blobs_pinned": 4,
+      "tasks": 3,
+      "description": "Reused P1 source revision, newly authored symbol-level calibration; not held-out."
+    }
+  ],
+  "configuration": {
+    "one_shared_activation_per_task": true,
+    "budgets": [
+      {
+        "id": "tight",
+        "max_tokens": 1600,
+        "max_nodes": 12,
+        "max_edges": 12
+      },
+      {
+        "id": "standard",
+        "max_tokens": 3200,
+        "max_nodes": 24,
+        "max_edges": 24
+      }
+    ],
+    "arms": [
+      {
+        "id": "legacy",
+        "default_unchanged": true
+      },
+      {
+        "id": "source_first_p21",
+        "min_implementation_files": 2,
+        "max_test_fraction": 0.35
+      },
+      {
+        "id": "balanced_floor1",
+        "min_implementation_files": 1,
+        "max_test_fraction": 0.5
+      }
+    ],
+    "gold_labels_are_selection_input": false,
+    "graph_is_mutated": false
+  },
+  "source_author_essentials_activated": {
+    "stockroom_symbols": "10/10",
+    "drf_symbols": "7/7",
+    "stockroom_files": "10/10 across tasks",
+    "drf_files": "5/5 across tasks",
+    "interpretation": "All preauthored required symbols were upstream-activated in these eight cases; measured omissions therefore reflect delivery-policy behavior."
+  },
+  "standard_budget": [
+    {
+      "cohort": "stockroom-independent",
+      "arm": "legacy",
+      "files": "10/10",
+      "symbols": "10/10",
+      "required_tests": "2/2",
+      "required_migrations": "2/2",
+      "mean_estimated_tokens": 1787.2,
+      "labelled_distractor_token_equivalent_approx": 712
+    },
+    {
+      "cohort": "stockroom-independent",
+      "arm": "source_first_p21",
+      "files": "9/10",
+      "symbols": "5/10",
+      "required_tests": "1/2",
+      "required_migrations": "0/2",
+      "mean_estimated_tokens": 839,
+      "labelled_distractor_token_equivalent_approx": 318.5
+    },
+    {
+      "cohort": "stockroom-independent",
+      "arm": "balanced_floor1",
+      "files": "8/10",
+      "symbols": "4/10",
+      "required_tests": "1/2",
+      "required_migrations": "0/2",
+      "mean_estimated_tokens": 816.6,
+      "labelled_distractor_token_equivalent_approx": 318.5
+    },
+    {
+      "cohort": "drf-calibration",
+      "arm": "legacy",
+      "files": "5/5",
+      "symbols": "6/7",
+      "required_tests": "0/1",
+      "mean_estimated_tokens": 2372.67
+    },
+    {
+      "cohort": "drf-calibration",
+      "arm": "source_first_p21",
+      "files": "4/5",
+      "symbols": "4/7",
+      "required_tests": "0/1",
+      "mean_estimated_tokens": 875
+    },
+    {
+      "cohort": "drf-calibration",
+      "arm": "balanced_floor1",
+      "files": "5/5",
+      "symbols": "5/7",
+      "required_tests": "0/1",
+      "mean_estimated_tokens": 879.67
+    }
+  ],
+  "tight_budget": [
+    {
+      "cohort": "stockroom-independent",
+      "arm": "legacy",
+      "files": "9/10",
+      "symbols": "9/10",
+      "required_tests": "2/2",
+      "required_migrations": "2/2",
+      "mean_estimated_tokens": 1522
+    },
+    {
+      "cohort": "stockroom-independent",
+      "arm": "source_first_p21",
+      "files": "9/10",
+      "symbols": "5/10",
+      "required_tests": "1/2",
+      "required_migrations": "0/2",
+      "mean_estimated_tokens": 839
+    },
+    {
+      "cohort": "stockroom-independent",
+      "arm": "balanced_floor1",
+      "files": "8/10",
+      "symbols": "4/10",
+      "required_tests": "1/2",
+      "required_migrations": "0/2",
+      "mean_estimated_tokens": 816.6
+    },
+    {
+      "cohort": "drf-calibration",
+      "arm": "legacy",
+      "files": "4/5",
+      "symbols": "3/7",
+      "required_tests": "0/1",
+      "mean_estimated_tokens": 1523
+    },
+    {
+      "cohort": "drf-calibration",
+      "arm": "source_first_p21",
+      "files": "4/5",
+      "symbols": "4/7",
+      "required_tests": "0/1",
+      "mean_estimated_tokens": 875
+    },
+    {
+      "cohort": "drf-calibration",
+      "arm": "balanced_floor1",
+      "files": "5/5",
+      "symbols": "5/7",
+      "required_tests": "0/1",
+      "mean_estimated_tokens": 879.67
+    }
+  ],
+  "regression_diagnostics": {
+    "policy_label_regression_occurrences_across_budgets_and_two_policy_arms": 31,
+    "unique_defects_claimed": null,
+    "example_stockroom": "opening-stock-migration: source-first delivered required files but 0/2 required symbols, both were activated",
+    "example_drf": "new serializer control: source-first standard delivered serializers.py but omitted activated fields.Field",
+    "example_all_arms": "drf-throttling-tests-control: all policies omit activated SimpleRateThrottleTests despite source file presence"
+  },
+  "decision": {
+    "promote_source_first_to_default": false,
+    "reason": "Symbol-level, required-test and required-migration recall regress despite smaller estimated context; file coverage alone is inadequate.",
+    "next": "P2.3a task-relevant symbol/behavioral-edge critical coverage and fresh independently authored comparison, followed by P2.3b actual downstream answer/claim fidelity."
+  },
+  "limits": [
+    "Only source-authored development labels and coarse semantic-payload coverage; no actual answer-model scoring or literal source text inclusion guarantee.",
+    "DRF is reused calibration, not held-out.",
+    "Source-role chars exactly reconcile to deterministic compact-JSON char/4 estimate, not provider tokenizer counts.",
+    "Distractor counting is limited to explicitly labelled irrelevant source symbols; nonlabelled evidence is not assumed irrelevant.",
+    "Measurements are descriptive single-run results; policy-regression occurrences can repeat labels per arm and budget.",
+    "No graph truth or P1 frozen oracle changed; legacy remains default."
+  ]
+}
