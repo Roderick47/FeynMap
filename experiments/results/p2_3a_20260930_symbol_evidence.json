@@ -1,0 +1,184 @@
+{
+  "schema": "feynmap.p2_3a_symbol_evidence_checkpoint.v1",
+  "recorded_on": "2026-09-30",
+  "status": "opt_in_development_acceptance_with_one_upstream_js_gap_and_one_tight_drf_omission",
+  "stack": {
+    "pr_number": 47,
+    "base_pr_number": 46,
+    "base_branch": "p2-2-independent-delivery-benchmarks",
+    "merged": false
+  },
+  "source": {
+    "new_fixture_root": "experiments/fixtures/p2_3a_dispatch",
+    "source_files_verified": 12,
+    "new_manifest": "experiments/p2_3a_source_manifest.json",
+    "sealed_manifest_git_blob": "0512100c4a1c76969e1cfc1c8bc16d6c0fa42e18",
+    "authored_before_new_policy": true,
+    "follow_on_refinement_was_informed_by_exploratory_replays": true,
+    "old_p2_2_controls_not_held_out": true
+  },
+  "comparison": {
+    "shared_exact_s2_activation_per_task": true,
+    "budgets": [
+      {
+        "id": "tight",
+        "max_tokens": 1600,
+        "max_nodes": 12,
+        "max_edges": 12
+      },
+      {
+        "id": "standard",
+        "max_tokens": 3200,
+        "max_nodes": 24,
+        "max_edges": 24
+      }
+    ],
+    "arms": [
+      "legacy_default",
+      "unchanged_p2_1_implementation_first",
+      "opt_in_symbol_evidence"
+    ],
+    "gold_passed_to_packer": false,
+    "semantic_graph_mutated": false
+  },
+  "new_mixed_python_javascript": {
+    "tasks": 8,
+    "required_symbol_occurrences": 16,
+    "upstream_activated_required_symbols": 15,
+    "missing_upstream_symbol": {
+      "name": "normalizeSeverity",
+      "file": "client/severity.js",
+      "task": "javascript-alert-implementation",
+      "status": "present_in_frozen_source_but_not_activated_by_current_S2",
+      "new_selector_response": {
+        "unresolved_query_identifiers": [
+          "normalizeSeverity"
+        ],
+        "sufficient": false,
+        "does_not_invent_relationship": true
+      }
+    },
+    "tight": {
+      "legacy_delivered": "15/16 total = 15/15 activated",
+      "p21_delivered": "10/16 total = 10/15 activated",
+      "symbol_evidence_delivered": "15/16 total = 15/15 activated",
+      "symbol_evidence_estimated_context_tokens_mean": 909.75,
+      "legacy_estimated_context_tokens_mean": 1551.25
+    },
+    "standard": {
+      "legacy_delivered": "15/16 total = 15/15 activated",
+      "p21_delivered": "10/16 total = 10/15 activated",
+      "symbol_evidence_delivered": "15/16 total = 15/15 activated",
+      "symbol_evidence_estimated_context_tokens_mean": 909.75,
+      "legacy_estimated_context_tokens_mean": 2278.75
+    },
+    "necessary_test_symbols": "3/3 preserved by new mode",
+    "necessary_migration_symbols": "2/2 preserved by new mode"
+  },
+  "reused_p22_stockroom_diagnostic": {
+    "tasks": 5,
+    "required_symbols_activated": 10,
+    "tight": {
+      "legacy": "9/10",
+      "p21": "5/10",
+      "symbol_evidence": "10/10",
+      "mean_estimated_context_tokens": {
+        "legacy": 1522,
+        "p21": 839,
+        "symbol_evidence": 994.8
+      }
+    },
+    "standard": {
+      "legacy": "10/10",
+      "p21": "5/10",
+      "symbol_evidence": "10/10",
+      "mean_estimated_context_tokens": {
+        "legacy": 1787.2,
+        "p21": 839,
+        "symbol_evidence": 994.8
+      }
+    },
+    "necessary_test_symbols": "2/2 new mode",
+    "necessary_migration_symbols": "2/2 new mode",
+    "label_losses_vs_legacy": 0
+  },
+  "reused_p22_drf_diagnostic": {
+    "tasks": 3,
+    "required_symbols_activated": 7,
+    "tight": {
+      "legacy": "3/7",
+      "p21": "4/7",
+      "symbol_evidence": "6/7",
+      "mean_estimated_context_tokens": {
+        "legacy": 1523,
+        "p21": 875,
+        "symbol_evidence": 1288.67
+      },
+      "known_omission": {
+        "name": "rest_framework.throttling.SimpleRateThrottle.allow_request",
+        "status": "activated_but_not_delivered",
+        "new_selector_sufficient": false
+      }
+    },
+    "standard": {
+      "legacy": "6/7",
+      "p21": "4/7",
+      "symbol_evidence": "7/7",
+      "mean_estimated_context_tokens": {
+        "legacy": 2372.67,
+        "p21": 875,
+        "symbol_evidence": 1682.33
+      }
+    },
+    "necessary_test_symbol": "1/1 new mode, 0/1 legacy and P2.1",
+    "individual_label_loss_vs_legacy_at_tight_budget": 1
+  },
+  "source_evidence_contract": {
+    "source_critical_edge_kinds": [
+      "calls",
+      "uses_data",
+      "validates",
+      "invokes",
+      "reads",
+      "writes",
+      "serializes",
+      "routes_to",
+      "requests",
+      "renders"
+    ],
+    "source_evidence_must_have": [
+      "static/test/runtime kind",
+      "actual location",
+      "original graph relationship",
+      "both activated endpoints"
+    ],
+    "heuristic_or_ai_inference_not_promoted": true,
+    "unactivated_exact_symbol_status": "reported as unresolved_query_identifiers and sufficient=false",
+    "default_pack_unchanged": true
+  },
+  "verification": {
+    "reference_replay_url": "https://github.com/Roderick47/FeynMap/actions/runs/36643107283",
+    "fresh_python_js_conformance": "pass",
+    "reused_stockroom_development_gate": "pass",
+    "reused_drf_development_gate": "pass",
+    "python_3_8_conformance": "pass",
+    "python_3_12_conformance": "pass",
+    "frozen_manifest_and_source_blob_tampering": "rejected",
+    "no_gold_selection_input": "verified by mutation test",
+    "full_p1_p2_2_and_tests": "tracked independently in PR #47 GitHub Actions"
+  },
+  "decision": {
+    "make_new_policy_default": false,
+    "next_checkpoint": "P2.3b source-authored model-answer/claim fidelity against fresh cases before any default selection",
+    "independent_S7_held_out_agent_repair_corpus_not_used": true
+  },
+  "limitations": [
+    "The initial mixed-language source manifest was preregistered before policy implementation, but later development changes were informed by its first exploratory run; this is a development evaluation, not unbiased holdout.",
+    "Old P2.2 cohorts are known source-labelled diagnostic controls, not fresh test material.",
+    "The source-backed semantic payload does not include complete literal source code bytes, and counts do not prove actual answer/model accuracy.",
+    "Context estimates use deterministic compact-JSON characters/4, not actual provider tokenizer or downstream cost.",
+    "The JS normalizeSeverity retrieval omission remains upstream and cannot be fixed by any delivery-only policy.",
+    "One tight-budget DRF method omission remains, with the new policy reporting insufficient instead of false success.",
+    "No production hallucination percentage, task success or controlled latency distribution is measured."
+  ]
+}
