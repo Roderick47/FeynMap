@@ -1,5 +1,7 @@
 # P1.4 — Source-backed Django named URL resolution
 
+**Status: accepted** — [external workflow 36522700164](https://github.com/Roderick47/FeynMap/actions/runs/36522700164) and the Python 3.8/3.12 + recursive self-check suites are green.
+
 Scope: static Django URL registrations, include() prefix/namespace composition,
 Python reverse()/reverse_lazy() and literal Django template {% url %} tags.
 No third-party Django code is imported or run. Source-authoritative and
@@ -36,10 +38,12 @@ app registration or dynamic URL mutation has been reproduced.
 
 ## Acceptance
 
-P1.4 must turn the independent, immutable MDN named-url-books probe from
+P1.4 turns the independent, immutable MDN named-url-books probe from
 missing into matched, with source registration at catalog/urls.py line 8,
 name 'books', include-composed target /catalog/books/, confidence >= 0.9, explicit static derivation
-django.urls.static_registration. Existing P1.2 five relations and P1.3
+django.urls.static_registration. The pinned MDN probes now pass 6/6 (previously 5/6), and the frozen
+11-probe corpus passes 8/11 (previously 7/11).
+Existing P1.2 five relations and P1.3
 29/20 structural memberships with zero manufactured dependency hubs remain
 hard external replay gates. Microblog/DRF unresolved probes are not silently
 changed to appear passed.
