@@ -209,3 +209,50 @@ def test_explicit_test_and_migration_queries_keep_task_specific_channels():
         assert packed.delivered_tokens <= budget.max_tokens
         assert all(graph.node(node_id) is not None
                    for node_id in packed.selected_node_ids)
+
+
+
+def test_explicit_test_task_retains_tests_when_primary_root_is_implementation():
+    graph, original = _result(query="Which tests cover serializer validation?")
+    implementation = next(hit.node for hit in original.hits if hit.node.id == "serializer")
+    # This test does not rely on a conveniently test-shaped primary root:
+    # a source implementation may be the already activated search entrypoint.
+    hits = [
+        SearchHit(implementation, depth=0),
+    ] + [hit for hit in original.hits if hit.node.id != "serializer"]
+    result = GuidedSearchResult(
+        mode=original.mode, query=original.query, roots=[implementation],
+        hits=hits, edges=original.edges, trace=original.trace,
+        provider=original.provider, model=original.model,
+        exhausted=original.exhausted, truncated=original.truncated,
+    )
+    packed = MinimalContextPacker(graph).pack(
+        result, budget=MinimalContextBudget(
+            max_tokens=3200, max_nodes=9, max_edges=9, initial_tokens=3200,
+        ), delivery_policy=DeliveryChannelPolicy(),
+    )
+    counts = channel_counts(
+        graph.node(node_id) for node_id in packed.selected_node_ids
+    )
+    assert counts.get(TEST, 0) >= 1
+    assert counts.get(IMPLEMENTATION, 0) >= 1
+    assert "serializer" in packed.selected_node_ids
+    assert packed.sufficient
+
+
+def test_public_role_aware_policy_does_not_alter_existing_context_schema():
+    from feynmap import DeliveryChannelPolicy as PublicPolicy
+    from feynmap import file_channel as public_channel
+    assert PublicPolicy is DeliveryChannelPolicy
+    assert public_channel("tests/test_api.py") == TEST
+    graph, result = _result()
+    packed = MinimalContextPacker(graph).pack(
+        result,
+        budget=MinimalContextBudget(max_tokens=3200, max_nodes=8, max_edges=8,
+                                    initial_tokens=3200),
+        delivery_policy=PublicPolicy(),
+    )
+    assert set(packed.payload) == {
+        "query", "anchors", "nodes", "relationships", "grounding",
+    }
+    assert "role_aware" not in packed.payload
