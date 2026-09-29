@@ -1,0 +1,129 @@
+{
+  "schema": "feynmap.p1_2_django_cbv_replay.v1",
+  "phase": "P1.2",
+  "recorded_date": "2026-09-29",
+  "baseline_reference": "experiments/results/p1_1b_20260929_external_baseline.json",
+  "locked_oracle": "experiments/p1_external_framework_manifest.json",
+  "replay_run_id": 36508889343,
+  "replay_url": "https://github.com/Roderick47/FeynMap/actions/runs/36508889343",
+  "functional_commit": "3deb65599dae17920ac65795148843ba878e9de8",
+  "summary": {
+    "original_probes_met": 2,
+    "current_probes_met": 7,
+    "total_probes": 11,
+    "delta_met": 5,
+    "analysis_crashes": 0,
+    "p1_2_mdn_facts_matched": 5,
+    "p1_2_mdn_facts_checked": 5,
+    "confidence_tier_gate": "pass"
+  },
+  "coverage": {
+    "mdn_django_local_library": {
+      "original_graph": {
+        "nodes": 266,
+        "edges": 581,
+        "probes_met": 0,
+        "probes_total": 6
+      },
+      "updated_graph": {
+        "nodes": 266,
+        "edges": 635,
+        "probes_met": 5,
+        "probes_total": 6
+      },
+      "original_analysis_ms": 178.6,
+      "updated_analysis_ms": 211.4,
+      "original_peak_rss_kb": 29224,
+      "updated_peak_rss_kb": 29220,
+      "newly_matched": [
+        {
+          "id": "cbv-book-list-model",
+          "evidence_tier": "supported",
+          "source": "catalog/views.py BookListView.model",
+          "target": "catalog/models.py Book",
+          "relationship": "uses_data"
+        },
+        {
+          "id": "cbv-book-detail-model",
+          "evidence_tier": "supported",
+          "source": "catalog/views.py BookDetailView.model",
+          "target": "catalog/models.py Book",
+          "relationship": "uses_data"
+        },
+        {
+          "id": "cbv-book-list-default-template",
+          "evidence_tier": "inferred",
+          "source": "BookListView generic ListView and evidenced model",
+          "target": "catalog/templates/catalog/book_list.html",
+          "relationship": "renders"
+        },
+        {
+          "id": "cbv-book-detail-default-template",
+          "evidence_tier": "inferred",
+          "source": "BookDetailView generic DetailView and evidenced model",
+          "target": "catalog/templates/catalog/book_detail.html",
+          "relationship": "renders"
+        },
+        {
+          "id": "cbv-explicit-template",
+          "evidence_tier": "supported",
+          "source": "LoanedBooksByUserListView.template_name",
+          "target": "catalog/templates/catalog/bookinstance_list_borrowed_user.html",
+          "relationship": "renders"
+        }
+      ],
+      "remaining_unmet": [
+        "named-url-books"
+      ],
+      "app_config_membership_edges_remain": 29,
+      "note": "The additional 54 graph edges consist of multiple model-use and template render relationships across eligible pinned MDN CBVs. Five selected original expectations were independently checked; 54 is not a count of 54 independently validated facts."
+    },
+    "grinberg_microblog": {
+      "original": {
+        "nodes": 279,
+        "edges": 607,
+        "met": 0,
+        "total": 2
+      },
+      "updated": {
+        "nodes": 279,
+        "edges": 607,
+        "met": 0,
+        "total": 2
+      },
+      "remaining_unmet": [
+        "api-token-post",
+        "api-token-delete"
+      ]
+    },
+    "django_rest_framework": {
+      "original": {
+        "nodes": 4128,
+        "edges": 8040,
+        "met": 2,
+        "total": 3
+      },
+      "updated": {
+        "nodes": 4128,
+        "edges": 8040,
+        "met": 2,
+        "total": 3
+      },
+      "remaining_unmet": [
+        "serializer-implementation-recall"
+      ],
+      "retained_matched": [
+        "throttling-implementation-recall",
+        "vendored-js-no-crash"
+      ]
+    }
+  },
+  "limitations": [
+    "Source and framework convention evidence, not runtime observation: no Django, Flask or DRF application was imported/executed.",
+    "Default template inference is skipped if no uniquely resolved in-repository file, a dynamic/unresolved queryset, model conflict or overriding template/queryset/object selection method prevents sound inference.",
+    "Only known directly imported Django generic CBV bases are handled; transitive custom subclass framework resolution is outside this checkpoint.",
+    "Timings are independent single hosted-run measurements and do not establish speedup or statistically meaningful overhead.",
+    "S7 held-out AI repair validation remains outstanding; P1 fixtures are regression-development examples only.",
+    "P1.3 AppConfig hub changes and P1.4 named URL changes deliberately not implemented."
+  ]
+}

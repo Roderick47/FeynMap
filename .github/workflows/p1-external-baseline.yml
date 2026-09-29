@@ -4,14 +4,24 @@ on:
   push:
     paths:
       - "feynmap/p1_external_baseline.py"
+      - "feynmap/adapters/**"
+      - "feynmap/engine.py"
+      - "feynmap/integration.py"
+      - "feynmap/context_pipeline.py"
       - "experiments/p1_external_framework_manifest.json"
       - "tests/test_p1_external_baseline.py"
+      - "tests/test_django_cbv_semantics.py"
       - ".github/workflows/p1-external-baseline.yml"
   pull_request:
     paths:
       - "feynmap/p1_external_baseline.py"
+      - "feynmap/adapters/**"
+      - "feynmap/engine.py"
+      - "feynmap/integration.py"
+      - "feynmap/context_pipeline.py"
       - "experiments/p1_external_framework_manifest.json"
       - "tests/test_p1_external_baseline.py"
+      - "tests/test_django_cbv_semantics.py"
       - ".github/workflows/p1-external-baseline.yml"
   workflow_dispatch:
 
@@ -137,6 +147,56 @@ jobs:
                   report["probe_count"], ", ".join(report["missing_probes"]) or "none",
                   report["analysis_elapsed_ms"], report["process_peak_rss_kb"],
               ))
+          # P1.2 source-grounded facts are now an established regression
+          # gate, not expected missing observations. Other unresolved P1.3-6
+          # cases remain visible but do not fail this phase's replay.
+          p12 = {
+              "cbv-book-list-model": "supported",
+              "cbv-book-detail-model": "supported",
+              "cbv-book-list-default-template": "inferred",
+              "cbv-book-detail-default-template": "inferred",
+              "cbv-explicit-template": "supported",
+          }
+          mdn = reports.get("mdn-django-local-library") or {}
+          by_id = {row["id"]: row for row in mdn.get("probes", [])}
+          p12_gaps = []
+          for probe_id, tier in p12.items():
+              row = by_id.get(probe_id)
+              if not row or row.get("passed") is not True:
+                  p12_gaps.append(probe_id + ":not_matched")
+                  continue
+              edges = row["observed"].get("matching_edges") or []
+              if len(edges) != 1 or edges[0].get("confidence_tier") != tier:
+                  p12_gaps.append(probe_id + ":wrong_provenance_tier")
+          if p12_gaps:
+              failed = True
+              lines.extend([
+                  "",
+                  "P1.2 Django model/template regression: FAIL " + ", ".join(p12_gaps),
+              ])
+          else:
+              lines.extend([
+                  "",
+                  "**P1.2 Django CBV model/template regression: PASS (5/5, expected evidence tiers).**",
+              ])
+          # P1.2 acceptance: preserve the five Django CBV facts that this
+          # checkpoint is responsible for. The named URL remains P1.4.
+          mdn = reports.get("mdn-django-local-library")
+          if mdn and mdn.get("status") != "analysis_error":
+              p12_required = {
+                  "cbv-book-list-model",
+                  "cbv-book-detail-model",
+                  "cbv-book-list-default-template",
+                  "cbv-book-detail-default-template",
+                  "cbv-explicit-template",
+              }
+              missing = set(mdn.get("missing_probes", []))
+              regressed = sorted(p12_required & missing)
+              if regressed:
+                  raise SystemExit(
+                      "P1.2 Django CBV regression: " + ", ".join(regressed)
+                  )
+
           summary = "\n".join(lines) + "\n"
           print(summary)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
@@ -155,7 +215,9 @@ jobs:
                   }
                   for entry in manifest["fixtures"]
               ],
-              "note": "A source-grounded semantic miss is expected baseline data, not a CI failure.",
+              "p1_2_django_cbv_gate": "fail" if p12_gaps else "pass",
+              "p1_2_missing_or_wrong_tier": p12_gaps,
+              "note": "Known unresolved P1.3-6 probes stay visible; P1.2's five verified facts must not regress.",
           }
           Path("p1-external-summary.json").write_text(json.dumps(report, indent=2) + "\n")
           if failed or os.environ["P1_JOB_RESULT"] != "success":

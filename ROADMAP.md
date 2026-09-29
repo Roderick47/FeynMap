@@ -232,7 +232,7 @@ are in `experiments/p1_external_framework_manifest.json`.
 - [x] **P1.1 External baseline:** fixed MDN Django, Microblog and DRF revisions
   - [x] P1.1a Verify external source facts, pin three immutable commits and freeze an initial probe manifest
   - [x] P1.1b Run FeynMap against those exact checkouts; record current graph, missing relationships, selected context and diagnostic evidence (2/11 independent probes met; zero analysis crashes)
-- [ ] **P1.2 Django CBV grounding:** imported `model`, `queryset`, explicit and convention-backed template relationships
+- [x] **P1.2 Django CBV grounding:** imported `model`, `queryset`, explicit and convention-backed template relationships
 - [ ] **P1.3 AppConfig hub treatment:** preserve membership evidence without polluting task-relevant impact and sparse routing
 - [ ] **P1.4 Django named URL resolution:** static `reverse`, `reverse_lazy`, namespace and template `{% url %}` relationships
 - [ ] **P1.5 Flask Blueprint composition:** resolve registrations and combine `url_prefix` with route decorators
@@ -251,6 +251,18 @@ query (8/10 delivered nodes are tests). Both pinned DRF minified JS bundles
 are safely skipped when the JS adapter is exercised directly. Known missing
 graph facts are baseline data, not CI failures; no analyzer semantic changes
 were made during P1.1b. **Next: P1.2 Django CBV relationships.**
+
+**P1.2 accepted findings (29 Sep 2026):**
+`docs/P1_2_DJANGO_CBV_GROUNDING.md` and
+`experiments/results/p1_2_20260929_django_cbv.json` record a scoped MDN
+improvement from **0/6 to 5/6** frozen Django probes: both model bindings,
+both default templates and the explicit template now resolve. The named URL
+`books` remains intentionally unresolved for P1.4. Microblog stays 0/2 and
+DRF stays 2/3, confirming no cross-framework score drift. Model/queryset
+bindings require import-resolved unique in-repo models; default templates are
+framework-inferred only when the model and physical template are unique.
+Ambiguous/dynamic/custom cases remain explicitly unresolved. **Next: P1.3
+AppConfig hub semantics.**
 
 **P2 — retrieval policy and downstream context**
 
