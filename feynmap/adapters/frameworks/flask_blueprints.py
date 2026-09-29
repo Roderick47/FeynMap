@@ -22,8 +22,7 @@ ROUTE_METHODS = {
 
 
 def _module_name(path: str) -> str:
-    parts = path.removesuffix(".py").split("/") if hasattr(str, "removesuffix") else path[:-3].split("/")
-    # Keep the parser/adapter compatible with Python 3.8.
+    parts = path[:-3].split("/")  # Source session supplies .py files; Python 3.8 safe.
     if parts[-1] == "__init__":
         parts.pop()
     return ".".join(parts)
@@ -175,7 +174,24 @@ def _collect_declarations(source, unresolved: List[dict]) -> Dict[str, dict]:
     return declared
 
 
+def _flask_application_instances(source) -> Set[str]:
+    """Global Flask instances can be imported across modules by exact identity."""
+    result: Set[str] = set()
+    for record in source.records():
+        if record.tree is None:
+            continue
+        module = _module_name(record.relative)
+        imports = _imports(record.tree.body, module,
+                           record.relative.endswith("/__init__.py"))
+        for variable, _ in _assignments(
+            record.tree.body, module, imports, "flask.Flask"
+        ):
+            result.add(module + "." + variable)
+    return result
+
+
 def _registrations(source, blueprints: Dict[str, dict],
+                   applications: Set[str],
                    unresolved: List[dict]) -> List[dict]:
     registrations = []
     for record in source.records():
@@ -188,7 +204,9 @@ def _registrations(source, blueprints: Dict[str, dict],
         for item in record.tree.body:
             if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 imports = dict(global_imports)
-                imports.update(_imports(item.body, module, False))
+                imports.update(_imports(
+                    item.body, module, record.relative.endswith('/__init__.py'),
+                ))
                 scopes.append((item.name, item.body, imports))
 
         for scope, statements, imports in scopes:
@@ -206,7 +224,8 @@ def _registrations(source, blueprints: Dict[str, dict],
                     continue
                 host = call.func.value
                 local_host = _expr_name(host)
-                if local_host in app_objects:
+                if (local_host in app_objects or
+                        _identity(host, module, imports) in applications):
                     parent = None
                     host_kind = "flask_application"
                 else:
@@ -280,7 +299,8 @@ def enrich_flask_blueprint_routes(graph: SemanticGraph, root: Path) -> None:
     source = get_python_source_session(root)
     unresolved: List[dict] = []
     blueprints = _collect_declarations(source, unresolved)
-    regs = _registrations(source, blueprints, unresolved)
+    applications = _flask_application_instances(source)
+    regs = _registrations(source, blueprints, applications, unresolved)
     active = _active_prefixes(regs, unresolved)
 
     # Existing function nodes come from language extraction. Only the exact
@@ -367,7 +387,8 @@ def enrich_flask_blueprint_routes(graph: SemanticGraph, root: Path) -> None:
                             registration_file=reg["registration_file"],
                             registration_line=reg["registration_line"],
                         ))
-                elif host in global_flask_instances:
+                elif (host in global_flask_instances or
+                      blueprint_id in applications):
                     add_contract(
                         owner, "http_server", fragment, 0.98,
                         methods=methods, framework="flask",
@@ -382,7 +403,9 @@ def enrich_flask_blueprint_routes(graph: SemanticGraph, root: Path) -> None:
                     ))
 
     graph.metadata["flask_blueprint_composition"] = {
-        "version": "1.0.0", "blueprints": [
+        "version": "1.0.0",
+        "flask_application_identities": sorted(applications),
+        "blueprints": [
             blueprints[key] for key in sorted(blueprints)
         ], "registrations": regs,
         "active_prefixes": active, "declared_routes": declared_routes,
