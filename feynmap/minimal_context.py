@@ -629,10 +629,27 @@ class MinimalContextPacker:
                 selected_edges | set(closure_edges),
                 candidate_anchors,
                 payload_cache=payload_cache,
+                delivery_policy=delivery_policy,
             ):
                 selected_nodes.update(closure_nodes)
                 selected_edges.update(closure_edges)
                 anchors[:] = candidate_anchors
+            elif delivery_policy is not None:
+                # A test-heavy search-parent closure may cost far more than a
+                # relevant implementation file. A node from the activated
+                # graph can remain an explicit separate source anchor, never
+                # an invented relationship or claim of complete provenance.
+                fallback_anchors = list(anchors)
+                if node_id not in fallback_anchors:
+                    fallback_anchors.append(node_id)
+                if self._fits(
+                    result, budget, selected_nodes | {node_id},
+                    selected_edges, fallback_anchors,
+                    payload_cache=payload_cache,
+                    delivery_policy=delivery_policy,
+                ):
+                    selected_nodes.add(node_id)
+                    anchors[:] = fallback_anchors
 
         # Reserve a few delivery-critical boundary continuations. Unlike
         # search-time priority, delivery priority demotes generic inheritance
