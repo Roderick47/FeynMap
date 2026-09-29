@@ -168,6 +168,7 @@ def _field_declarations(definition: ast.ClassDef, imports, module: str) -> List[
 
 
 def _static_router_registrations(root: Path, indexed: Mapping[str, Sequence[SemanticNode]]):
+    """Source declarations only; a router.register() is not proof of URL exposure."""
     declarations, unresolved = [], []
     for record in get_python_source_session(root).records():
         if record.tree is None:
@@ -185,53 +186,54 @@ def _static_router_registrations(root: Path, indexed: Mapping[str, Sequence[Sema
                 if isinstance(target, ast.Name):
                     router_instances[target.id] = constructor
         for statement in record.tree.body:
-            # A nested function is not a module-level router registration.
+            # Do not conflate registrations in nested functions or classes
+            # with module-level router instances or execution.
             if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
                 continue
             call = statement.value
             if (
-                    not isinstance(call.func, ast.Attribute)
-                    or call.func.attr != "register"
-                    or not isinstance(call.func.value, ast.Name)
-                    or call.func.value.id not in router_instances
+                not isinstance(call.func, ast.Attribute)
+                or call.func.attr != "register"
+                or not isinstance(call.func.value, ast.Name)
+                or call.func.value.id not in router_instances
             ):
-                    continue
+                continue
             if len(call.args) < 2:
-                    unresolved.append({
-                        "source_file": record.relative, "source_line": call.lineno,
-                        "reason": "missing_router_arguments",
-                    })
-                    continue
-                prefix_expr = call.args[0]
-                prefix = (
-                    prefix_expr.value
-                    if isinstance(prefix_expr, ast.Constant)
-                    and isinstance(prefix_expr.value, str) else None
-                )
-                target = _identity(call.args[1], imports, module)
-                match = indexed.get(target or "", ())
-                basename_expr = call.args[2] if len(call.args) >= 3 else next(
-                    (item.value for item in call.keywords if item.arg == "basename"), None
-                )
-                basename = (
-                    basename_expr.value if isinstance(basename_expr, ast.Constant)
-                    and isinstance(basename_expr.value, str) else None
-                )
-                if prefix is None or len(match) != 1:
-                    unresolved.append({
-                        "source_file": record.relative, "source_line": call.lineno,
-                        "reason": "dynamic_router_prefix_or_view",
-                        "view_identity": target,
-                    })
-                    continue
-                declarations.append({
+                unresolved.append({
                     "source_file": record.relative, "source_line": call.lineno,
-                    "router_variable": call.func.value.id,
-                    "router_constructor": router_instances[call.func.value.id],
-                    "declared_prefix": prefix, "declared_basename": basename,
-                    "view_identity": target, "view_node_id": match[0].id,
-                    "status": "declaration_only_not_proven_mounted",
+                    "reason": "missing_router_arguments",
                 })
+                continue
+            prefix_expr = call.args[0]
+            prefix = (
+                prefix_expr.value
+                if isinstance(prefix_expr, ast.Constant)
+                and isinstance(prefix_expr.value, str) else None
+            )
+            target = _identity(call.args[1], imports, module)
+            match = indexed.get(target or "", ())
+            basename_expr = call.args[2] if len(call.args) >= 3 else next(
+                (item.value for item in call.keywords if item.arg == "basename"), None
+            )
+            basename = (
+                basename_expr.value if isinstance(basename_expr, ast.Constant)
+                and isinstance(basename_expr.value, str) else None
+            )
+            if prefix is None or len(match) != 1:
+                unresolved.append({
+                    "source_file": record.relative, "source_line": call.lineno,
+                    "reason": "dynamic_router_prefix_or_view",
+                    "view_identity": target,
+                })
+                continue
+            declarations.append({
+                "source_file": record.relative, "source_line": call.lineno,
+                "router_variable": call.func.value.id,
+                "router_constructor": router_instances[call.func.value.id],
+                "declared_prefix": prefix, "declared_basename": basename,
+                "view_identity": target, "view_node_id": match[0].id,
+                "status": "declaration_only_not_proven_mounted",
+            })
     return declarations, unresolved
 
 
