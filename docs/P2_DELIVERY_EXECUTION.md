@@ -11,7 +11,7 @@ development positives. Its independent controls include actual activated
 versus delivered implementation files, tests/migrations/vendor channels,
 evidence-tier consistency, context tokens, supported claims and task outcomes.
 
-## P2.1 — Role-aware delivery (this PR, #45)
+## P2.1 — Role-aware delivery (completed in PR #45)
 
 Source location maps each activated node to a conservative delivery role:
 implementation, test, migration, vendor/generated, documentation, configuration, or unknown for missing locations. Classification is path-only; it cannot create a dependency or
@@ -64,24 +64,48 @@ score the resulting delivery only, never to choose context.
 
 ## Remaining incremental checkpoints
 
-**P2.2 — Independent channel-budget comparison.** Freeze new source-authored
-implementation, test and migration tasks (not rewritten from P1 outcomes),
-including DRF serializer/throttling controls and a separate migration case.
-Compare legacy and source-first under identical per-task activation, seed,
-token/node/edge caps. Record file- and symbol-level implementation recall,
-genuinely required test evidence, distractor nodes/tokens, omission reasons,
-and measured activation + packing latency. Test a category-specific allocation
-floor/cap rather than assuming that no tests should ever be included. Decide
-whether role-aware should replace the legacy default only after observing
-regressions on unrelated existing S3/S6 fixtures.
+**P2.2 — Source-locked channel-budget comparison (completed with measured
+regressions).** The frozen independent stockroom source fixture and reused DRF
+calibration yield eight preauthored queries with explicit essential source
+files, finer-grained symbols, required tests/migrations, optional useful
+support, and individually named irrelevant nodes. The source file blobs and
+manifest Git digest were locked *before* the experiment. The runner rechecks
+the literal source AST declarations and pinned revision rather than scoring
+its own graph as gold.
 
-**P2.3 — Downstream fidelity and policy decision.** Use independent,
-preauthored source questions and actual answer evaluation to compare supported
-claims, unsupported claims, correctness, requests for extra context and cost.
-Preserve the independent sealed S7 agent-repair holdout for full task-level
-comparisons; P2 development-set success cannot be presented as a production
-hallucination-reduction rate. Ship a conservative default or retain explicit
-policy selection based on measured results.
+Three packers (unchanged legacy, P2.1 source-first, and a pre-registered
+balanced floor/cap variant) consume one *identical* activation per query under
+1,600-token/12-node/12-edge and 3,200-token/24-node/24-edge budgets. Reports
+distinguish not-indexed, not-activated, activated-but-omitted and delivered
+source symbols, per-channel JSON character contribution and named
+distractors; common token/edge metadata reconciles exactly under the
+deterministic estimator. No model outputs are scored.
+
+All required source-authored symbols were actually activated in both cohorts
+(stockroom 10/10, DRF 7/7). At standard budget, legacy retained 10/10
+stockroom and 6/7 DRF symbols; P2.1 source-first retained 5/10 and 4/7,
+respectively. Source-first omitted both required migration symbols and one
+of two required stockroom test symbols, despite lower estimated context.
+The balanced floor/cap did not resolve the problem (4/10 and 5/7).
+**Do not change the default.** Source role/file coverage alone is an
+insufficient criterion for delivering the actual task-bearing symbol.
+See `docs/P2_2_CHANNEL_BUDGET_COMPARISON.md` and
+`experiments/results/p2_2_20260929_delivery_comparison.json`.
+
+**P2.3a — Correct downstream evidence selection, then revalidate.** Design
+a task-relevant, source-grounded symbol and behavioral-edge sufficiency rule
+that keeps actual test/migration essentials when the task asks for them.
+Never feed benchmark gold labels to the selector. Freeze *new* source-authored
+cases before evaluating the changed policy, rather than claiming that
+post-result fitting to P2.2 constitutes independent improvement. Retain
+legacy as the default until non-regression is measured.
+
+**P2.3b — Downstream fidelity and shipping decision.** Compare actual
+supported/unsupported model claims, answer correctness, follow-up evidence
+requests and cost using preauthored questions. Keep the independent sealed
+S7 repair holdout disjoint and do not present a development-set improvement
+as a general hallucination-reduction percentage. Ship a validated default
+or retain explicit policy selection based on measured evidence.
 
 **P2 exit gate:** source-only graph unchanged; a documented per-channel policy
 whose reported counts reconcile; original P1 truth/tier/URL and recursive
