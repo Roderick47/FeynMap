@@ -1,6 +1,6 @@
 # P1 — Small, testable framework-semantic checkpoints
 
-Status: P1.1–P1.6 complete; P1.7 frozen external replay and acceptance is next.
+Status: **P1.1–P1.7 complete** on the accepted P1.6 source branch; P2 implementation-vs-test context policy is next (P1.6 PR #43 must merge before stacked P1.7 PR #44).
 
 Do NOT one-shot P1: each phase changes FeynMap's graph truth, so regression risk compounds if model, template, URL, Flask and DRF changes are mixed into one implementation.
 
@@ -143,15 +143,42 @@ accounting gates plus every P1.2–P1.5 regression gate.
 pass. Read docs/P1_6_DRF_GROUNDING_AND_DIAGNOSTICS.md and
 experiments/results/p1_6_20260929_drf_diagnostics.json.
 
-## P1.7 — External replay and acceptance
+## P1.7 — Frozen external replay and acceptance (done)
 
-- Replay every immutable P1.1 probe against the updated graph.
-- Record before/after true positives, false positives, unresolved cases,
-  evidence tiers, selected context, implementation recall and runtime.
-- Run Python 3.8/3.12, recursive self-analysis, contract conformance and
-  error-path tests. Do not accept a 'fix' that simply adds more edges.
-- Keep the P1.1 corpus as a development regression set; freeze a completely
-  separate S7 held-out AI-agent evaluation dataset.
+Added a pure, stdlib-only replay comparator with **independently immutable**
+Git blob checks on the P1.1a source-authored manifest and the original P1.1b
+result. It consumes newly generated full JSON for the same three fixed public
+source revisions, verifies all source/probe identities and scored-vs-observed
+outcomes, and preserves before/after per-probe provenance, confidence tier,
+actual activated/delivered context, diagnostics and single-run runtime/RSS.
+
+[External acceptance 36526547547](https://github.com/Roderick47/FeynMap/actions/runs/36526547547):
+**2/11 → 10/11 positive expectations**, **8 recovered**, **0 regressed**,
+**one genuinely unmet**. MDN 0/6 → 6/6; Microblog 0/2 → 2/2; DRF stays 2/3.
+Only the source-evidenced DRF serializer-to-Field *activation* improved; the
+P1.1 serializer *delivery* claim remains false because the unchanged minimal
+context packer omits fields.py. No oracle change, invented edge or
+confidence-tier inflation is credited as a gain.
+
+The original development oracle is positive-only. The new acceptance report
+explicitly records **false-positive count and rate as unmeasured**, not
+misleading zeros. Known synthetic negative cases are separate regression
+suites; the S7 held-out agent-repair dataset must be independently sealed and
+disjoint from the three known P1 development repositories/tasks before
+measuring task-level correctness or hallucination/precision.
+
+All P1.2–P1.6 source-evidence and diagnostic gates pass. Dedicated
+Python 3.8/3.12 acceptance runs test frozen S6 conformance, negative source
+cases, duplicate/missing/tampered oracle/probe handling and report failure
+artifacts; the ordinary full tests plus recursive self-check also pass.
+[Full tests 36526547551](https://github.com/Roderick47/FeynMap/actions/runs/36526547551).
+Read docs/P1_7_FROZEN_EXTERNAL_ACCEPTANCE.md and
+experiments/results/p1_7_20260929_frozen_acceptance.json.
+
+**P1 closure:** framework graph grounding and diagnostic accounting are
+accepted on this development set. Fixing the outstanding implementation
+delivery allocation is P2, not a justification for enlarging the graph
+without source evidence.
 
 ## Changes deliberately outside P1
 
