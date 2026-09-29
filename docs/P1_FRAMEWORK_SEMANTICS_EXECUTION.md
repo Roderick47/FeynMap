@@ -1,6 +1,6 @@
 # P1 — Small, testable framework-semantic checkpoints
 
-Status: P1.1a source corpus pinned; P1.1b baseline execution is next.
+Status: P1.1a and P1.1b complete; P1.2 Django CBV grounding is next.
 
 Do NOT one-shot P1: each phase changes FeynMap's graph truth, so regression risk compounds if model, template, URL, Flask and DRF changes are mixed into one implementation.
 
@@ -22,13 +22,21 @@ derived from explicit source code or documented framework conventions, NOT
 results produced by FeynMap itself. The current recorded baseline should
 report failures transparently rather than silently weakening expectations.
 
-**P1.1b — execute the baseline (next).** Checkout exactly those commits
-in clean isolated folders; run the same FeynMap `main` build over each repo;
-capture graph symbols, relevant relationship/evidence diagnostics, routes,
-resource usage, and selected context. Emit a machine-readable report. Do not
-block the CI job simply because a known semantic probe currently fails;
-separate 'analysis crashed' from 'probe not yet supported'. These baseline
-gaps become P1.2–P1.6 regression targets.
+**P1.1b — external baseline (done).** All three commits were independently
+checked out and verified before static analysis. A dedicated CI matrix runs
+`feynmap.p1_external_baseline` against those checkouts, capturing source
+nodes/edges/contracts, route and selected-context evidence, diagnostics,
+time and process peak RSS. The fixture collection validates report and
+revision integrity without treating a known missing relationship as a CI error.
+A completed analysis error still fails CI.
+
+The locked initial result is **2/11 probes met** (MDN 0/6, Microblog 0/2,
+DRF 2/3), with no analysis crashes. Read
+`docs/P1_1B_EXTERNAL_BASELINE_RESULTS.md` and the permanent machine-readable
+`experiments/results/p1_1b_20260929_external_baseline.json`; full raw
+per-repository reports are artifacts from
+[workflow run 36506425924](https://github.com/Roderick47/FeynMap/actions/runs/36506425924).
+The old baseline must never be retroactively replaced with post-P1.2 results.
 
 ## P1.2 — Django model and template grounding
 
