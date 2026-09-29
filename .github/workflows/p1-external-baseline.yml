@@ -179,6 +179,24 @@ jobs:
                   "",
                   "**P1.2 Django CBV model/template regression: PASS (5/5, expected evidence tiers).**",
               ])
+          # P1.2 acceptance: preserve the five Django CBV facts that this
+          # checkpoint is responsible for. The named URL remains P1.4.
+          mdn = reports.get("mdn-django-local-library")
+          if mdn and mdn.get("status") != "analysis_error":
+              p12_required = {
+                  "cbv-book-list-model",
+                  "cbv-book-detail-model",
+                  "cbv-book-list-default-template",
+                  "cbv-book-detail-default-template",
+                  "cbv-explicit-template",
+              }
+              missing = set(mdn.get("missing_probes", []))
+              regressed = sorted(p12_required & missing)
+              if regressed:
+                  raise SystemExit(
+                      "P1.2 Django CBV regression: " + ", ".join(regressed)
+                  )
+
           summary = "\n".join(lines) + "\n"
           print(summary)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
