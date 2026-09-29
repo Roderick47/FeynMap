@@ -138,6 +138,7 @@ class MinimalContextResult:
     sufficient: bool = True
     selected_budget_tokens: int = 0
     packing_iterations: int = 1
+    unresolved_query_identifiers: Sequence[str] = ()
 
     @property
     def token_compression_ratio(self) -> float:
@@ -152,7 +153,7 @@ class MinimalContextResult:
         return float(self.delivered_nodes) / float(self.activated_nodes)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "payload": dict(self.payload),
             "selected_node_ids": list(self.selected_node_ids),
             "selected_edge_ids": list(self.selected_edge_ids),
@@ -182,6 +183,11 @@ class MinimalContextResult:
                 "packing_iterations": int(self.packing_iterations),
             },
         }
+        if self.unresolved_query_identifiers:
+            result["metrics"]["unresolved_query_identifiers"] = list(
+                self.unresolved_query_identifiers
+            )
+        return result
 
 
 class MinimalContextPacker:
@@ -231,7 +237,9 @@ class MinimalContextPacker:
         policy = delivery_policy.normalized() if delivery_policy is not None else None
         if policy is not None and policy.mode == "symbol_evidence":
             critical, critical_edges = self._symbol_evidence_critical(result, policy)
+            unresolved = self._unresolved_query_identifiers(result)
         else:
+            unresolved = ()
             critical = (
                 self._role_critical_node_ids(result, policy)
                 if policy is not None else self._critical_node_ids(result)
@@ -273,12 +281,17 @@ class MinimalContextPacker:
                 activated_nodes=packed.activated_nodes,
                 delivered_nodes=packed.delivered_nodes,
                 critical_node_ids=packed.critical_node_ids,
-                sufficient=packed.sufficient,
+                sufficient=packed.sufficient and not unresolved,
                 selected_budget_tokens=cap,
                 packing_iterations=iteration,
+                unresolved_query_identifiers=tuple(unresolved),
             )
             last = packed
-            if packed.sufficient:
+            if packed.sufficient or unresolved:
+                # Increasing the delivery budget cannot activate an
+                # explicitly named source symbol absent from S2 search.
+                # Return the bounded grounded partial context with an honest
+                # insufficient flag and machine-readable missing identifiers.
                 return packed
         assert last is not None
         return last
@@ -292,6 +305,30 @@ class MinimalContextPacker:
         """
         spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(value or ""))
         return _tokens(spaced)
+
+    @staticmethod
+    def _unresolved_query_identifiers(
+        result: GuidedSearchResult,
+    ) -> Tuple[str, ...]:
+        """Fail closed on explicit code-shaped names absent from activation.
+
+        CamelCase, PascalCase and snake_case names in the task are source
+        requests, not proof those symbols exist. Their absence cannot be
+        corrected by allocating extra S3 tokens; request more *activation*.
+        Ordinary natural-language nouns never become fabricated identifiers.
+        """
+        query = str(result.query or "")
+        pattern = re.compile(
+            r"\b(?:[A-Za-z_$][A-Za-z0-9_$]*_[A-Za-z0-9_$]+"
+            r"|[a-z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*"
+            r"|[A-Z][a-z0-9]+(?:[A-Z][A-Za-z0-9]+)+)\b"
+        )
+        named = {hit.node.name.casefold() for hit in result.hits}
+        return tuple(sorted({
+            match.group(0)
+            for match in pattern.finditer(query)
+            if match.group(0).casefold() not in named
+        }))
 
     def _symbol_evidence_critical(
         self,
