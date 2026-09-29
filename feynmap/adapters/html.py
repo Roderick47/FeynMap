@@ -25,6 +25,14 @@ DJANGO_INCLUDE_RE = re.compile(r"\{\%\s*include\s+['\"]([^'\"]+)['\"][^%]*\%\}")
 DJANGO_LOAD_RE = re.compile(r"\{\%\s*load\s+([^%]+?)\s*\%\}")
 DJANGO_VARIABLE_RE = re.compile(r"\{\{(.*?)\}\}", re.DOTALL)
 DJANGO_FILTER_RE = re.compile(r"\|\s*([A-Za-z_][A-Za-z0-9_]*)")
+DJANGO_URL_RE = re.compile(
+    r"\{%\s*url\s+(['\"])([A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)*)\1(?=[\s%])[^%]*%\}"
+)
+DJANGO_IGNORED_BLOCK_RE = re.compile(
+    r"\{%\s*(?:comment|verbatim)(?:\s+[^%]*)?%\}.*?"
+    r"\{%\s*end(?:comment|verbatim)\s*%\}", re.DOTALL
+)
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
 class _HTMLCollector(HTMLParser):
@@ -142,6 +150,23 @@ class HTMLAdapter(LanguageAdapter):
                 0.99,
                 syntax="django",
                 line=cls._line_for_match(text, match.start()),
+            )
+
+        # Record named template reversals as semantic references, never as
+        # generic HTTP clients with literal "{% url ... %}" request targets.
+        # Mask comments/verbatim while preserving offsets for source evidence.
+        visible = DJANGO_IGNORED_BLOCK_RE.sub(
+            lambda match: re.sub(r"[^\n]", " ", match.group(0)), text,
+        )
+        visible = HTML_COMMENT_RE.sub(
+            lambda match: re.sub(r"[^\n]", " ", match.group(0)), visible,
+        )
+        for match in DJANGO_URL_RE.finditer(visible):
+            add_contract(
+                node, "django_url_reverse", match.group(2), 0.98,
+                syntax="django_template", source_file=node.location.path,
+                line=cls._line_for_match(text, match.start()),
+                evidence_kind="static", derivation="django.template.url_literal",
             )
 
         loaded_libraries: List[str] = []
