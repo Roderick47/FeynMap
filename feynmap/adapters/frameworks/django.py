@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 
 from feynmap.core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode
 from ..base import FrameworkAdapter
+from .django_cbv import enrich_django_cbvs
 from ._python import (
     attach_django_url_contracts,
     attach_template_render_contracts,
@@ -61,6 +62,10 @@ class DjangoAdapter(FrameworkAdapter):
             elif node.kind == NodeKind.FUNCTION and (path.endswith("views.py") or "/views/" in path):
                 mark_role(node, self.name, NodeKind.HANDLER, "request_handler", "Function defined in a Django views module", 0.82)
 
+        # P1.2: resolve real CBV class-body source facts before graph merging.
+        # The existing language-neutral integration resolver later attaches
+        # template contracts to actual HTML nodes, where present.
+        enrich_django_cbvs(graph, project_path)
         self._attach_app_config_relationships(graph)
         attach_django_url_contracts(graph, project_path)
         attach_template_render_contracts(graph, project_path, self.name)
