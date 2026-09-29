@@ -718,6 +718,7 @@ class MinimalContextPacker:
         *,
         budget: MinimalContextBudget,
         critical_node_ids: Sequence[str] = (),
+        critical_edge_ids: Sequence[str] = (),
         payload_cache: Optional[_PackPayloadCache] = None,
         delivery_policy: Optional[DeliveryChannelPolicy] = None,
     ) -> MinimalContextResult:
@@ -748,7 +749,7 @@ class MinimalContextPacker:
                 activated_nodes=0,
                 delivered_nodes=0,
                 critical_node_ids=tuple(critical_node_ids),
-                sufficient=not critical_node_ids,
+                sufficient=not critical_node_ids and not critical_edge_ids,
                 selected_budget_tokens=budget.max_tokens,
                 packing_iterations=1,
             )
@@ -764,9 +765,15 @@ class MinimalContextPacker:
         selected_edges: Set[str] = set()
         anchors: List[str] = []
 
-        # Preserve the strongest original root. Additional roots/region seeds
-        # compete normally and are delivered only if they add useful evidence.
-        first_root = primary_roots[0]
+        # Legacy and P2.1 preserve the original root. P2.3a may instead
+        # anchor in the strongest activated task-matched definition; a search
+        # root is an entrypoint, not necessarily the symbol needed downstream.
+        first_root = (
+            critical_node_ids[0]
+            if delivery_policy is not None
+            and delivery_policy.mode == "symbol_evidence"
+            and critical_node_ids else primary_roots[0]
+        )
         if self._try_add(
             result,
             budget,
@@ -827,6 +834,38 @@ class MinimalContextPacker:
                 ):
                     selected_nodes.add(node_id)
                     anchors[:] = fallback_anchors
+
+        # P2.3a: a source-backed behavioral relationship is a delivery
+        # requirement only when it was already activated and independently
+        # selected from task-relevant *symbols*. Admit endpoints atomically.
+        # A node-level file representative does not certify this relation.
+        for edge_id in critical_edge_ids:
+            edge = edge_by_id.get(edge_id)
+            if edge is None or edge_id in selected_edges:
+                continue
+            endpoints = {edge.source, edge.target}
+            if not endpoints <= activated_ids:
+                continue
+            candidate_anchors = list(anchors)
+            if not endpoints.intersection(selected_nodes):
+                anchor_id = (
+                    edge.source if edge.source in set(critical_node_ids)
+                    else edge.target
+                )
+                if anchor_id not in candidate_anchors:
+                    candidate_anchors.append(anchor_id)
+            if self._fits(
+                result,
+                budget,
+                selected_nodes | endpoints,
+                selected_edges | {edge_id},
+                candidate_anchors,
+                payload_cache=payload_cache,
+                delivery_policy=delivery_policy,
+            ):
+                selected_nodes.update(endpoints)
+                selected_edges.add(edge_id)
+                anchors[:] = candidate_anchors
 
         # Reserve a few delivery-critical boundary continuations. Unlike
         # search-time priority, delivery priority demotes generic inheritance
@@ -1086,7 +1125,10 @@ class MinimalContextPacker:
             activated_nodes=len(activated_ids),
             delivered_nodes=len(selected_nodes),
             critical_node_ids=tuple(critical_node_ids),
-            sufficient=set(critical_node_ids).issubset(selected_nodes),
+            sufficient=(
+                set(critical_node_ids).issubset(selected_nodes)
+                and set(critical_edge_ids).issubset(selected_edges)
+            ),
             selected_budget_tokens=budget.max_tokens,
             packing_iterations=1,
         )
