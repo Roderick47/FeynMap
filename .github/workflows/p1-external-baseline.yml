@@ -4,14 +4,24 @@ on:
   push:
     paths:
       - "feynmap/p1_external_baseline.py"
+      - "feynmap/adapters/**"
+      - "feynmap/engine.py"
+      - "feynmap/integration.py"
+      - "feynmap/context_pipeline.py"
       - "experiments/p1_external_framework_manifest.json"
       - "tests/test_p1_external_baseline.py"
+      - "tests/test_django_cbv_semantics.py"
       - ".github/workflows/p1-external-baseline.yml"
   pull_request:
     paths:
       - "feynmap/p1_external_baseline.py"
+      - "feynmap/adapters/**"
+      - "feynmap/engine.py"
+      - "feynmap/integration.py"
+      - "feynmap/context_pipeline.py"
       - "experiments/p1_external_framework_manifest.json"
       - "tests/test_p1_external_baseline.py"
+      - "tests/test_django_cbv_semantics.py"
       - ".github/workflows/p1-external-baseline.yml"
   workflow_dispatch:
 
