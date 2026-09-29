@@ -97,9 +97,12 @@ def test_named_route_rejects_unnamed_http_server_contract():
         "category": "http_route", "source_file": "catalog/urls.py",
         "source_symbol": "BookListView", "expected_target": "books",
     }
-    # Source location must be the view's file, not the URL registration file.
-    probe["source_file"] = "catalog/views.py"
+    # The source fixture names the registration in urls.py. FeynMap must
+    # resolve that to the actual handler in the sibling views.py.
     result = _source_probes(graph, probe)
+    assert result["source_node_count"] == 1
+    assert result["source_nodes"][0]["file"] == "catalog/views.py"
+    assert result["source_registration_file"] == "catalog/urls.py"
     assert result["status"] == "route_present_but_name_missing"
     assert result["passed"] is False
 
