@@ -1,5 +1,7 @@
 # P1.5 — Flask registered Blueprint prefix composition
 
+**Status: accepted** — [external workflow 36523511644](https://github.com/Roderick47/FeynMap/actions/runs/36523511644) and [Python 3.8/3.12 + recursive self-check 36523511531](https://github.com/Roderick47/FeynMap/actions/runs/36523511531) passed.
+
 **Scope:** Static declaration -> import identity -> registration -> decorator
 composition for Flask endpoints. The language parser and FeynMap's generic
 integration contracts remain language-neutral; no Flask imports or runtime
@@ -48,15 +50,17 @@ a975ef64864354867c88e0ed3a17ba7d17dca752:
   as /api/tokens, with exact source decorator and registration evidence.
 - Neither is erroneously exposed as an independent /tokens server endpoint.
 
-The independent two Microblog probes must pass without modifying the P1.1a
-manifest. Existing MDN 6/6, DRF 2/3, P1.2/P1.3/P1.4 gates, Python 3.8/3.12
+The independent two Microblog probes pass **2/2**, up from 0/2, without modifying the P1.1a
+manifest. Across the 11 locked external probes, results improve **8/11 → 10/11**.
+MDN remains 6/6 and DRF remains 2/3. Existing MDN 6/6, DRF 2/3, P1.2/P1.3/P1.4 gates, Python 3.8/3.12
 tests and recursive self-analysis must stay green.
 
 Synthetic negative fixtures cover unregistered Blueprints, dynamic prefix,
 dynamic routes/methods, unrelated fake register_blueprint calls and
 same-named variables in different modules. Positive fixtures cover aliased
-Blueprint and Flask imports, default-vs-override prefixes, root routes,
-multiple registrations and nested Blueprint composition.
+Blueprint and Flask imports (including imported Flask application instances
+and package-relative factory imports), default-vs-override prefixes, root
+routes, multiple registrations and nested Blueprint composition.
 
 **Deferred:** runtime-created Blueprints and dynamically supplied prefixes
 are not represented as supported endpoint routes; expand support only with
