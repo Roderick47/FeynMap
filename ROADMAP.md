@@ -233,7 +233,7 @@ are in `experiments/p1_external_framework_manifest.json`.
   - [x] P1.1a Verify external source facts, pin three immutable commits and freeze an initial probe manifest
   - [x] P1.1b Run FeynMap against those exact checkouts; record current graph, missing relationships, selected context and diagnostic evidence (2/11 independent probes met; zero analysis crashes)
 - [x] **P1.2 Django CBV grounding:** imported `model`, `queryset`, explicit and convention-backed template relationships
-- [ ] **P1.3 AppConfig hub treatment:** preserve membership evidence without polluting task-relevant impact and sparse routing
+- [x] **P1.3 AppConfig hub treatment:** preserve membership evidence without polluting task-relevant impact and sparse routing
 - [ ] **P1.4 Django named URL resolution:** static `reverse`, `reverse_lazy`, namespace and template `{% url %}` relationships
 - [ ] **P1.5 Flask Blueprint composition:** resolve registrations and combine `url_prefix` with route decorators
 - [ ] **P1.6 DRF/diagnostics:** serializer/model/permission wiring, routed/unrouted coverage, and actionable unresolved-count separation
@@ -263,6 +263,20 @@ bindings require import-resolved unique in-repo models; default templates are
 framework-inferred only when the model and physical template are unique.
 Ambiguous/dynamic/custom cases remain explicitly unresolved. **Next: P1.3
 AppConfig hub semantics.**
+
+**P1.3 accepted findings (29 Sep 2026):**
+`docs/P1_3_APPCONFIG_HUB_SEMANTICS.md` and
+`experiments/results/p1_3_20260929_appconfig_hub.json` document
+removal of 29 synthetic MDN and 20 DRF handler→AppConfig `DEPENDS_ON`
+edges while retaining all 29 and 20 inferred source-directory memberships
+in non-traversable graph metadata. Original P1.2 source facts remain 5/6
+MDN; the 11 external probes remain 7/11 overall. Real MDN impact at
+depth one finds BookListView and BookDetailView from the Book model, but
+CatalogConfig no longer creates a blanket view impact or a direct routing
+locality hop. Inferred source proximity is **not** runtime registration
+evidence. The new external CI gate requires zero fabricated dependency
+edges, all structural observations and actual impact/locality isolation.
+**Next: P1.4 named URLs and reverse resolution.**
 
 **P2 — retrieval policy and downstream context**
 
