@@ -38,7 +38,7 @@ app registration or dynamic URL mutation has been reproduced.
 
 P1.4 must turn the independent, immutable MDN named-url-books probe from
 missing into matched, with source registration at catalog/urls.py line 8,
-name 'books', raw target /books/, confidence >= 0.9, explicit static derivation
+name 'books', include-composed target /catalog/books/, confidence >= 0.9, explicit static derivation
 django.urls.static_registration. Existing P1.2 five relations and P1.3
 29/20 structural memberships with zero manufactured dependency hubs remain
 hard external replay gates. Microblog/DRF unresolved probes are not silently
