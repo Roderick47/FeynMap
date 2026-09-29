@@ -21,6 +21,7 @@ from feynmap.core import (
 from feynmap.integration import add_contract
 
 from ..python_source import get_python_source_session
+from ._python import mark_role
 
 
 # Canonical Django generic classes only. The import must establish the
@@ -289,7 +290,7 @@ def enrich_django_cbvs(graph: SemanticGraph, root: Path) -> None:
         if node.kind == NodeKind.DATA_MODEL and node.qualified_name:
             models_by_qualified.setdefault(node.qualified_name, []).append(node)
         if (
-            node.kind == NodeKind.HANDLER and node.location
+            node.kind in {NodeKind.HANDLER, NodeKind.CLASS} and node.location
             and node.location.line is not None
         ):
             key = (node.location.path, node.name, node.location.line)
@@ -318,6 +319,14 @@ def enrich_django_cbvs(graph: SemanticGraph, root: Path) -> None:
                 stats["ambiguous_owner"] += 1
                 continue
             view = candidates[0]
+            # The older generic adapter recognizes suffixes such as ListView
+            # but may not recognize "ListView as CoreList". The resolved import
+            # above provides firmer evidence than the suffix heuristic.
+            if view.kind == NodeKind.CLASS:
+                mark_role(
+                    view, "django", NodeKind.HANDLER, "request_handler",
+                    "Django generic CBV base resolved through its imported identity",
+                )
             stats["recognized_cbvs"] += 1
             attrs = _attributes(definition)
             notes: Dict[str, object] = {"generic_base": generic, "bindings": {}, "unresolved": []}
