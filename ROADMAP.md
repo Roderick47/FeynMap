@@ -370,8 +370,8 @@ fixtures.**
 
 - [x] **P2.1 Opt-in source role-aware delivery:** distinguish implementation, test, migration, vendor/generated and other evidence channels; preserve the unchanged default while comparing policy selection on the exact same activated graph
 - [x] **P2.2 Source-locked channel-budget comparison:** five independently authored stockroom implementation/test/migration tasks plus three pinned DRF symbol-level controls, two fixed budgets and three arms; measure exact activated-versus-delivered file/symbol labels, genuine required test/migration evidence, named distractor char/4 equivalents and single-run timings. Valid comparison revealed policy regressions, so **do not make P2.1 source-first the default**.
-- [ ] **P2.3a Correct delivery sufficiency:** preserve task-relevant activated symbols and source-backed behavioral continuations, including genuinely necessary test and migration evidence; freeze new examples before tuning/re-evaluation, never read gold labels during selection.
-- [ ] **P2.3b Downstream fidelity and shipping decision:** compare supported/unsupported claims and real task quality, with S7 held-out agent repairs remaining independently sealed.
+- [x] **P2.3a Opt-in source-symbol sufficiency (PR #47, stacked on open #46):** task-matched activated named functions/classes and stored source-backed behavioral continuations; truthful missing-symbol/budget insufficiency; a newly sealed 8-task Python+JavaScript fixture plus unchanged P2.2 controls. The policy is a measured development correction, **not** the new default.
+- [ ] **P2.3b Downstream fidelity and shipping decision:** freeze new answer questions, measure supported/unsupported claims, request-more-context behavior and actual task quality; retain a disjoint S7 agent-repair holdout.
 
 P2.1's initial pinned-DRF shadow replay demonstrates the previously missing
 `rest_framework/fields.py` delivered alongside `serializers.py`, using the
@@ -403,8 +403,28 @@ truth, legacy default, nor the frozen P1 oracle was changed; P1 remains
 10/11. Read `docs/P2_2_CHANNEL_BUDGET_COMPARISON.md`,
 `experiments/results/p2_2_20260929_delivery_comparison.json` and
 [full P2.2 replay 36555370204](https://github.com/Roderick47/FeynMap/actions/runs/36555370204).
-The next design checkpoint is **P2.3a** task/evidence-aware sufficiency,
-then P2.3b actual downstream answer fidelity.
+The P2.3a correction uses a separate opt-in `symbol_evidence` mode.
+A new mixed Python/JavaScript dispatch fixture and eight expected-source
+questions were sealed before policy implementation (manifest Git blob
+`0512100c4a1c76969e1cfc1c8bc16d6c0fa42e18`).
+The previously observed P2.2 controls remain development diagnostics,
+not fresh held-out confirmation. On the new corpus, 15/16 preauthored
+symbol occurrences were upstream-activated and P2.3a delivered all 15
+at 1,600 and 3,200 tokens (P2.1 delivered 10/15). The missing JS
+`normalizeSeverity` activation now produces an explicit
+`unresolved_query_identifiers` signal and `sufficient=False`, never
+invented source truth.
+
+On the reused controls, P2.3a delivered 10/10 stockroom required
+symbols under either cap, including 2/2 essential test and 2/2 migration
+symbols; DRF delivered 6/7 at 1,600 (a missing `allow_request` method
+is truthfully marked insufficient) and 7/7 at 3,200, including a
+previously missed required DRF test class. The original P1 oracle and
+P2.2 legacy/P2.1 baseline behavior remain unchanged.
+See `docs/P2_3A_SYMBOL_EVIDENCE_SUFFICIENCY.md`.
+**Next: P2.3b independently source-authored downstream claim fidelity and
+policy decision. Do not make source-first or symbol-evidence the default
+without that evaluation.**
 
 **P3 — first usable integration surface**
 
