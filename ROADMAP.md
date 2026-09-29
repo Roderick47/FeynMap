@@ -234,7 +234,7 @@ are in `experiments/p1_external_framework_manifest.json`.
   - [x] P1.1b Run FeynMap against those exact checkouts; record current graph, missing relationships, selected context and diagnostic evidence (2/11 independent probes met; zero analysis crashes)
 - [x] **P1.2 Django CBV grounding:** imported `model`, `queryset`, explicit and convention-backed template relationships
 - [x] **P1.3 AppConfig hub treatment:** preserve membership evidence without polluting task-relevant impact and sparse routing
-- [ ] **P1.4 Django named URL resolution:** static `reverse`, `reverse_lazy`, namespace and template `{% url %}` relationships
+- [x] **P1.4 Django named URL resolution:** static `reverse`, `reverse_lazy`, namespace and template `{% url %}` relationships
 - [ ] **P1.5 Flask Blueprint composition:** resolve registrations and combine `url_prefix` with route decorators
 - [ ] **P1.6 DRF/diagnostics:** serializer/model/permission wiring, routed/unrouted coverage, and actionable unresolved-count separation
 - [ ] **P1.7 External replay:** compare all original pinned cases before/after with no fabricated relationships or recall regression
@@ -277,6 +277,19 @@ locality hop. Inferred source proximity is **not** runtime registration
 evidence. The new external CI gate requires zero fabricated dependency
 edges, all structural observations and actual impact/locality isolation.
 **Next: P1.4 named URLs and reverse resolution.**
+
+**P1.4 accepted findings (29 Sep 2026):**
+Static Django URL registrations now follow imported handler identities and
+include/app namespace composition. Python reverse/reverse_lazy and literal
+template {% url %} names link only to uniquely registered handlers; dynamic
+and ambiguous names remain unresolved, and template tags are not HTTP
+client URLs. Pinned MDN improves to **6/6** source-authored probes; the
+11 independent external probes improve to **8/11** overall. All prior
+P1.2 model/template and P1.3 AppConfig non-hub gates pass unchanged.
+Flask remains 0/2 and DRF 2/3. Python 3.8/3.12 tests and recursive
+self-check pass. See docs/P1_4_DJANGO_NAMED_URLS.md and
+[external replay 36522700164](https://github.com/Roderick47/FeynMap/actions/runs/36522700164).
+**Next: P1.5 Flask Blueprint prefix composition.**
 
 **P2 — retrieval policy and downstream context**
 
