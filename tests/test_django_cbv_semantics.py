@@ -242,7 +242,7 @@ def test_unknown_dynamic_queryset_blocks_default_template_inference(tmp_path):
         "catalog/models.py": MODEL,
         "catalog/views.py": (
             "from django.views.generic import ListView\n"
-            "from .models import Book\n"
+            "from .models import Book, Author\n"
             "class DynamicBooks(ListView):\n"
             "    model = Book\n"
             "    queryset = choose_runtime_queryset()\n"
@@ -252,7 +252,6 @@ def test_unknown_dynamic_queryset_blocks_default_template_inference(tmp_path):
             "        return [runtime_template()]\n"
             "class Conflicting(ListView):\n"
             "    model = Book\n"
-            "    from .models import Author\n"
             "    queryset = Author.objects.all()\n"
         ),
         "catalog/templates/catalog/book_list.html": "<p>Maybe</p>",
@@ -265,7 +264,13 @@ def test_unknown_dynamic_queryset_blocks_default_template_inference(tmp_path):
     assert _render_edges(graph, dynamic) == []
     assert _render_edges(graph, custom) == []
     assert "template:queryset_model_unknown" in dynamic.attributes["django_cbv"]["unresolved"]
-    assert "template:custom_get_template_names" in custom.attributes["django_cbv"]["unresolved"]
+    assert "template:custom_queryset_object_or_template" in custom.attributes["django_cbv"]["unresolved"]
+    conflicting = _symbol(graph, "catalog.views.Conflicting")
+    assert {target.qualified_name for edge, target in _model_edges(graph, conflicting)} == {
+        "catalog.models.Book", "catalog.models.Author"
+    }
+    assert _render_edges(graph, conflicting) == []
+    assert "template:missing_or_conflicting_model" in conflicting.attributes["django_cbv"]["unresolved"]
 
 
 def test_dynamic_explicit_template_stays_unknown_instead_of_using_default(tmp_path):
@@ -285,3 +290,22 @@ def test_dynamic_explicit_template_stays_unknown_instead_of_using_default(tmp_pa
     assert _model_edges(graph, view)
     assert _render_edges(graph, view) == []
     assert view.attributes["django_cbv"]["declared_template_name"] is None
+
+
+
+def test_explicit_template_with_custom_template_selection_does_not_claim_render(tmp_path):
+    _write(tmp_path, {
+        "catalog/views.py": (
+            "from django.views.generic import TemplateView\n"
+            "class RuntimeTemplate(TemplateView):\n"
+            "    template_name = 'catalog/landing.html'\n"
+            "    def get_template_names(self):\n"
+            "        return [dynamic_template()]\n"
+        ),
+        "catalog/templates/catalog/landing.html": "<p>Present but not proven to render</p>",
+    })
+    graph = _graph(tmp_path)
+    view = _symbol(graph, "catalog.views.RuntimeTemplate")
+    assert _render_edges(graph, view) == []
+    assert not contracts(view, "template_render")
+    assert "template_name:custom_get_template_names" in view.attributes["django_cbv"]["unresolved"]
