@@ -9,7 +9,7 @@ from feynmap.core import (
 )
 from feynmap.integration import add_contract
 from feynmap.p1_external_baseline import (
-    _file_channel, _source_probes, evaluate_fixture,
+    _file_channel, _minified_js_probe, _source_probes, evaluate_fixture,
 )
 
 
@@ -130,3 +130,21 @@ def test_baseline_rejects_wrong_revision_before_analyzing(monkeypatch, tmp_path:
             tmp_path,
             actual_commit="b" * 40,
         )
+
+
+
+def test_ingestion_probe_exercises_actual_minified_js_skip(tmp_path: Path):
+    static = tmp_path / "app" / "static"
+    static.mkdir(parents=True)
+    (static / "bootstrap.min.js").write_text(
+        "function duplicated(){}function duplicated(){}",
+        encoding="utf-8",
+    )
+    (static / "app.js").write_text("function validApp() {}\n", encoding="utf-8")
+    observed = _minified_js_probe(tmp_path)
+    assert observed["passed"] is True
+    assert observed["status"] == "minified_assets_skipped_without_crash"
+    assert observed["minified_assets"] == ["app/static/bootstrap.min.js"]
+    assert observed["skipped_assets"] == ["app/static/bootstrap.min.js"]
+    assert observed["incorrectly_included_assets"] == []
+    assert observed["javascript_graph_nodes"] > 0
