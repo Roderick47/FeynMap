@@ -218,6 +218,13 @@ jobs:
                       "%s:source_memberships=%s(expected %d),hub_edges=%s(expected 0)"
                       % (fixture_id, actual, expected_count, edges)
                   )
+          mdn_impact = (reports.get("mdn-django-local-library") or {}).get(
+              "p1_3_django_impact"
+          ) or {}
+          if mdn_impact.get("passed") is not True:
+              p13_gaps.append(
+                  "MDN impact/locality: " + str(mdn_impact.get("status", "missing_report"))
+              )
           if p13_gaps:
               failed = True
               lines.extend([
@@ -229,7 +236,8 @@ jobs:
               lines.extend([
                   "",
                   "**P1.3 AppConfig gate: PASS (29 MDN + 20 DRF retained structural "
-                  "memberships; 0 synthetic dependency edges; Flask control 0).**",
+                  "memberships; 0 synthetic dependency edges; MDN impact and "
+                  "region-locality isolation verified; Flask control 0).**",
               ])
 
           summary = "\n".join(lines) + "\n"
