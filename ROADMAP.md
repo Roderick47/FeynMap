@@ -236,7 +236,7 @@ are in `experiments/p1_external_framework_manifest.json`.
 - [x] **P1.3 AppConfig hub treatment:** preserve membership evidence without polluting task-relevant impact and sparse routing
 - [x] **P1.4 Django named URL resolution:** static `reverse`, `reverse_lazy`, namespace and template `{% url %}` relationships
 - [x] **P1.5 Flask Blueprint composition:** resolve registrations and combine `url_prefix` with route decorators
-- [ ] **P1.6 DRF/diagnostics:** serializer/model/permission wiring, routed/unrouted coverage, and actionable unresolved-count separation
+- [x] **P1.6 DRF/diagnostics:** serializer/model/permission wiring, routed/unrouted coverage, and actionable unresolved-count separation
 - [ ] **P1.7 External replay:** compare all original pinned cases before/after with no fabricated relationships or recall regression
 
 **P1.1b frozen findings (29 Sep 2026):**
@@ -309,6 +309,33 @@ See docs/P1_5_FLASK_BLUEPRINT_COMPOSITION.md,
 experiments/results/p1_5_20260929_flask_blueprints.json and
 [external replay 36523511644](https://github.com/Roderick47/FeynMap/actions/runs/36523511644).
 **Next: P1.6 DRF grounding and diagnostic accuracy.**
+
+**P1.6 accepted findings (29 Sep 2026):**
+A dedicated source-only DRF adapter records exact imported serializer_class,
+ModelSerializer.Meta.model, literal permission_classes, declaration-only
+serializer fields and explicitly source-proven Django URL/DRF router coverage
+without equating absence of static registration with a definitely unrouted
+runtime handler. The pinned DRF SerializerMetaclass._get_declared_fields
+contains a real isinstance(obj, Field) use of the imported
+rest_framework.fields.Field class. That exact source-backed USES_DATA edge
+brings **both serializers.py and fields.py into activation** for the locked
+serializer query; fields.py was previously absent even from activation.
+
+The existing packer still omits fields.py from final delivered context
+under its 3,200-token/24-node budget. No oracle modification or speculative
+edge was used to force a false pass: external probes remain **10/11**
+(MDN 6/6, Microblog 2/2, DRF 2/3); delivery-channel balancing is P2.
+The improved integration report explicitly separates **54 raw unmatched**
+DRF contracts into **18 potential review candidates** and **36
+non-actionable/unproven**, and separately classifies **1,069** unresolved
+Python builtin calls rather than treating them as missing integrations.
+These counts are descriptive and the review candidates are not verified
+bugs. P1.2–P1.5 external gates, Python 3.8/3.12, recursive self-check and
+positive/negative DRF fixtures pass. See
+docs/P1_6_DRF_GROUNDING_AND_DIAGNOSTICS.md,
+experiments/results/p1_6_20260929_drf_diagnostics.json, and
+[external replay 36525528345](https://github.com/Roderick47/FeynMap/actions/runs/36525528345).
+**Next: P1.7 frozen external replay and acceptance, then P2 context policy.**
 
 **P2 — retrieval policy and downstream context**
 
