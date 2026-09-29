@@ -354,7 +354,14 @@ def _graph_summary(graph) -> Dict[str, Any]:
             if isinstance(edge.attributes.get("framework"), dict) else False
         )
     ]
-    hubs = Counter(edge.target for edge in app_config_edges)
+    structural = graph.metadata.get("django_app_membership") or {}
+    memberships = structural.get("associations", []) if isinstance(structural, dict) else []
+    # Keep the historical *edge* diagnostic separately: after P1.3 this
+    # should be zero while the inferred app-membership observations remain.
+    hubs = Counter(
+        item["app_config_node_id"] for item in memberships
+        if isinstance(item, dict) and item.get("app_config_node_id")
+    )
     integration = graph.metadata.get("integration") or {}
     return {
         "nodes": len(graph.nodes),
@@ -363,6 +370,10 @@ def _graph_summary(graph) -> Dict[str, Any]:
         "edges_by_kind": dict(sorted(kinds.items())),
         "contracts_by_kind": dict(sorted(contracts_by_kind.items())),
         "app_config_membership_edges": len(app_config_edges),
+        "app_config_source_membership_count": len(memberships),
+        "app_config_membership_unresolved_count": len(
+            structural.get("unresolved", []) if isinstance(structural, dict) else []
+        ),
         "app_config_target_hubs": [
             {"node_id": node_id, "handler_count": count}
             for node_id, count in hubs.most_common(10)
@@ -524,6 +535,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             for item in report["probes"]
         ]
         diagnostic["app_config_membership_edges"] = report["graph"]["app_config_membership_edges"]
+        diagnostic["app_config_source_memberships"] = report["graph"]["app_config_source_membership_count"]
+        diagnostic["app_config_membership_unresolved"] = report["graph"]["app_config_membership_unresolved_count"]
         diagnostic["integration_unresolved"] = report["graph"]["unresolved_contract_count"]
         diagnostic["graph_warnings"] = report["graph"]["diagnostics"]["warnings"][:6]
     print(json.dumps(diagnostic, sort_keys=True))
