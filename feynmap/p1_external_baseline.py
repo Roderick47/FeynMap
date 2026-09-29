@@ -90,6 +90,10 @@ def _source_probes(graph, probe: Mapping[str, Any]) -> Dict[str, Any]:
     }
     if not source:
         result["status"] = "source_symbol_absent"
+        result["source_file_nodes"] = [
+            _node_record(node)
+            for node in graph.nodes if _node_path(node) == _path(probe["source_file"])
+        ][:25]
         return result
     if len(source) != 1:
         result["status"] = "source_symbol_ambiguous"
@@ -415,12 +419,41 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         }
         exit_code = 1
     output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({
+    diagnostic = {
         key: report[key]
         for key in ("fixture_id", "status", "analysis_elapsed_ms", "probe_count",
                     "matched_probes", "missing_probes", "error")
         if key in report
-    }, sort_keys=True))
+    }
+    if "probes" in report:
+        diagnostic["observed_probes"] = [
+            {
+                "id": item["id"],
+                "status": item["observed"]["status"],
+                "source_node_count": item["observed"].get("source_node_count"),
+                "source_file_node_names": [
+                    node["name"] for node in item["observed"].get("source_file_nodes", [])
+                ],
+                "actual_routes": [
+                    {
+                        "target": row.get("target"),
+                        "methods": row.get("methods"),
+                        "name": row.get("name"),
+                        "source_file": row.get("source_file"),
+                    }
+                    for row in item["observed"].get("observed_contracts", [])
+                    if row.get("kind") == "http_server"
+                ],
+                "missing_essential_files": item["observed"].get("missing_essential_files"),
+                "delivered_files": item["observed"].get("delivered_files"),
+                "delivered_channels": item["observed"].get("delivered_channels_by_node_count"),
+            }
+            for item in report["probes"]
+        ]
+        diagnostic["app_config_membership_edges"] = report["graph"]["app_config_membership_edges"]
+        diagnostic["integration_unresolved"] = report["graph"]["unresolved_contract_count"]
+        diagnostic["graph_warnings"] = report["graph"]["diagnostics"]["warnings"][:6]
+    print(json.dumps(diagnostic, sort_keys=True))
     # Missing known semantic relationships are the intended baseline result,
     # not a reason to hide the report or mark the analysis runner as broken.
     return exit_code
