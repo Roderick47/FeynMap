@@ -589,4 +589,5 @@ jobs:
             tests/test_django_named_urls.py \
             tests/test_flask_blueprint_composition.py \
             tests/test_django_drf_semantics.py \
-            tests/test_p1_6_integration_diagnostics.py
+            tests/test_p1_6_integration_diagnostics.py \
+            tests/test_p2_delivery_channels.py
