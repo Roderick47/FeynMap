@@ -17,7 +17,7 @@ from feynmap.context_pipeline import SparseContextPipeline
 from feynmap.p1_replay_acceptance import git_blob_sha
 from feynmap.p2_3a_replay import (
     NEW_SOURCE_MANIFEST_BLOB, _javascript_definitions, compare,
-    load_fresh_manifest, verify_fresh_source,
+    development_acceptance, load_fresh_manifest, verify_fresh_source,
 )
 from feynmap.p2_delivery_experiment import _measure_arm
 
@@ -341,3 +341,47 @@ def test_heuristically_suggested_edge_does_not_become_required_source_fact():
             row["confidence_tier"] == relation.confidence_tier.value
             for row in packed.payload["relationships"]
         )
+
+
+
+def test_development_acceptance_is_independent_from_model_facing_selection():
+    fresh = compare(_manifest(), SOURCE)
+    assert development_acceptance(fresh) == []
+    # This intentionally corrupts only the scorer's output, *after* packing.
+    forged = copy.deepcopy(fresh)
+    task = forged["tasks"][0]
+    arm = next(
+        row for row in task["budgets"][0]["arms"]
+        if row["arm"] == "p2_3a_symbol_evidence"
+    )
+    arm["required_symbols"][0]["delivered"] = False
+    arm["required_symbols"][0]["outcome"] = "activated_but_not_delivered"
+    arm["sufficient"] = True
+    issues = development_acceptance(forged)
+    assert any("task-required activated symbol omitted while sufficient" in row
+               for row in issues)
+
+
+def test_fresh_javascript_unknown_source_symbol_is_not_silently_covered():
+    manifest = _manifest()
+    query = next(task["query"] for task in manifest["tasks"]
+                 if task["id"] == "javascript-alert-implementation")
+    graph = FeynMapEngine().analyze(
+        str(SOURCE), language="auto", framework="none",
+    )
+    search = SparseContextPipeline(graph).search.concept(query).search
+    packed = MinimalContextPacker(graph).pack(
+        search,
+        budget=MinimalContextBudget(max_tokens=1600, max_nodes=12, max_edges=12),
+        delivery_policy=DeliveryChannelPolicy(mode="symbol_evidence"),
+    )
+    activated_names = {hit.node.name for hit in search.hits}
+    if "normalizeSeverity" not in activated_names:
+        assert packed.sufficient is False
+        assert "normalizeSeverity" in packed.unresolved_query_identifiers
+        assert "normalizeSeverity" in packed.to_dict()["metrics"][
+            "unresolved_query_identifiers"
+        ]
+    else:
+        assert "normalizeSeverity" not in packed.unresolved_query_identifiers
+    assert set(packed.selected_node_ids) <= {hit.node.id for hit in search.hits}
