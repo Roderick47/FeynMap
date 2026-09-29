@@ -7,10 +7,12 @@ on:
       - "feynmap/adapters/**"
       - "feynmap/engine.py"
       - "feynmap/integration.py"
+      - "feynmap/repository.py"
       - "feynmap/context_pipeline.py"
       - "experiments/p1_external_framework_manifest.json"
       - "tests/test_p1_external_baseline.py"
       - "tests/test_django_cbv_semantics.py"
+      - "tests/test_django_app_membership.py"
       - ".github/workflows/p1-external-baseline.yml"
   pull_request:
     paths:
@@ -18,10 +20,12 @@ on:
       - "feynmap/adapters/**"
       - "feynmap/engine.py"
       - "feynmap/integration.py"
+      - "feynmap/repository.py"
       - "feynmap/context_pipeline.py"
       - "experiments/p1_external_framework_manifest.json"
       - "tests/test_p1_external_baseline.py"
       - "tests/test_django_cbv_semantics.py"
+      - "tests/test_django_app_membership.py"
       - ".github/workflows/p1-external-baseline.yml"
   workflow_dispatch:
 
@@ -197,6 +201,45 @@ jobs:
                       "P1.2 Django CBV regression: " + ", ".join(regressed)
                   )
 
+          # P1.3: source-tree AppConfig membership remains inspectable, but
+          # zero synthetic DEPENDS_ON edges may feed impact and region locality.
+          p13_requirements = {
+              "mdn-django-local-library": 29,
+              "django-rest-framework": 20,
+              "grinberg-microblog": 0,
+          }
+          p13_gaps = []
+          for fixture_id, expected_count in p13_requirements.items():
+              graph = (reports.get(fixture_id) or {}).get("graph") or {}
+              actual = graph.get("app_config_source_membership_count")
+              edges = graph.get("app_config_membership_edges")
+              if actual != expected_count or edges != 0:
+                  p13_gaps.append(
+                      "%s:source_memberships=%s(expected %d),hub_edges=%s(expected 0)"
+                      % (fixture_id, actual, expected_count, edges)
+                  )
+          mdn_impact = (reports.get("mdn-django-local-library") or {}).get(
+              "p1_3_django_impact"
+          ) or {}
+          if mdn_impact.get("passed") is not True:
+              p13_gaps.append(
+                  "MDN impact/locality: " + str(mdn_impact.get("status", "missing_report"))
+              )
+          if p13_gaps:
+              failed = True
+              lines.extend([
+                  "",
+                  "P1.3 structural membership / no-dependency-hub gate: FAIL "
+                  + "; ".join(p13_gaps),
+              ])
+          else:
+              lines.extend([
+                  "",
+                  "**P1.3 AppConfig gate: PASS (29 MDN + 20 DRF retained structural "
+                  "memberships; 0 synthetic dependency edges; MDN impact and "
+                  "region-locality isolation verified; Flask control 0).**",
+              ])
+
           summary = "\n".join(lines) + "\n"
           print(summary)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
@@ -217,6 +260,8 @@ jobs:
               ],
               "p1_2_django_cbv_gate": "fail" if p12_gaps else "pass",
               "p1_2_missing_or_wrong_tier": p12_gaps,
+              "p1_3_app_config_hub_gate": "fail" if p13_gaps else "pass",
+              "p1_3_membership_or_edge_mismatch": p13_gaps,
               "note": "Known unresolved P1.3-6 probes stay visible; P1.2's five verified facts must not regress.",
           }
           Path("p1-external-summary.json").write_text(json.dumps(report, indent=2) + "\n")

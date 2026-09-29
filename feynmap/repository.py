@@ -52,6 +52,13 @@ def merge_language_graphs(
                 merged.add_edge(edge)
                 existing_edge_ids.add(edge.id)
 
+        # Source-tree framework membership is a separate, non-traversable
+        # structural observation. Carry it through the multi-language merge
+        # as metadata instead of manufacturing DEPENDS_ON or CONTAINS edges.
+        django_membership = graph.metadata.get("django_app_membership")
+        if isinstance(django_membership, dict):
+            merged.metadata["django_app_membership"] = django_membership
+
         applied = graph.metadata.get("frameworks_applied", [])
         if isinstance(applied, list):
             for name in applied:

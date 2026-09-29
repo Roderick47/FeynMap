@@ -26,6 +26,7 @@ from .context_pipeline import SparseContextPipeline
 from .engine import FeynMapEngine
 from .integration import contracts
 from .minimal_context import MinimalContextBudget
+from .query import FeynMapQuery
 from .routing import RegionIndex
 
 
@@ -340,6 +341,54 @@ def _minified_js_probe(root: Path) -> Dict[str, Any]:
     }
 
 
+def _mdn_app_config_impact_probe(graph) -> Dict[str, Any]:
+    """Pin P1.3's actual impact/locality outcomes to MDN's existing graph facts."""
+
+    model = _matching_nodes(graph, "catalog/models.py", "Book")
+    views = [
+        node
+        for symbol in ("BookListView", "BookDetailView")
+        for node in _matching_nodes(graph, "catalog/views.py", symbol)
+    ]
+    configs = _matching_nodes(graph, "catalog/apps.py", "CatalogConfig")
+    if len(model) != 1 or len(views) != 2 or len(configs) != 1:
+        return {
+            "status": "missing_external_impact_anchor",
+            "passed": False,
+            "model_node_count": len(model),
+            "view_node_count": len(views),
+            "config_node_count": len(configs),
+        }
+    query = FeynMapQuery(graph)
+    model_impact = query.impact(model[0].id, depth=1)
+    config_impact = query.impact(configs[0].id, depth=1)
+    model_ids = {item["id"] for item in model_impact["nodes"]}
+    config_ids = {item["id"] for item in config_impact["nodes"]}
+    index = RegionIndex(graph, native_routing=False)
+    config_region = index.region_for_node(configs[0].id)
+    locality_leaks = [
+        view.name for view in views
+        if config_region in index.adjacency[index.region_for_node(view.id)]
+    ]
+    actual_model_views = sorted(view.name for view in views if view.id in model_ids)
+    bad_config_views = sorted(view.name for view in views if view.id in config_ids)
+    passed = (
+        len(actual_model_views) == 2
+        and not bad_config_views
+        and not locality_leaks
+    )
+    return {
+        "status": "grounded_impact_without_appconfig_hub" if passed else "impact_or_locality_regression",
+        "passed": passed,
+        "model_impact_views": actual_model_views,
+        "incorrect_config_impact_views": bad_config_views,
+        "incorrect_config_region_neighbors": locality_leaks,
+        "model_path": "catalog/models.py",
+        "app_config_path": "catalog/apps.py",
+        "depth": 1,
+    }
+
+
 def _graph_summary(graph) -> Dict[str, Any]:
     channels = Counter(node.language or "unknown" for node in graph.nodes)
     kinds = Counter(edge.kind.value for edge in graph.edges)
@@ -354,7 +403,14 @@ def _graph_summary(graph) -> Dict[str, Any]:
             if isinstance(edge.attributes.get("framework"), dict) else False
         )
     ]
-    hubs = Counter(edge.target for edge in app_config_edges)
+    structural = graph.metadata.get("django_app_membership") or {}
+    memberships = structural.get("associations", []) if isinstance(structural, dict) else []
+    # Keep the historical *edge* diagnostic separately: after P1.3 this
+    # should be zero while the inferred app-membership observations remain.
+    hubs = Counter(
+        item["app_config_node_id"] for item in memberships
+        if isinstance(item, dict) and item.get("app_config_node_id")
+    )
     integration = graph.metadata.get("integration") or {}
     return {
         "nodes": len(graph.nodes),
@@ -363,6 +419,10 @@ def _graph_summary(graph) -> Dict[str, Any]:
         "edges_by_kind": dict(sorted(kinds.items())),
         "contracts_by_kind": dict(sorted(contracts_by_kind.items())),
         "app_config_membership_edges": len(app_config_edges),
+        "app_config_source_membership_count": len(memberships),
+        "app_config_membership_unresolved_count": len(
+            structural.get("unresolved", []) if isinstance(structural, dict) else []
+        ),
         "app_config_target_hubs": [
             {"node_id": node_id, "handler_count": count}
             for node_id, count in hubs.most_common(10)
@@ -440,6 +500,10 @@ def evaluate_fixture(
         "matched_probes": sum(p["passed"] for p in probes),
         "missing_probes": [p["id"] for p in probes if not p["passed"]],
         "probes": probes,
+        "p1_3_django_impact": (
+            _mdn_app_config_impact_probe(graph)
+            if fixture["id"] == "mdn-django-local-library" else None
+        ),
         "baseline_only": True,
         "no_parser_semantics_changed": True,
     }
@@ -524,6 +588,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             for item in report["probes"]
         ]
         diagnostic["app_config_membership_edges"] = report["graph"]["app_config_membership_edges"]
+        diagnostic["app_config_source_memberships"] = report["graph"]["app_config_source_membership_count"]
+        diagnostic["app_config_membership_unresolved"] = report["graph"]["app_config_membership_unresolved_count"]
+        if report.get("p1_3_django_impact") is not None:
+            diagnostic["p1_3_django_impact"] = report["p1_3_django_impact"]
         diagnostic["integration_unresolved"] = report["graph"]["unresolved_contract_count"]
         diagnostic["graph_warnings"] = report["graph"]["diagnostics"]["warnings"][:6]
     print(json.dumps(diagnostic, sort_keys=True))

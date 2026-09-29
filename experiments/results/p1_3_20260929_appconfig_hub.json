@@ -1,0 +1,106 @@
+{
+  "schema": "feynmap.p1_3_appconfig_hub_result.v1",
+  "recorded_date": "2026-09-29",
+  "phase": "P1.3",
+  "prior_main_commit": "a6c5ae7da8d268b5200879f4209643e37acfe206",
+  "external_replay_run_id": 36512331939,
+  "external_replay_url": "https://github.com/Roderick47/FeynMap/actions/runs/36512331939",
+  "frozen_manifest": "experiments/p1_external_framework_manifest.json",
+  "original_p1_1b_report": "experiments/results/p1_1b_20260929_external_baseline.json",
+  "original_p1_2_replay": "experiments/results/p1_2_20260929_django_cbv_replay.json",
+  "expected_membership_semantics": {
+    "storage": "graph.metadata.django_app_membership.associations",
+    "relationship": "source_tree_membership_not_behavioral_dependency",
+    "scope": "source_tree_only",
+    "evidence_kind": "framework_analysis",
+    "evidence_detector": "django.app_config.source_tree_membership",
+    "confidence": 0.65,
+    "confidence_tier": "inferred",
+    "negative_claim": "A shared source directory does not independently establish INSTALLED_APPS registration or a behavioral handler dependency.",
+    "ambiguity": "If multiple equally near AppConfigs exist, store an unresolved association rather than pick one."
+  },
+  "fixture_results": [
+    {
+      "id": "mdn-django-local-library",
+      "pinned_commit": "92f1c1e7bdd4ada5209a3c69876ce29e6cee3d96",
+      "before_nodes": 266,
+      "after_nodes": 266,
+      "before_edges": 635,
+      "after_edges": 606,
+      "before_appconfig_dependency_hub_edges": 29,
+      "after_appconfig_dependency_hub_edges": 0,
+      "preserved_inferred_source_memberships": 29,
+      "source_probes_before": "5/6",
+      "source_probes_after": "5/6",
+      "remaining_missing": [
+        "named-url-books"
+      ],
+      "impact_validation": {
+        "status": "pass",
+        "model": "catalog/models.py Book",
+        "impact_depth": 1,
+        "model_impact_views": [
+          "BookDetailView",
+          "BookListView"
+        ],
+        "appconfig_impact_incorrect_views": [],
+        "appconfig_direct_region_neighbors": []
+      }
+    },
+    {
+      "id": "django-rest-framework",
+      "pinned_commit": "b578eab1cad040414b758131af1e17aa000b51e2",
+      "before_nodes": 4128,
+      "after_nodes": 4128,
+      "before_edges": 8040,
+      "after_edges": 8020,
+      "before_appconfig_dependency_hub_edges": 20,
+      "after_appconfig_dependency_hub_edges": 0,
+      "preserved_inferred_source_memberships": 20,
+      "source_probes_before": "2/3",
+      "source_probes_after": "2/3",
+      "remaining_missing": [
+        "serializer-implementation-recall"
+      ]
+    },
+    {
+      "id": "grinberg-microblog",
+      "pinned_commit": "a975ef64864354867c88e0ed3a17ba7d17dca752",
+      "before_nodes": 279,
+      "after_nodes": 279,
+      "before_edges": 607,
+      "after_edges": 607,
+      "before_appconfig_dependency_hub_edges": 0,
+      "after_appconfig_dependency_hub_edges": 0,
+      "preserved_inferred_source_memberships": 0,
+      "source_probes_before": "0/2",
+      "source_probes_after": "0/2",
+      "remaining_missing": [
+        "api-token-post",
+        "api-token-delete"
+      ]
+    }
+  ],
+  "total_source_authored_probes_met": {
+    "before": 7,
+    "after": 7,
+    "total": 11
+  },
+  "acceptance": {
+    "external_memberships_preserved": true,
+    "no_synthetic_appconfig_dependency_edges": true,
+    "book_model_impact_reaches_views": true,
+    "appconfig_impact_does_not_fanout_to_views": true,
+    "region_adjacency_no_appconfig_membership_hop": true,
+    "metadata_survives_multilanguage_merge_and_graph_roundtrip": true,
+    "other_framework_probe_results_unchanged": true,
+    "old_report_not_overwritten": true
+  },
+  "limitations": [
+    "Only source-directory proximity to a class in apps.py is observed; runtime registration is not proven.",
+    "Graph edges can have unrelated containment and import relations; the gate specifically removes manufactured handler-to-AppConfig DEPENDS_ON edges.",
+    "Analysis runtime is a single CI observation, not a statistically meaningful speed benchmark.",
+    "Original P1.1b and P1.2 reports remain immutable; this is a separate post-change replay.",
+    "P1.4 named URLs, P1.5 Blueprint prefix and DRF implementation-context retrieval remain outstanding."
+  ]
+}

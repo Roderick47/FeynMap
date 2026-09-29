@@ -1,6 +1,6 @@
 # P1 — Small, testable framework-semantic checkpoints
 
-Status: P1.1 and P1.2 complete; P1.3 AppConfig hub semantics is next.
+Status: P1.1–P1.3 complete; P1.4 Django named URL semantics is next.
 
 Do NOT one-shot P1: each phase changes FeynMap's graph truth, so regression risk compounds if model, template, URL, Flask and DRF changes are mixed into one implementation.
 
@@ -57,13 +57,24 @@ speculative edges.
 See `docs/P1_2_DJANGO_CBV_GROUNDING.md` and
 `experiments/results/p1_2_20260929_django_cbv.json`.
 
-## P1.3 — Django AppConfig hub semantics
+## P1.3 — Django AppConfig hub semantics (done)
 
-- Separate app lifecycle/membership from task-relevant behavioral dependency.
-- Preserve provenance for framework membership without promoting every handler
-  into an unrestricted `DEPENDS_ON` hub across sparse routing.
-- Gate: impact on Book lists actual model/view dependencies rather than only
-  app infrastructure; independent membership tests remain intact.
+Remove the synthetic handler→AppConfig `DEPENDS_ON` edges. Retain the source
+directory association separately in additive graph metadata, with its original
+source location, inferred evidence tier, unique nearest-match handling and
+unresolved equally near associations. This is not proof of runtime app
+registration. The metadata persists across mixed-language graph merges and
+snapshot serialization but is not traversed as a behavioral relationship.
+
+Pinned P1.3 replay: MDN keeps 29 inferred structural memberships with zero
+artificial hub edges; DRF keeps 20 with zero artificial hub edges. All five
+previous P1.2 MDN relations remain correctly evidenced; total independent
+external results remain 7/11. The real MDN Book impact includes BookListView
+and BookDetailView; CatalogConfig impact and direct region adjacency no longer
+pull in those views solely through membership.
+
+See `docs/P1_3_APPCONFIG_HUB_SEMANTICS.md` and
+`experiments/results/p1_3_20260929_appconfig_hub.json`.
 
 ## P1.4 — Django named URL graph
 

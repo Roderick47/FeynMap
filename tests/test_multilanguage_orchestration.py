@@ -111,7 +111,7 @@ def test_django_urlpattern_is_resolved_from_javascript_client(tmp_path):
     assert _has_edge(graph, client, dashboard, EdgeKind.REQUESTS)
 
 
-def test_django_handler_depends_on_nearest_app_config(tmp_path):
+def test_django_handler_membership_is_provenance_not_dependency_edge(tmp_path):
     (tmp_path / "requirements.txt").write_text("django\n", encoding="utf-8")
     (tmp_path / "manage.py").write_text("", encoding="utf-8")
     (tmp_path / "core").mkdir()
@@ -134,7 +134,19 @@ def test_django_handler_depends_on_nearest_app_config(tmp_path):
 
     assert config.kind == NodeKind.SERVICE
     assert config.framework == "django"
-    assert _has_edge(graph, handler, config, EdgeKind.DEPENDS_ON)
+    # A shared source directory is NOT a semantic call or dependency.
+    assert not _has_edge(graph, handler, config, EdgeKind.DEPENDS_ON)
+    membership = graph.metadata["django_app_membership"]
+    assert membership["relationship"] == "source_tree_membership_not_behavioral_dependency"
+    assert len(membership["associations"]) == 1
+    item = membership["associations"][0]
+    assert item["handler_node_id"] == handler.id
+    assert item["app_config_node_id"] == config.id
+    assert item["app_root"] == "core"
+    assert item["scope"] == "source_tree_only"
+    assert item["confidence_tier"] == "inferred"
+    assert item["evidence"]["kind"] == "framework_analysis"
+    assert item["evidence"]["detector"] == "django.app_config.source_tree_membership"
 
 
 def test_django_template_composition_and_custom_filters_form_cross_runtime_paths(tmp_path):
