@@ -8,6 +8,7 @@ from feynmap.core import Evidence, EvidenceKind, NodeKind, SemanticGraph, Semant
 from ..base import FrameworkAdapter
 from .django_cbv import enrich_django_cbvs
 from .django_urls import enrich_django_named_urls
+from .django_drf import enrich_django_drf
 from ._python import (
     attach_template_render_contracts,
     dependency_text,
@@ -52,8 +53,6 @@ class DjangoAdapter(FrameworkAdapter):
                 bases = python.get("bases", []) if isinstance(python, dict) else []
                 if has_base(node, "Model") and (imported(imports, "django.db") or any(str(base).endswith("models.Model") for base in bases)):
                     mark_role(node, self.name, NodeKind.DATA_MODEL, "persistent_model", "Django model inheritance detected")
-                elif has_base(node, "Serializer", "ModelSerializer", "HyperlinkedModelSerializer") and imported(imports, "rest_framework"):
-                    mark_role(node, self.name, NodeKind.TRANSFORMER, "serializer", "Django REST Framework serializer inheritance detected")
                 elif has_base(node, "MiddlewareMixin") or path.endswith("middleware.py"):
                     mark_role(node, self.name, NodeKind.MIDDLEWARE, "middleware", "Django middleware convention detected", 0.9)
                 elif has_base(node, "View", "APIView", "ViewSet", "ModelViewSet", "GenericAPIView", "TemplateView", "ListView", "DetailView", "CreateView", "UpdateView", "DeleteView"):
@@ -67,6 +66,7 @@ class DjangoAdapter(FrameworkAdapter):
         enrich_django_cbvs(graph, project_path)
         self._record_app_config_membership(graph)
         enrich_django_named_urls(graph, project_path)
+        enrich_django_drf(graph, project_path)
         attach_template_render_contracts(graph, project_path, self.name)
         return finalize(graph, self.name)
 
