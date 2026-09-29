@@ -464,9 +464,10 @@ def as_markdown(result: Mapping[str, Any]) -> str:
     lines.extend([
         "",
         "These are additive role-attributed node JSON characters divided by "
-        "four, not actual model-token billing. Shared costs also include "
-        "other classified channels only where explicitly displayed in the "
-        "machine-readable role map; full role+shared characters reconcile.",
+        "four, not actual model-token billing. Documentation, configuration "
+        "and unknown-role columns are omitted for table width but retained "
+        "in the complete role map; shared overhead excludes all node roles. "
+        "Full role+shared characters reconcile.",
         "",
         "Critical: each row separates source-author required evidence activated "
         "from evidence actually delivered; conditional recall uses only the "
