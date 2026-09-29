@@ -9,12 +9,14 @@ import argparse
 import json
 import sys
 from collections import Counter, defaultdict
+import math
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Sequence
 
 from .p2_delivery_experiment import (
     FROZEN_MANIFEST_GIT_BLOB, SCHEMA, compact_json, load_frozen_manifest,
 )
+from .delivery_channels import file_channel, task_channel
 
 COLLECTION_SCHEMA = "feynmap.p2_2_delivery_collection.v1"
 
@@ -62,6 +64,27 @@ def collect(manifest: Mapping[str, Any],
                 continue
             if task.get("query") != spec["query"] or task.get("cohort") != fixture_id:
                 failures.append(tid + ": query/cohort was changed after freeze")
+            if task.get("intent_detected_by_policy") != task_channel(spec["query"]):
+                failures.append(tid + ": policy intent detector changed under the experiment")
+            shared = task.get("shared_activation") or {}
+            active_ids = set(shared.get("source_node_ids") or [])
+            activated_paths = set(shared.get("source_paths") or [])
+            edge_rows = shared.get("source_edge_endpoints") or []
+            edge_map = {
+                row["id"]: (row["source"], row["target"])
+                for row in edge_rows
+            }
+            if (
+                len(active_ids) != shared.get("activated_nodes")
+                or len(edge_map) != shared.get("activated_edges")
+                or len(edge_rows) != len(edge_map)
+            ):
+                failures.append(tid + ": duplicate/inconsistent activated graph snapshot")
+            if any(
+                src not in active_ids or dst not in active_ids
+                for src, dst in edge_map.values()
+            ):
+                failures.append(tid + ": activated edge endpoint absent from activated nodes")
             budgets = task.get("budget_comparisons") or []
             if [item.get("id") for item in budgets] != [
                 item["id"] for item in manifest["budgets"]
@@ -108,6 +131,18 @@ def collect(manifest: Mapping[str, Any],
                         or arm.get("estimated_context_tokens", -1) > limit["max_tokens"]
                     ):
                         failures.append(tid + ": invalid selection, provenance or budget")
+                    selected = set(arm.get("selected_node_ids") or [])
+                    selected_edges = set(arm.get("selected_edge_ids") or [])
+                    if not selected <= active_ids or not selected_edges <= set(edge_map):
+                        failures.append(tid + ": collector rejected non-activated selected item")
+                    if any(
+                        not set(edge_map[edge_id]) <= selected
+                        for edge_id in selected_edges if edge_id in edge_map
+                    ):
+                        failures.append(tid + ": collector rejected missing selected edge endpoint")
+                    if any(path not in activated_paths for path in (arm.get("delivered_files") or [])):
+                        failures.append(tid + ": collector rejected file outside source activation")
+
                     accounting = arm.get("token_characters_by_source_role") or {}
                     if (
                         not accounting.get("exact_char_accounting_reconciles")
@@ -123,6 +158,14 @@ def collect(manifest: Mapping[str, Any],
                            != arm.get("nodes")
                     ):
                         failures.append(tid + ": JSON role-character budget does not reconcile")
+
+                    chars = accounting.get("deterministic_full_json_characters")
+                    if (
+                        not isinstance(chars, int)
+                        or math.ceil(chars / 4.0) != arm.get("estimated_context_tokens")
+                        or accounting.get("preauthored_distractor_node_chars", 0) > accounting.get("node_chars", 0)
+                    ):
+                        failures.append(tid + ": estimator/distractor attribution inconsistent")
 
                     required_file_rows = arm.get("required_files") or []
                     required_symbol_rows = arm.get("required_symbols") or []
@@ -144,6 +187,85 @@ def collect(manifest: Mapping[str, Any],
                         spec.get("distractor_symbols") or []
                     ):
                         failures.append(tid + ": optional/distractor label count changed")
+
+                    delivery_paths = set(arm.get("delivered_files") or [])
+                    for row in required_file_rows:
+                        active = row["file"] in activated_paths
+                        delivered = row["file"] in delivery_paths
+                        outcome = (
+                            "delivered" if delivered else
+                            "activated_but_not_delivered" if active
+                            else "not_activated"
+                        )
+                        if (
+                            row.get("channel") != file_channel(row["file"])
+                            or row.get("activated") is not active
+                            or row.get("delivered") is not delivered
+                            or row.get("outcome") != outcome
+                        ):
+                            failures.append(tid + ": claimed required file contradicts source selection")
+                    for group in (
+                        required_symbol_rows,
+                        arm.get("optional_useful_support_symbols") or [],
+                        arm.get("source_authored_distractor_symbols") or [],
+                    ):
+                        for row in group:
+                            ids = row.get("node_ids") or []
+                            index = row.get("graph_index_status")
+                            actual_active = len(ids) == 1 and ids[0] in active_ids
+                            actual_delivered = len(ids) == 1 and ids[0] in selected
+                            expected = (
+                                index if index != "unique" else
+                                "not_activated" if not actual_active else
+                                "activated_but_not_delivered" if not actual_delivered else
+                                "delivered"
+                            )
+                            if (
+                                row.get("channel") != file_channel(row["file"])
+                                or row.get("activated") is not actual_active
+                                or row.get("delivered") is not actual_delivered
+                                or row.get("outcome") != expected
+                                or (index == "unique") != (len(ids) == 1)
+                            ):
+                                failures.append(tid + ": symbol status contradicts selected activated nodes")
+                    def ratio(rows, key):
+                        return (
+                            round(sum(bool(item.get(key)) for item in rows) / len(rows), 6)
+                            if rows else None
+                        )
+                    test_rows = [
+                        row for row in required_symbol_rows if row["channel"] == "test"
+                    ]
+                    migration_rows = [
+                        row for row in required_symbol_rows if row["channel"] == "migration"
+                    ]
+                    activated_required = sum(
+                        bool(row.get("activated")) for row in required_symbol_rows
+                    )
+                    conditional = (
+                        round(sum(bool(row.get("delivered")) for row in required_symbol_rows)
+                              / activated_required, 6)
+                        if activated_required else None
+                    )
+                    for key, observed, expected in (
+                        ("required_file_recall", arm.get("required_file_recall"),
+                         ratio(required_file_rows, "delivered")),
+                        ("required_file_activation_recall", arm.get("required_file_activation_recall"),
+                         ratio(required_file_rows, "activated")),
+                        ("required_symbol_recall", arm.get("required_symbol_recall"),
+                         ratio(required_symbol_rows, "delivered")),
+                        ("required_symbol_activation_recall", arm.get("required_symbol_activation_recall"),
+                         ratio(required_symbol_rows, "activated")),
+                        ("required_test_symbol_recall", arm.get("required_test_symbol_recall"),
+                         ratio(test_rows, "delivered")),
+                        ("required_migration_symbol_recall", arm.get("required_migration_symbol_recall"),
+                         ratio(migration_rows, "delivered")),
+                        ("conditional_delivery_recall_among_activated_required_symbols",
+                         arm.get("conditional_delivery_recall_among_activated_required_symbols"),
+                         conditional),
+                    ):
+                        if observed != expected:
+                            failures.append(tid + ": scored " + key + " disagrees with individual evidence")
 
                     stat["file_required"] += len(required_file_rows)
                     stat["file_activated"] += sum(bool(row.get("activated")) for row in required_file_rows)
