@@ -68,7 +68,7 @@ def file_channel(path: Optional[str]) -> str:
         or filename.endswith(_TEST_SUFFIXES)
     ):
         return TEST
-    if filename in _CONFIG_NAMES or filename.startswith((".github/",)):
+    if filename in _CONFIG_NAMES:
         return CONFIGURATION
     if (
         any(part in _DOCUMENTATION_DIRS for part in parts)
@@ -124,11 +124,11 @@ def task_channel(query: str) -> str:
             char.lower() if char.isalnum() else " " for char in str(query)
         ).split() if token
     }
-    if tokens & {"migration", "migrations", "migrate", "schema", "alembic"}:
-        return MIGRATION
-    if tokens & {"test", "tests", "testing", "pytest", "unit", "assertion",
+    if tokens & {"test", "tests", "testing", "pytest", "assertion",
                  "assertions", "fixture", "fixtures", "coverage", "spec"}:
         return TEST
+    if tokens & {"migration", "migrations", "migrate", "alembic"}:
+        return MIGRATION
     if tokens & {"vendor", "vendored", "generated", "bundle", "minified"}:
         return VENDOR
     return IMPLEMENTATION
