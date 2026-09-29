@@ -1,6 +1,6 @@
 # P1 — Small, testable framework-semantic checkpoints
 
-Status: P1.1–P1.3 complete; P1.4 Django named URL semantics is next.
+Status: P1.1–P1.4 complete; P1.5 Flask Blueprint prefix composition is next.
 
 Do NOT one-shot P1: each phase changes FeynMap's graph truth, so regression risk compounds if model, template, URL, Flask and DRF changes are mixed into one implementation.
 
@@ -76,14 +76,21 @@ pull in those views solely through membership.
 See `docs/P1_3_APPCONFIG_HUB_SEMANTICS.md` and
 `experiments/results/p1_3_20260929_appconfig_hub.json`.
 
-## P1.4 — Django named URL graph
+## P1.4 — Django named URL graph (done)
 
-- Connect `path` and supported static `reverse`, `reverse_lazy` and `{% url %}`
-  references using namespace-aware route names.
-- Dynamic unknown expressions remain unresolved; template literal text is
-  not treated as an HTTP client URL.
-- Gate: independent named-route/reversal fixtures have correct targets and
-  source-backed confidence; unknown names do not become fabricated edges.
+Resolve imported handlers from literal urlpatterns and compose static include()
+prefixes and namespaces. Static reverse/reverse_lazy and template {% url %}
+references make ROUTES_TO edges only when one full name maps to one registered
+handler; unsupported/dynamic/ambiguous references retain UNKNOWN. Named
+registration contracts preserve source file, line, static derivation, bare name,
+and namespace-aware full name. Template tags are not generic HTTP client URLs.
+
+[External replay 36522700164](https://github.com/Roderick47/FeynMap/actions/runs/36522700164):
+the independent MDN named-route fact matches /catalog/books/ at
+catalog/urls.py line 8, improving MDN 5/6 -> **6/6** and the 11-probe corpus
+7/11 -> **8/11**. P1.2's five evidence tiers and P1.3's membership/non-hub
+regressions stay green. Flask remains 0/2; DRF 2/3. Python 3.8/3.12 tests
+and recursive self-check pass. See docs/P1_4_DJANGO_NAMED_URLS.md.
 
 ## P1.5 — Flask registered Blueprint prefix composition
 

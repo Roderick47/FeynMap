@@ -73,6 +73,7 @@ class IntegrationResolver:
         resolved += self._resolve_template_renders(graph, edge_keys, by_kind)
         resolved += self._resolve_template_composition(graph, edge_keys, by_kind)
         resolved += self._resolve_template_tags(graph, edge_keys, by_kind)
+        resolved += self._resolve_django_named_urls(graph, edge_keys, by_kind)
         resolved += self._resolve_script_loads(graph, edge_keys, by_kind)
         resolved += self._resolve_event_handlers(graph, edge_keys, by_kind)
 
@@ -234,6 +235,48 @@ class IntegrationResolver:
                     count += 1
         if count:
             by_kind["html_event->javascript"] = count
+        return count
+
+    def _resolve_django_named_urls(
+        self, graph: SemanticGraph, edge_keys: set, by_kind: Dict[str, int],
+    ) -> int:
+        """Match literal reverse/template URL names to uniquely registered handlers.
+
+        A local declaration name is not an alias for a namespaced route. Both
+        source and target retain their distinct source-file/line contracts.
+        Multiple registrations of the same full name stay ambiguous.
+        """
+        registry: Dict[str, List[Tuple[SemanticNode, Dict[str, Any]]]] = {}
+        for handler in graph.nodes:
+            for route in contracts(handler, "http_server"):
+                if (
+                    route.get("framework") != "django"
+                    or route.get("derivation") != "django.urls.static_registration"
+                    or not route.get("name")
+                ):
+                    continue
+                qualified = str(route.get("route_name") or "")
+                if qualified:
+                    registry.setdefault(qualified, []).append((handler, route))
+
+        count = 0
+        for source in graph.nodes:
+            for reference in contracts(source, "django_url_reverse"):
+                name = str(reference.get("target") or "")
+                candidates = registry.get(name, [])
+                if len(candidates) != 1:
+                    continue
+                target, registration = candidates[0]
+                if self._connect(
+                    graph, edge_keys, source, target, EdgeKind.ROUTES_TO,
+                    reference, "django_named_url", confidence=min(
+                        float(reference.get("confidence", 0.98)),
+                        float(registration.get("confidence", 0.98)),
+                    ), target_contract=registration,
+                ):
+                    count += 1
+        if count:
+            by_kind["django_url_reverse->named_route"] = count
         return count
 
     def _resolve_pair(
