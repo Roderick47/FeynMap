@@ -1,6 +1,6 @@
 # P1 — Small, testable framework-semantic checkpoints
 
-Status: P1.1–P1.4 complete; P1.5 Flask Blueprint prefix composition is next.
+Status: P1.1–P1.5 complete; P1.6 DRF grounding and diagnostic accuracy is next.
 
 Do NOT one-shot P1: each phase changes FeynMap's graph truth, so regression risk compounds if model, template, URL, Flask and DRF changes are mixed into one implementation.
 
@@ -92,12 +92,22 @@ catalog/urls.py line 8, improving MDN 5/6 -> **6/6** and the 11-probe corpus
 regressions stay green. Flask remains 0/2; DRF 2/3. Python 3.8/3.12 tests
 and recursive self-check pass. See docs/P1_4_DJANGO_NAMED_URLS.md.
 
-## P1.5 — Flask registered Blueprint prefix composition
+## P1.5 — Flask registered Blueprint prefix composition (done)
 
-- Resolve Blueprint identities to actual registration sites; combine static
-  registration `url_prefix` with individual decorator paths.
-- Gate: pinned Microblog `get_token` POST and `revoke_token` DELETE both map
-  to `/api/tokens`; unregistered/dynamic prefixes remain explicitly unknown.
+Trace the exact imported Blueprint identity through declaration, registration
+on a statically instantiated Flask app and decorated route, including aliased
+imports, package-relative factories, direct Flask app routes, multiple and
+nested Blueprint registrations. Compose registered url_prefix and rule,
+preserving each source file/line and static confidence. Unknown/dynamic and
+unregistered routes remain unresolved; do not expose a raw path fragment.
+
+[External replay 36523511644](https://github.com/Roderick47/FeynMap/actions/runs/36523511644):
+pinned Microblog POST and DELETE now both map to /api/tokens, improving
+Microblog **0/2 -> 2/2** and the 11 external source-authored probes **8/11
+-> 10/11**. Previous MDN=6/6, DRF=2/3 and P1.2–P1.4 CI gates persist.
+Python 3.8/3.12 + recursive self-check pass. See
+docs/P1_5_FLASK_BLUEPRINT_COMPOSITION.md and
+experiments/results/p1_5_20260929_flask_blueprints.json.
 
 ## P1.6 — DRF and diagnostic accuracy
 
