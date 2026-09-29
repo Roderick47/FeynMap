@@ -203,3 +203,34 @@ def test_symbol_oracle_requires_matching_source_not_name_only():
     assert exact["graph_index_status"] == "unique"
     assert other["graph_index_status"] == "not_indexed"
     assert exact["node_ids"] != other["node_ids"]
+
+
+
+def test_collector_rejects_claimed_symbol_success_without_actual_delivery():
+    manifest = _manifest()
+    report = evaluate_fixture(
+        manifest, "stockroom-independent", STOCK_ROOT,
+    )
+    corrupted = copy.deepcopy(report)
+    first = corrupted["tasks"][0]["budget_comparisons"][1]["arms"][1]
+    symbol = first["required_symbols"][0]
+    symbol["delivered"] = not symbol["delivered"]
+    result = collect(manifest, {"stockroom-independent": corrupted})
+    assert result["status"] == "integrity_failure"
+    assert any("symbol status contradicts selected activated nodes" in issue
+               for issue in result["integrity_errors"])
+
+
+def test_collector_rejects_edge_not_in_source_activation_even_if_runner_claims_valid():
+    manifest = _manifest()
+    report = evaluate_fixture(
+        manifest, "stockroom-independent", STOCK_ROOT,
+    )
+    corrupted = copy.deepcopy(report)
+    first = corrupted["tasks"][0]["budget_comparisons"][1]["arms"][0]
+    first["selected_edge_ids"].append("invented-not-activated-edge-id")
+    first["edges"] += 1
+    result = collect(manifest, {"stockroom-independent": corrupted})
+    assert result["status"] == "integrity_failure"
+    assert any("non-activated selected item" in issue
+               for issue in result["integrity_errors"])
