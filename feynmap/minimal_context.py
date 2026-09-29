@@ -14,6 +14,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .context import _compact_edge, _compact_node, estimate_tokens
+from .delivery_channels import (
+    IMPLEMENTATION, TEST, MIGRATION, VENDOR, DeliveryChannelPolicy,
+    file_channel, task_channel,
+)
 from .core import EdgeKind, SemanticEdge, SemanticGraph, SemanticNode
 from .core.model import TIER_RANK
 from .judgment.search import GuidedSearchResult, SearchHit, _edge_search_priority
@@ -220,9 +224,14 @@ class MinimalContextPacker:
         result: GuidedSearchResult,
         *,
         budget: Optional[MinimalContextBudget] = None,
+        delivery_policy: Optional[DeliveryChannelPolicy] = None,
     ) -> MinimalContextResult:
         requested = (budget or MinimalContextBudget()).normalized()
-        critical = self._critical_node_ids(result)
+        policy = delivery_policy.normalized() if delivery_policy is not None else None
+        critical = (
+            self._role_critical_node_ids(result, policy)
+            if policy is not None else self._critical_node_ids(result)
+        )
         payload_cache = _PackPayloadCache(nodes={}, edges={})
 
         caps: List[int] = []
@@ -247,6 +256,7 @@ class MinimalContextPacker:
                 budget=current_budget,
                 critical_node_ids=critical,
                 payload_cache=payload_cache,
+                delivery_policy=policy,
             )
             packed = MinimalContextResult(
                 payload=packed.payload,
