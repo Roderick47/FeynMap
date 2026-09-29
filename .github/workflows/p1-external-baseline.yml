@@ -147,6 +147,38 @@ jobs:
                   report["probe_count"], ", ".join(report["missing_probes"]) or "none",
                   report["analysis_elapsed_ms"], report["process_peak_rss_kb"],
               ))
+          # P1.2 source-grounded facts are now an established regression
+          # gate, not expected missing observations. Other unresolved P1.3-6
+          # cases remain visible but do not fail this phase's replay.
+          p12 = {
+              "cbv-book-list-model": "supported",
+              "cbv-book-detail-model": "supported",
+              "cbv-book-list-default-template": "inferred",
+              "cbv-book-detail-default-template": "inferred",
+              "cbv-explicit-template": "supported",
+          }
+          mdn = reports.get("mdn-django-local-library") or {}
+          by_id = {row["id"]: row for row in mdn.get("probes", [])}
+          p12_gaps = []
+          for probe_id, tier in p12.items():
+              row = by_id.get(probe_id)
+              if not row or row.get("passed") is not True:
+                  p12_gaps.append(probe_id + ":not_matched")
+                  continue
+              edges = row["observed"].get("matching_edges") or []
+              if len(edges) != 1 or edges[0].get("confidence_tier") != tier:
+                  p12_gaps.append(probe_id + ":wrong_provenance_tier")
+          if p12_gaps:
+              failed = True
+              lines.extend([
+                  "",
+                  "P1.2 Django model/template regression: FAIL " + ", ".join(p12_gaps),
+              ])
+          else:
+              lines.extend([
+                  "",
+                  "**P1.2 Django CBV model/template regression: PASS (5/5, expected evidence tiers).**",
+              ])
           summary = "\n".join(lines) + "\n"
           print(summary)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
@@ -165,7 +197,9 @@ jobs:
                   }
                   for entry in manifest["fixtures"]
               ],
-              "note": "A source-grounded semantic miss is expected baseline data, not a CI failure.",
+              "p1_2_django_cbv_gate": "fail" if p12_gaps else "pass",
+              "p1_2_missing_or_wrong_tier": p12_gaps,
+              "note": "Known unresolved P1.3-6 probes stay visible; P1.2's five verified facts must not regress.",
           }
           Path("p1-external-summary.json").write_text(json.dumps(report, indent=2) + "\n")
           if failed or os.environ["P1_JOB_RESULT"] != "success":
