@@ -235,7 +235,7 @@ are in `experiments/p1_external_framework_manifest.json`.
 - [x] **P1.2 Django CBV grounding:** imported `model`, `queryset`, explicit and convention-backed template relationships
 - [x] **P1.3 AppConfig hub treatment:** preserve membership evidence without polluting task-relevant impact and sparse routing
 - [x] **P1.4 Django named URL resolution:** static `reverse`, `reverse_lazy`, namespace and template `{% url %}` relationships
-- [ ] **P1.5 Flask Blueprint composition:** resolve registrations and combine `url_prefix` with route decorators
+- [x] **P1.5 Flask Blueprint composition:** resolve registrations and combine `url_prefix` with route decorators
 - [ ] **P1.6 DRF/diagnostics:** serializer/model/permission wiring, routed/unrouted coverage, and actionable unresolved-count separation
 - [ ] **P1.7 External replay:** compare all original pinned cases before/after with no fabricated relationships or recall regression
 
@@ -290,6 +290,25 @@ Flask remains 0/2 and DRF 2/3. Python 3.8/3.12 tests and recursive
 self-check pass. See docs/P1_4_DJANGO_NAMED_URLS.md and
 [external replay 36522700164](https://github.com/Roderick47/FeynMap/actions/runs/36522700164).
 **Next: P1.5 Flask Blueprint prefix composition.**
+
+**P1.5 accepted findings (29 Sep 2026):**
+Only Blueprints statically traced from their constructor through a Flask
+application's register_blueprint() produce exposed http_server contracts.
+Literal application-registration url_prefix composes with decorator paths,
+with declaration/registration provenance and original HTTP methods retained.
+Unregistered or dynamically prefixed Blueprints stay unresolved; raw route
+fragments do not masquerade as HTTP server endpoints. Imported Flask app
+aliases, package-relative factories, multiple and nested Blueprint
+registrations are covered by negative/positive regression fixtures.
+
+The locked Microblog token POST+DELETE probes improve **0/2 → 2/2**, with
+both grounded at **/api/tokens**. The independent development corpus improves
+**8/11 → 10/11** (MDN 6/6, Microblog 2/2, DRF 2/3). P1.2, P1.3 and P1.4
+gates pass unchanged. Python 3.8/3.12 and recursive self-check are green.
+See docs/P1_5_FLASK_BLUEPRINT_COMPOSITION.md,
+experiments/results/p1_5_20260929_flask_blueprints.json and
+[external replay 36523511644](https://github.com/Roderick47/FeynMap/actions/runs/36523511644).
+**Next: P1.6 DRF grounding and diagnostic accuracy.**
 
 **P2 — retrieval policy and downstream context**
 

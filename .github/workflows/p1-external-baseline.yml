@@ -14,6 +14,7 @@ on:
       - "tests/test_django_cbv_semantics.py"
       - "tests/test_django_app_membership.py"
       - "tests/test_django_named_urls.py"
+      - "tests/test_flask_blueprint_composition.py"
       - ".github/workflows/p1-external-baseline.yml"
   pull_request:
     paths:
@@ -267,6 +268,52 @@ jobs:
                   "(MDN books registration, source line, static provenance and route).**",
               ])
 
+          # P1.5: source-authored Microblog POST+DELETE are accepted only
+          # when sourced to the registered api Blueprint and the exact
+          # static app/__init__.py registration, not merely a matching URL.
+          p15_gaps = []
+          microblog = reports.get("grinberg-microblog") or {}
+          microblog_probes = {
+              row["id"]: row for row in microblog.get("probes", [])
+          }
+          for probe_id, method, route_line in (
+              ("api-token-post", "POST", 6),
+              ("api-token-delete", "DELETE", 14),
+          ):
+              row = microblog_probes.get(probe_id) or {}
+              matches = [
+                  item for item in ((row.get("observed") or {}).get("observed_contracts") or [])
+                  if item.get("target") == "/api/tokens"
+                  and item.get("methods") == [method]
+                  and item.get("source_file") == "app/api/tokens.py"
+                  and item.get("source_line") == route_line
+                  and item.get("registration_file") == "app/__init__.py"
+                  and item.get("blueprint_declaration_file") == "app/api/__init__.py"
+                  and item.get("blueprint_id") == "app.api.bp"
+                  and item.get("url_prefix") == "/api"
+                  and item.get("derivation") == "flask.blueprint.registered_route"
+                  and item.get("evidence_kind") == "static"
+                  and float(item.get("confidence", 0)) >= 0.9
+              ]
+              if row.get("passed") is not True or len(matches) != 1:
+                  p15_gaps.append(probe_id + ":registration_or_method_not_grounded")
+              if any(
+                  item.get("target") == "/tokens"
+                  for item in ((row.get("observed") or {}).get("observed_contracts") or [])
+              ):
+                  p15_gaps.append(probe_id + ":unregistered_raw_fragment_exposed")
+          if p15_gaps:
+              failed = True
+              lines.extend([
+                  "", "P1.5 Flask Blueprint gate: FAIL " + "; ".join(p15_gaps),
+              ])
+          else:
+              lines.extend([
+                  "", "**P1.5 Flask Blueprint gate: PASS "
+                  "(pinned Microblog POST and DELETE /api/tokens, "
+                  "declaration + registration provenance, no raw /tokens exposure).**",
+              ])
+
           summary = "\n".join(lines) + "\n"
           print(summary)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
@@ -291,6 +338,8 @@ jobs:
               "p1_3_membership_or_edge_mismatch": p13_gaps,
               "p1_4_named_url_gate": "fail" if p14_gaps else "pass",
               "p1_4_named_url_gaps": p14_gaps,
+              "p1_5_flask_blueprint_gate": "fail" if p15_gaps else "pass",
+              "p1_5_blueprint_gaps": p15_gaps,
               "note": "Known unresolved later probes stay visible; P1.2's five verified facts must not regress.",
           }
           Path("p1-external-summary.json").write_text(json.dumps(report, indent=2) + "\n")
