@@ -1,6 +1,6 @@
 # P1 — Small, testable framework-semantic checkpoints
 
-Status: P1.1–P1.5 complete; P1.6 DRF grounding and diagnostic accuracy is next.
+Status: P1.1–P1.6 complete; P1.7 frozen external replay and acceptance is next.
 
 Do NOT one-shot P1: each phase changes FeynMap's graph truth, so regression risk compounds if model, template, URL, Flask and DRF changes are mixed into one implementation.
 
@@ -109,15 +109,39 @@ Python 3.8/3.12 + recursive self-check pass. See
 docs/P1_5_FLASK_BLUEPRINT_COMPOSITION.md and
 experiments/results/p1_5_20260929_flask_blueprints.json.
 
-## P1.6 — DRF and diagnostic accuracy
+## P1.6 — DRF source grounding and actionable diagnostics (done)
 
-- Ground serializer/model bindings, permission classes and routed/unrouted
-  handler coverage with explicit source evidence.
-- Distinguish genuinely unresolved integration targets, legitimate server
-  endpoints without in-repo clients, unknown dynamic calls and Python
-  built-ins; make raw versus actionable diagnostic counts transparent.
-- Gate: pinned DRF probes stop treating ordinary framework/intrinsic behavior
-  as actionable missing relationships.
+The static Django DRF pass resolves exact imported/in-repository view
+serializer_class, ModelSerializer.Meta.model, literal permission_classes and
+proven local policy subclasses. It records class-body field declarations,
+literal Meta field lists, validation-method presence and distinct source
+registration coverage: proven Django URLs, declared-only DRF router
+registrations, and views with no static route proven. No unsupported dynamic
+route is fabricated, and no static route does not mean unrouted at runtime.
+
+The pinned DRF SerializerMetaclass._get_declared_fields literally checks
+isinstance(obj, Field), with Field imported from rest_framework.fields.
+The new evidence-backed method -> Field USES_DATA edge now activates both
+rest_framework/serializers.py and rest_framework/fields.py for the locked
+serializer query. That does not guarantee final delivery: fields.py remains
+omitted by the existing token/node context packer. Distinguishing graph
+activation from policy-based delivery preserves the immutable 2/3 DRF result
+and the **10/11 overall** source-authored probe result; downstream
+implementation-vs-test context budget balancing is explicitly P2.
+
+The unchanged 54 raw unmatched DRF integration contracts are now categorized:
+18 potential local-static-target review candidates and 36 normal/unknown
+observations, without asserting that either number measures errors. The
+generic Python analyzer's 1,069 unresolved built-in calls are recorded in
+a separate denominator, not added as missing integration edges. Dynamic
+framework observations are separately counted.
+
+The pinned [P1.6 external replay 36525528345](https://github.com/Roderick47/FeynMap/actions/runs/36525528345)
+passes the newly required source-backed DRF activation and diagnostic
+accounting gates plus every P1.2–P1.5 regression gate.
+[Python 3.8/3.12 + recursive self-check 36525528304](https://github.com/Roderick47/FeynMap/actions/runs/36525528304)
+pass. Read docs/P1_6_DRF_GROUNDING_AND_DIAGNOSTICS.md and
+experiments/results/p1_6_20260929_drf_diagnostics.json.
 
 ## P1.7 — External replay and acceptance
 
