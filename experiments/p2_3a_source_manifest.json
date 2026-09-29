@@ -1,0 +1,348 @@
+{
+  "schema": "feynmap.p2_3a_new_source_manifest.v1",
+  "recorded_date": "2026-09-30",
+  "status": "pre_registered_before_symbol_evidence_policy_implementation",
+  "purpose": "Independent freshly authored mixed Python and JavaScript task-specific symbols; validates a graph-only symbol-evidence packing algorithm not fit to the previously observed P2.2 losses.",
+  "source": {
+    "kind": "checked_in_multilanguage",
+    "root": "experiments/fixtures/p2_3a_dispatch",
+    "blobs": {
+      "dispatch/__init__.py": "9b6cd18664769ef588b86e7f3545d30dc41e4651",
+      "dispatch/models.py": "424497645e733def7481671cdd38584933415f05",
+      "dispatch/policy.py": "33aecdf14ee58f8b65f62b633a435aec6a543f81",
+      "dispatch/service.py": "4451fcd2806615c0981121e8c27bf6b43a2296c8",
+      "dispatch/migrations/__init__.py": "958e0a2d7ec552967a7f064abbdbf7bb67d4ecc6",
+      "dispatch/migrations/0004_backfill_priority.py": "e5b4fc167c1db680e87949fdba531fc99a18e3bc",
+      "dispatch/migrations/0005_old_billing.py": "5340aadcacf863171bf45a68832b66b73ddb7b1e",
+      "tests/test_service.py": "e2d66a6369f07ec817f275a4c33bf94094a1b635",
+      "tests/test_backfill.py": "06240647b4c02d35d601d8531d6214107e1c708b",
+      "client/severity.js": "e825b1f822e26b58b94172ca84a79e26313539c6",
+      "client/presenter.js": "74c705db695a6f5df959a9eb252b9f33fb6a84da",
+      "client/presenter.test.js": "e8f5637184b76cbf1fde530cc946c102bf73a058"
+    },
+    "language": "auto",
+    "framework": "none"
+  },
+  "tasks": [
+    {
+      "id": "dispatch-capacity-implementation",
+      "intent": "implementation",
+      "query": "How does assign_ticket call check_capacity before assigning an owner?",
+      "required_symbols": [
+        {
+          "file": "dispatch/service.py",
+          "name": "assign_ticket"
+        },
+        {
+          "file": "dispatch/policy.py",
+          "name": "check_capacity"
+        }
+      ],
+      "required_files": [
+        "dispatch/policy.py",
+        "dispatch/service.py"
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "dispatch/models.py",
+          "name": "Ticket"
+        },
+        {
+          "file": "tests/test_service.py",
+          "name": "test_capacity_rejection_preserves_owner"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "dispatch/policy.py",
+          "name": "unrelated_invoice_discount"
+        }
+      ],
+      "source_basis": "Source service imports and calls the independent capacity policy before owner mutation."
+    },
+    {
+      "id": "dispatch-escalation-implementation",
+      "intent": "implementation",
+      "query": "How does escalate_ticket use needs_escalation to decide an overdue ticket?",
+      "required_symbols": [
+        {
+          "file": "dispatch/service.py",
+          "name": "escalate_ticket"
+        },
+        {
+          "file": "dispatch/policy.py",
+          "name": "needs_escalation"
+        }
+      ],
+      "required_files": [
+        "dispatch/policy.py",
+        "dispatch/service.py"
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "tests/test_service.py",
+          "name": "test_overdue_ticket_escalates"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "dispatch/migrations/0005_old_billing.py",
+          "name": "insert_old_billing_code"
+        }
+      ],
+      "source_basis": "Source escalation implementation calls the threshold policy; tests are supporting not authoritative."
+    },
+    {
+      "id": "dispatch-capacity-regression-test",
+      "intent": "test",
+      "query": "Which test_capacity_rejection_preserves_owner checks that assign_ticket rejects a capacity overflow?",
+      "required_symbols": [
+        {
+          "file": "tests/test_service.py",
+          "name": "test_capacity_rejection_preserves_owner"
+        },
+        {
+          "file": "dispatch/service.py",
+          "name": "assign_ticket"
+        }
+      ],
+      "required_files": [
+        "dispatch/service.py",
+        "tests/test_service.py"
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "dispatch/policy.py",
+          "name": "check_capacity"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "tests/test_service.py",
+          "name": "test_unresolved_ticket_cannot_close"
+        }
+      ],
+      "source_basis": "The test executes assign_ticket on a full employee load and checks ticket owner remains unmodified."
+    },
+    {
+      "id": "dispatch-priority-migration",
+      "intent": "migration",
+      "query": "How does backfill_missing_priority obtain default_ticket_priority for older rows?",
+      "required_symbols": [
+        {
+          "file": "dispatch/migrations/0004_backfill_priority.py",
+          "name": "backfill_missing_priority"
+        },
+        {
+          "file": "dispatch/models.py",
+          "name": "default_ticket_priority"
+        }
+      ],
+      "required_files": [
+        "dispatch/migrations/0004_backfill_priority.py",
+        "dispatch/models.py"
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "tests/test_backfill.py",
+          "name": "test_missing_priority_is_backfilled"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "dispatch/migrations/0005_old_billing.py",
+          "name": "insert_old_billing_code"
+        }
+      ],
+      "source_basis": "The source backfill explicitly invokes the model's default rather than the unrelated billing history."
+    },
+    {
+      "id": "dispatch-priority-migration-test",
+      "intent": "test",
+      "query": "Which test_missing_priority_is_backfilled proves backfill_missing_priority sets missing priority?",
+      "required_symbols": [
+        {
+          "file": "tests/test_backfill.py",
+          "name": "test_missing_priority_is_backfilled"
+        },
+        {
+          "file": "dispatch/migrations/0004_backfill_priority.py",
+          "name": "backfill_missing_priority"
+        }
+      ],
+      "required_files": [
+        "dispatch/migrations/0004_backfill_priority.py",
+        "tests/test_backfill.py"
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "dispatch/models.py",
+          "name": "default_ticket_priority"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "tests/test_backfill.py",
+          "name": "test_unrelated_billing_history"
+        }
+      ],
+      "source_basis": "An explicit dynamic import in the test may remain unresolved by the static adapter; do not fabricate an edge."
+    },
+    {
+      "id": "dispatch-close-implementation",
+      "intent": "implementation",
+      "query": "How does finalize_ticket call may_close before marking the ticket closed?",
+      "required_symbols": [
+        {
+          "file": "dispatch/service.py",
+          "name": "finalize_ticket"
+        },
+        {
+          "file": "dispatch/policy.py",
+          "name": "may_close"
+        }
+      ],
+      "required_files": [
+        "dispatch/policy.py",
+        "dispatch/service.py"
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "tests/test_service.py",
+          "name": "test_unresolved_ticket_cannot_close"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "dispatch/policy.py",
+          "name": "unrelated_invoice_discount"
+        }
+      ],
+      "source_basis": "Two exact source functions are independently defined and connected via an explicit call."
+    },
+    {
+      "id": "javascript-alert-implementation",
+      "intent": "implementation",
+      "query": "How does formatTicketAlert use normalizeSeverity when presenting a ticket alert?",
+      "required_symbols": [
+        {
+          "file": "client/presenter.js",
+          "name": "formatTicketAlert"
+        },
+        {
+          "file": "client/severity.js",
+          "name": "normalizeSeverity"
+        }
+      ],
+      "required_files": [
+        "client/presenter.js",
+        "client/severity.js"
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "client/presenter.test.js",
+          "name": "testUrgentTicketAlert"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "client/presenter.js",
+          "name": "formatUnrelatedInvoice"
+        },
+        {
+          "file": "client/severity.js",
+          "name": "irrelevantPriceLabel"
+        }
+      ],
+      "source_basis": "Separate JavaScript modules; language-neutral policy must handle exported function nodes and mark unresolved imports unknown."
+    },
+    {
+      "id": "javascript-alert-regression-test",
+      "intent": "test",
+      "query": "Which testUrgentTicketAlert exercises formatTicketAlert for an urgent ticket?",
+      "required_symbols": [
+        {
+          "file": "client/presenter.test.js",
+          "name": "testUrgentTicketAlert"
+        },
+        {
+          "file": "client/presenter.js",
+          "name": "formatTicketAlert"
+        }
+      ],
+      "required_files": [
+        "client/presenter.js",
+        "client/presenter.test.js"
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "client/severity.js",
+          "name": "normalizeSeverity"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "client/presenter.test.js",
+          "name": "testUnrelatedInvoiceFormat"
+        }
+      ],
+      "source_basis": "The test source invokes formatTicketAlert; never infer its assertions pass without executing tests."
+    }
+  ],
+  "activation": {
+    "mode": "concept",
+    "seed_limit": 8,
+    "candidate_limit": 64,
+    "max_depth": 3,
+    "beam_width": 8,
+    "max_nodes": 64,
+    "direction": "both",
+    "provider": null
+  },
+  "budgets": [
+    {
+      "id": "tight",
+      "max_tokens": 1600,
+      "max_nodes": 12,
+      "max_edges": 12
+    },
+    {
+      "id": "standard",
+      "max_tokens": 3200,
+      "max_nodes": 24,
+      "max_edges": 24
+    }
+  ],
+  "arms": [
+    {
+      "id": "legacy",
+      "policy": null
+    },
+    {
+      "id": "p2_1_source_first",
+      "policy": {
+        "mode": "implementation_first",
+        "min_implementation_files": 2,
+        "max_test_fraction": 0.35
+      }
+    },
+    {
+      "id": "p2_3a_symbol_evidence",
+      "policy": {
+        "mode": "symbol_evidence",
+        "min_implementation_files": 2,
+        "max_test_fraction": 0.35
+      }
+    }
+  ],
+  "predeclared_rules": [
+    "Selection can inspect query, source graph, activated hits and stored edge evidence only, not labels.",
+    "Missing graph node or absent activation is reported separately from omitted delivery; no generated edges or inferred success.",
+    "Score exact path+name symbol and file recall, genuinely required test/migration code and specifically named distractors, not every nonessential node.",
+    "Do not adapt this manifest after observing source-first results; changed manifests must be a new version.",
+    "Every arm packs the identical activation under the same limit; original P2.2 and P1 oracles remain frozen.",
+    "Reports measure semantic symbol visibility and deterministic JSON char/4 token equivalents only, not downstream answer correctness.",
+    "JS adapter may miss source relationships; record as an upstream issue and don't fabricate a link."
+  ],
+  "notes": "All source files authored and Git blobs frozen before implementation or run of the new symbol_evidence policy; existing legacy/P2.1 mode unchanged."
+}
