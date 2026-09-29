@@ -393,6 +393,9 @@ def compare_replay(manifest: Mapping[str, Any],
         d = graph.get("integration_diagnostics_v2") or {}
         raw = graph.get("unresolved_contract_count")
         categories = d.get("counts_by_category") or {}
+        if not isinstance(categories, dict):
+            errors.append(fixture_id + ": non-mapping unmatched diagnostic categories")
+            categories = {}
         if (
             not _integer(raw)
             or raw != d.get("raw_unmatched_contract_count")
@@ -594,7 +597,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         result = compare_replay(
             manifest, baseline, reports, analyzer_revision=args.analyzer_revision,
         )
-    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, IndexError) as exc:
         result = {
             "schema": SCHEMA, "status": "failed",
             "analyzer_revision": args.analyzer_revision,
