@@ -366,11 +366,21 @@ and [full tests 36526547551](https://github.com/Roderick47/FeynMap/actions/runs/
 delivery-channel budgeting and independent DRF serializer/throttling
 fixtures.**
 
-**P2 — retrieval policy and downstream context**
+**P2 — retrieval policy and downstream context** (incremental: see `docs/P2_DELIVERY_EXECUTION.md`)
 
-- [ ] Role-aware implementation/test/migration/vendor evidence channels and budgets
-- [ ] Independent throttling/serializer/migration fixtures; preserve test evidence when genuinely required
-- [ ] Measure essential implementation recall, distractor tokens, unsupported claims and real task quality
+- [x] **P2.1 Opt-in source role-aware delivery:** distinguish implementation, test, migration, vendor/generated and other evidence channels; preserve the unchanged default while comparing policy selection on the exact same activated graph
+- [ ] **P2.2 Independent channel-budget comparison:** preauthor serializer/throttling/migration fixtures and test-specific questions; verify necessary test evidence and symbol-level implementation recall, distractor tokens and latency before changing any default
+- [ ] **P2.3 Downstream fidelity and shipping decision:** measure supported/unsupported claims and real task quality, with S7 held-out agent repairs remaining independently sealed
+
+P2.1's initial pinned-DRF shadow replay demonstrates the previously missing
+`rest_framework/fields.py` delivered alongside `serializers.py`, using the
+same graph activation and original 3,200-token/24-node/24-edge budget.
+The source-first shadow currently passes both DRF implementation-file
+retrieval questions while the frozen P1 default continues to score **10/11**.
+This is a delivery-policy measurement, not an independent agent-task accuracy
+or population false-positive claim. Implementation witnesses are selected
+from activated source nodes and real stored cross-file edges only; source
+channel classification never modifies graph truth.
 
 **P3 — first usable integration surface**
 

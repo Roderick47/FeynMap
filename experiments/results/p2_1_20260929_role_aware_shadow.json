@@ -1,0 +1,101 @@
+{
+  "schema": "feynmap.p2_1_role_aware_shadow.v1",
+  "recorded_on": "2026-09-29",
+  "pull_request": 45,
+  "experimental_scope": "Opt-in source-role delivery on the exact same P1.7 independently pinned DRF activation; no graph changes, no evaluator gold passed to packer.",
+  "reference_workflow": {
+    "run_id": 36539921382,
+    "url": "https://github.com/Roderick47/FeynMap/actions/runs/36539921382",
+    "p2_1_shadow_gate": "pass",
+    "p1_2_to_p1_6": "pass",
+    "p1_7_replay": "accepted_with_known_delivery_gap"
+  },
+  "original_oracle": {
+    "manifest": "experiments/p1_external_framework_manifest.json",
+    "subject_repository": "encode/django-rest-framework",
+    "subject_commit": "b578eab1cad040414b758131af1e17aa000b51e2",
+    "original_p1_7_positive_probes": "10/11",
+    "default_policy": "legacy",
+    "oracle_changed": false
+  },
+  "configuration": {
+    "same_activation": true,
+    "budget": {
+      "max_tokens": 3200,
+      "max_nodes": 24,
+      "max_edges": 24
+    },
+    "role_policy": {
+      "mode": "implementation_first",
+      "min_implementation_files": 2,
+      "max_test_fraction": 0.35
+    }
+  },
+  "retrieval": [
+    {
+      "id": "throttling-implementation-recall",
+      "legacy": {
+        "delivered_nodes": 11,
+        "delivered_tokens": 1944,
+        "delivered_test_nodes": 1,
+        "essential_implementation_delivered": true
+      },
+      "role_aware": {
+        "delivered_nodes": 4,
+        "delivered_edges": 1,
+        "delivered_tokens": 809,
+        "delivered_test_nodes": 0,
+        "delivered_implementation_nodes": 4,
+        "essential_implementation_delivered": true,
+        "missing_essential_files": [],
+        "actual_delivered_files": [
+          "rest_framework/exceptions.py",
+          "rest_framework/management/commands/generateschema.py",
+          "rest_framework/schemas/openapi.py",
+          "rest_framework/throttling.py"
+        ],
+        "all_selected_items_from_activation": true,
+        "packer_elapsed_ms": 10.985,
+        "sufficient": true
+      }
+    },
+    {
+      "id": "serializer-implementation-recall",
+      "legacy": {
+        "delivered_nodes": 13,
+        "delivered_tokens": 3197,
+        "delivered_test_nodes": 11,
+        "essential_implementation_delivered": false,
+        "missing_essential_files": [
+          "rest_framework/fields.py"
+        ]
+      },
+      "role_aware": {
+        "delivered_nodes": 5,
+        "delivered_edges": 2,
+        "delivered_tokens": 1219,
+        "delivered_test_nodes": 2,
+        "delivered_implementation_nodes": 3,
+        "essential_implementation_delivered": true,
+        "missing_essential_files": [],
+        "actual_delivered_files": [
+          "rest_framework/fields.py",
+          "rest_framework/serializers.py",
+          "tests/test_filters.py",
+          "tests/test_validation.py"
+        ],
+        "all_selected_items_from_activation": true,
+        "packer_elapsed_ms": 20.857,
+        "sufficient": true
+      }
+    }
+  ],
+  "measurement_limitations": [
+    "The frozen P1 primary probe score remains 10/11 because this is an opt-in shadow, not a rewritten oracle.",
+    "Role-selected semantic file presence is coarse essential implementation coverage, not raw source code byte recall.",
+    "Counts by evidence channel are node counts, not exact token shares or independent distractor-token labels.",
+    "A downstream language model was not called; answer correctness, unsupported claim rate and full task quality remain unmeasured.",
+    "One-run packing time and tokens are descriptive rather than statistically controlled latency distributions.",
+    "Further P2.2 independent tests and P2.3 downstream fidelity are required before making source-first the default."
+  ]
+}
