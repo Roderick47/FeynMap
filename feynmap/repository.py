@@ -63,6 +63,10 @@ def merge_language_graphs(
         if isinstance(django_urls, dict):
             merged.metadata["django_named_urls"] = django_urls
 
+        django_drf = graph.metadata.get("django_drf")
+        if isinstance(django_drf, dict):
+            merged.metadata["django_drf"] = django_drf
+
         flask_blueprints = graph.metadata.get("flask_blueprint_composition")
         if isinstance(flask_blueprints, dict):
             merged.metadata["flask_blueprint_composition"] = flask_blueprints
