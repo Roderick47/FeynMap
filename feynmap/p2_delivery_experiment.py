@@ -508,6 +508,10 @@ def evaluate_fixture(
                 "activated_nodes": len(activation.hits),
                 "activated_edges": len(activation.edges),
                 "source_node_ids": [hit.node.id for hit in activation.hits],
+                "source_edge_endpoints": [
+                    {"id": edge.id, "source": edge.source, "target": edge.target}
+                    for edge in activation.edges
+                ],
                 "source_paths": sorted({
                     source_path(hit.node) for hit in activation.hits
                     if source_path(hit.node)
