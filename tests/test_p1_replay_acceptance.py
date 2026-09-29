@@ -286,6 +286,16 @@ def test_pinned_revision_and_diagnostic_denominator_must_match():
     assert any("do not reconcile" in issue for issue in result["errors"])
 
 
+def test_malformed_diagnostic_categories_fail_closed_without_runtime_crash():
+    manifest, baseline, reports = _expected()
+    d = reports["django-rest-framework"]["graph"]["integration_diagnostics_v2"]
+    d["counts_by_category"] = ["not", "a", "mapping"]
+    result = compare_replay(manifest, baseline, reports)
+    assert result["status"] == "failed"
+    assert any("non-mapping unmatched diagnostic categories" in issue
+               for issue in result["errors"])
+
+
 def _stage(tmp_path, manifest, baseline, reports):
     source = tmp_path / "manifest.json"
     initial = tmp_path / "baseline.json"
