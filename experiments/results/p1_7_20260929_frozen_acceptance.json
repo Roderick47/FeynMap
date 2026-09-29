@@ -1,0 +1,150 @@
+{
+  "schema": "feynmap.p1_7_frozen_external_acceptance.v1",
+  "recorded_on": "2026-09-29",
+  "purpose": "Durable checkpoint record; full machine-readable per-probe P1.7 report and raw fixture JSON are in the linked Actions artifacts.",
+  "reference_acceptance": {
+    "pull_request": 44,
+    "source_revision": "630cd9f041c0a00efcda56c685e63e027aac195a",
+    "external_workflow_run_id": 36526547547,
+    "external_workflow_url": "https://github.com/Roderick47/FeynMap/actions/runs/36526547547",
+    "full_suite_run_id": 36526547551,
+    "full_suite_url": "https://github.com/Roderick47/FeynMap/actions/runs/36526547551",
+    "status": "accepted_with_known_delivery_gap",
+    "fixture_replay": "passed",
+    "python_3_8": "passed",
+    "python_3_12": "passed",
+    "frozen_s6_contract_and_negative_error_regressions": "passed",
+    "recursive_self_check": "passed"
+  },
+  "oracles": {
+    "manifest": "experiments/p1_external_framework_manifest.json",
+    "manifest_git_blob": "721221722b2667ed107ec7f99a956677ad5531a6",
+    "original_baseline": "experiments/results/p1_1b_20260929_external_baseline.json",
+    "original_baseline_git_blob": "d6ab3b4f8aaaa540b7b57aff78594d1ecfdaf545",
+    "subject_revisions_immutable": true,
+    "expectations_unchanged": true,
+    "labels": "eleven source-authored positive-only development probes"
+  },
+  "headline": {
+    "before": "2/11",
+    "after": "10/11",
+    "recovered": 8,
+    "regressed": 0,
+    "remaining": 1,
+    "analysis_errors": 0
+  },
+  "fixtures": [
+    {
+      "id": "mdn-django-local-library",
+      "repository": "mdn/django-locallibrary-tutorial",
+      "commit": "92f1c1e7bdd4ada5209a3c69876ce29e6cee3d96",
+      "before": {
+        "probes": "0/6",
+        "nodes": 266,
+        "edges": 581,
+        "analysis_elapsed_ms": 178.6,
+        "process_peak_rss_kb": 29224
+      },
+      "after": {
+        "probes": "6/6",
+        "nodes": 266,
+        "edges": 675,
+        "analysis_elapsed_ms": 235.5,
+        "process_peak_rss_kb": 29492
+      },
+      "recovered": [
+        "cbv-book-list-model",
+        "cbv-book-detail-model",
+        "cbv-book-list-default-template",
+        "cbv-book-detail-default-template",
+        "cbv-explicit-template",
+        "named-url-books"
+      ],
+      "provenance": "explicit source bindings supported, convention templates inferred, named static URL /catalog/books/ from catalog/urls.py line 8",
+      "synthetic_appconfig_hub_edges_after": 0,
+      "source_tree_membership_observations_after": 29
+    },
+    {
+      "id": "grinberg-microblog",
+      "repository": "miguelgrinberg/microblog",
+      "commit": "a975ef64864354867c88e0ed3a17ba7d17dca752",
+      "before": {
+        "probes": "0/2",
+        "nodes": 279,
+        "edges": 607,
+        "analysis_elapsed_ms": 166.4,
+        "process_peak_rss_kb": 29868
+      },
+      "after": {
+        "probes": "2/2",
+        "nodes": 279,
+        "edges": 607,
+        "analysis_elapsed_ms": 251.519,
+        "process_peak_rss_kb": 30376
+      },
+      "recovered": [
+        "api-token-post",
+        "api-token-delete"
+      ],
+      "provenance": "static Blueprint declaration and /api prefix registration link /tokens decorator fragment to exposed /api/tokens; raw /tokens is not emitted"
+    },
+    {
+      "id": "django-rest-framework",
+      "repository": "encode/django-rest-framework",
+      "commit": "b578eab1cad040414b758131af1e17aa000b51e2",
+      "before": {
+        "probes": "2/3",
+        "nodes": 4128,
+        "edges": 8040,
+        "analysis_elapsed_ms": 2328.6,
+        "process_peak_rss_kb": 102024
+      },
+      "after": {
+        "probes": "2/3",
+        "nodes": 4128,
+        "edges": 8113,
+        "analysis_elapsed_ms": 3837.85,
+        "process_peak_rss_kb": 102692
+      },
+      "retained": [
+        "throttling-implementation-recall",
+        "vendored-js-no-crash"
+      ],
+      "still_missing": [
+        "serializer-implementation-recall"
+      ],
+      "p1_6_grounding": {
+        "source": "rest_framework.serializers.SerializerMetaclass._get_declared_fields",
+        "target": "rest_framework.fields.Field",
+        "relation": "uses_data",
+        "literal": "isinstance(obj, Field)",
+        "both_implementation_files_activated": true,
+        "final_delivery_missing": [
+          "rest_framework/fields.py"
+        ]
+      },
+      "synthetic_appconfig_hub_edges_after": 0,
+      "source_tree_membership_observations_after": 20,
+      "diagnostics_v2": {
+        "raw_unmatched_contracts": 54,
+        "potential_review_candidates": 18,
+        "non_actionable_or_unproven": 36,
+        "python_builtin_unresolved_calls_separate": 1069
+      }
+    }
+  ],
+  "accuracy_interpretation": {
+    "positive_probe_improvement": "8 additional source-authored expectations met, no regression on the original two.",
+    "false_positive_count": null,
+    "false_positive_rate": null,
+    "rationale": "P1.1 manifest is a known positive-only development corpus. Synthetic negative fixture tests prove particular safeguards but do not support a population precision or hallucination rate.",
+    "confidence": "STATIC supported vs FRAMEWORK inferred tiers separately gated; not runtime verified.",
+    "runtime": "Single independent GitHub-hosted runner execution per pinned source. Elapsed and process peak RSS are descriptive, not statistically controlled measurements.",
+    "agent_repair_outcomes": null,
+    "heldout_S7_results": null
+  },
+  "deferred": {
+    "P2": "DRF serializer-query final context delivery: fields.py is activated but omitted under the unchanged 3200-token/24-node/24-edge packer.",
+    "S7": "Create independent sealed held-out AI-agent repair tasks, outside and disjoint from these three known development fixtures, before making task-level efficacy claims."
+  }
+}
