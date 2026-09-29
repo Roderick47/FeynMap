@@ -277,6 +277,91 @@ class MinimalContextPacker:
         assert last is not None
         return last
 
+    def _role_critical_node_ids(
+        self,
+        result: GuidedSearchResult,
+        policy: DeliveryChannelPolicy,
+    ) -> Tuple[str, ...]:
+        """Choose distinct activated source witnesses before optional enrichment.
+
+        This policy does not use benchmark essential-file labels or create new
+        semantic edges. A real cross-file behavioral edge increases preference
+        for its incident grounded nodes without asserting any runtime proof.
+        """
+        if not result.hits:
+            return ()
+        hit_by_id = {hit.node.id: hit for hit in result.hits}
+        active_ids = set(hit_by_id)
+        active_edges = [
+            edge for edge in result.edges
+            if edge.source in active_ids and edge.target in active_ids
+        ]
+        scores = self._node_scores(result, hit_by_id, active_edges)
+        intent = task_channel(result.query)
+        if intent == IMPLEMENTATION:
+            preferred, minimum = IMPLEMENTATION, policy.min_implementation_files
+        elif intent == TEST:
+            preferred, minimum = TEST, 2
+        elif intent == MIGRATION:
+            preferred, minimum = MIGRATION, 2
+        else:
+            preferred, minimum = VENDOR, 2
+        query_terms = _tokens(result.query)
+        by_channel: Dict[str, Dict[str, Tuple[float, str]]] = {}
+
+        for hit in result.hits:
+            node = hit.node
+            path = node.location.path if node.location else None
+            if not path:
+                continue
+            role = file_channel(path)
+            source_score = scores.get(node.id, 0.0)
+            filename_overlap = len(_tokens(path) & query_terms)
+            witnessed_cross_file = 0.0
+            for edge in active_edges:
+                if node.id not in {edge.source, edge.target}:
+                    continue
+                other_id = edge.target if edge.source == node.id else edge.source
+                other = hit_by_id[other_id].node
+                other_path = other.location.path if other.location else None
+                if not other_path or other_path == path:
+                    continue
+                if edge.kind in {
+                    EdgeKind.USES_DATA, EdgeKind.CALLS, EdgeKind.SERIALIZES,
+                    EdgeKind.REQUESTS, EdgeKind.RENDERS, EdgeKind.ROUTES_TO,
+                    EdgeKind.READS, EdgeKind.WRITES, EdgeKind.VALIDATES,
+                    EdgeKind.INVOKES,
+                } and edge.evidence:
+                    witnessed_cross_file = max(
+                        witnessed_cross_file,
+                        1.2 * _delivery_edge_priority(edge),
+                    )
+            rank = source_score + filename_overlap + witnessed_cross_file
+            group = by_channel.setdefault(role, {})
+            previous = group.get(path)
+            if previous is None or (rank, node.id) > previous:
+                group[path] = (rank, node.id)
+
+        roots = [node.id for node in result.roots if node.id in active_ids]
+        primary_root = roots[0] if roots else result.hits[0].node.id
+        ordered = [primary_root]
+
+        def add_group(role: str, limit: int) -> None:
+            ranked = sorted(
+                by_channel.get(role, {}).items(),
+                key=lambda item: (-item[1][0], item[0], item[1][1]),
+            )
+            for _, (_, node_id) in ranked[:max(0, limit)]:
+                if node_id not in ordered:
+                    ordered.append(node_id)
+
+        add_group(preferred, minimum)
+        # Explicit test/migration/vendor tasks still receive implementation
+        # context; normal explanation tasks prefer implementation witnesses.
+        if preferred != IMPLEMENTATION:
+            add_group(IMPLEMENTATION, max(1, policy.min_implementation_files - 1))
+        return tuple(ordered)
+
     def _critical_node_ids(
         self,
         result: GuidedSearchResult,
