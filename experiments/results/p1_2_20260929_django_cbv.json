@@ -1,0 +1,53 @@
+{
+  "schema": "feynmap.p1_2_django_cbv_result.v1",
+  "recorded_date": "2026-09-29",
+  "baseline_commit": "54ed64cbca610b708b58e5aea5e6f9dc668ae10e",
+  "implementation_commit": "abb53abadc754d9266d00df91ae70ffc78a1b84c",
+  "external_workflow_run_id": 36508814499,
+  "source_fixture": "mdn-django-local-library",
+  "before": {
+    "matched_probes": 0,
+    "total_probes": 6,
+    "graph_nodes": 266,
+    "graph_edges": 581
+  },
+  "after": {
+    "matched_probes": 5,
+    "total_probes": 6,
+    "graph_nodes": 266,
+    "graph_edges": 635,
+    "missing_probes": [
+      "named-url-books"
+    ]
+  },
+  "newly_met": [
+    "cbv-book-list-model",
+    "cbv-book-detail-model",
+    "cbv-book-list-default-template",
+    "cbv-book-detail-default-template",
+    "cbv-explicit-template"
+  ],
+  "unchanged_external_controls": {
+    "grinberg-microblog": {
+      "matched_probes": 0,
+      "total_probes": 2
+    },
+    "django-rest-framework": {
+      "matched_probes": 2,
+      "total_probes": 3
+    }
+  },
+  "semantics": {
+    "model_binding": "Static import-resolved class-body model assignments create USES_DATA edges to a unique in-repo model.",
+    "queryset_binding": "Recognized Book.objects and conservative chained queryset methods can establish the same model relationship.",
+    "explicit_template": "A literal template_name creates a template_render contract only when it uniquely maps to an in-repo template and no custom get_template_names override makes the render uncertain.",
+    "default_template": "Supported Django generic CBV conventions infer templates only from a unique grounded model and unique existing template; evidence is marked framework-inferred, not static.",
+    "uncertainty": "Ambiguous imports, dynamic querysets/templates, conflicting model/queryset bindings, custom template selection, missing/ambiguous templates remain unresolved instead of producing an edge."
+  },
+  "non_goals": [
+    "No AppConfig edge changes (P1.3).",
+    "No Django URL-name/reverse/template-url changes (P1.4).",
+    "No Flask changes (P1.5).",
+    "No DRF retrieval-budget changes (P2)."
+  ]
+}
