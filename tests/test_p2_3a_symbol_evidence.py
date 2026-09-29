@@ -236,3 +236,108 @@ def test_normal_p2_1_policy_is_still_accepted_and_legacy_default_unchanged():
         packer.pack(search, budget=budget).to_dict()
         == packer.pack(search, budget=budget, delivery_policy=None).to_dict()
     )
+
+
+
+def test_unactivated_explicit_query_identifier_is_unknown_not_sufficient():
+    source = _source_node("service", "processAssignment", "service.py")
+    target = _source_node("rule", "checkCapacity", "rules.py")
+    graph = SemanticGraph(nodes=[source, target])
+    search = GuidedSearchResult(
+        mode="concept",
+        query="How does processAssignment use checkCapacity and missingCamelName?",
+        roots=[source],
+        hits=[SearchHit(source, depth=0), SearchHit(target, depth=1)],
+        edges=[], trace=[], provider=None, model=None,
+        exhausted=True, truncated=False,
+    )
+    budget = MinimalContextBudget(
+        max_tokens=3200, max_nodes=24, max_edges=24,
+    )
+    packed = MinimalContextPacker(graph).pack(
+        search, budget=budget,
+        delivery_policy=DeliveryChannelPolicy(mode="symbol_evidence"),
+    )
+    assert packed.sufficient is False
+    assert packed.unresolved_query_identifiers == ("missingCamelName",)
+    assert "missingCamelName" in packed.to_dict()["metrics"][
+        "unresolved_query_identifiers"
+    ]
+    assert packed.packing_iterations == 1  # S3 cannot repair missing S2 activation
+    assert "missingCamelName" not in {
+        graph.node(node_id).name for node_id in packed.selected_node_ids
+    }
+    assert packed.delivered_tokens <= budget.initial_tokens
+
+    legacy = MinimalContextPacker(graph).pack(search, budget=budget)
+    assert legacy.unresolved_query_identifiers == ()
+    assert "unresolved_query_identifiers" not in legacy.to_dict()["metrics"]
+
+
+def test_symbol_evidence_reports_incomplete_when_two_activated_names_cannot_fit():
+    source = _source_node("service", "processAssignment", "service.py")
+    target = _source_node("rule", "checkCapacity", "rules.py")
+    graph = SemanticGraph(nodes=[source, target])
+    search = GuidedSearchResult(
+        mode="concept",
+        query="Where do processAssignment and checkCapacity decide?",
+        roots=[source],
+        hits=[SearchHit(source, depth=0), SearchHit(target, depth=1)],
+        edges=[], trace=[], provider=None, model=None,
+        exhausted=True, truncated=False,
+    )
+    packed = MinimalContextPacker(graph).pack(
+        search, budget=MinimalContextBudget(
+            max_tokens=1600, max_nodes=1, max_edges=0,
+        ),
+        delivery_policy=DeliveryChannelPolicy(mode="symbol_evidence"),
+    )
+    assert packed.activated_nodes == 2
+    assert packed.delivered_nodes == 1
+    assert packed.sufficient is False
+    assert packed.unresolved_query_identifiers == ()
+
+
+def test_heuristically_suggested_edge_does_not_become_required_source_fact():
+    source = _source_node("service", "processAssignment", "service.py")
+    target = _source_node("rule", "checkCapacity", "rules.py")
+    relation = SemanticEdge(
+        id="ai-guessed-call", source=source.id, target=target.id,
+        kind=EdgeKind.CALLS, confidence=0.6,
+        evidence=[Evidence(
+            EvidenceKind.AI_INFERENCE, "fixture.guess",
+            "Not a source-observed invocation",
+            SourceLocation("service.py", line=4), 0.6,
+        )],
+    )
+    graph = SemanticGraph(nodes=[source, target], edges=[relation])
+    search = GuidedSearchResult(
+        mode="concept",
+        query="How does processAssignment invoke checkCapacity?",
+        roots=[source],
+        hits=[
+            SearchHit(source, depth=0),
+            SearchHit(target, depth=1, parent_id=source.id,
+                      via_edge_id=relation.id),
+        ],
+        edges=[relation], trace=[], provider=None, model=None,
+        exhausted=True, truncated=False,
+    )
+    node_ids, critical_edges = MinimalContextPacker(
+        graph
+    )._symbol_evidence_critical(
+        search, DeliveryChannelPolicy(mode="symbol_evidence"),
+    )
+    assert {"service", "rule"} <= set(node_ids)
+    assert critical_edges == ()  # a guessed edge cannot become source-critical
+    packed = MinimalContextPacker(graph).pack(
+        search,
+        budget=MinimalContextBudget(max_tokens=1600, max_nodes=12, max_edges=12),
+        delivery_policy=DeliveryChannelPolicy(mode="symbol_evidence"),
+    )
+    assert packed.sufficient
+    if packed.payload["relationships"]:
+        assert all(
+            row["confidence_tier"] == relation.confidence_tier.value
+            for row in packed.payload["relationships"]
+        )
