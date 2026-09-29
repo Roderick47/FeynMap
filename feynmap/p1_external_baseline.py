@@ -281,9 +281,25 @@ def _retrieval_probe(graph, probe: Mapping[str, Any]) -> Dict[str, Any]:
         _node_path(node) for node in role_nodes if _node_path(node)
     })
     shadow_essential = [_path(path) for path in probe["essential_files"]]
+    activated_id_set = {hit.node.id for hit in outcome.activation.search.hits}
+    activated_edge_map = {
+        edge.id: edge for edge in outcome.activation.search.edges
+    }
+    selected_id_set = set(role_aware.selected_node_ids)
+    selected_edge_id_set = set(role_aware.selected_edge_ids)
+    all_from_activation = (
+        selected_id_set.issubset(activated_id_set)
+        and selected_edge_id_set.issubset(activated_edge_map)
+        and all(
+            {activated_edge_map[edge_id].source,
+             activated_edge_map[edge_id].target}.issubset(selected_id_set)
+            for edge_id in selected_edge_id_set
+        )
+    )
     shadow = {
         "policy": "implementation_first",
         "same_activation_as_default": True,
+        "all_selected_items_from_activation": all_from_activation,
         "selected_node_ids": list(role_aware.selected_node_ids),
         "selected_edge_ids": list(role_aware.selected_edge_ids),
         "delivered_files": role_paths,
@@ -293,6 +309,7 @@ def _retrieval_probe(graph, probe: Mapping[str, Any]) -> Dict[str, Any]:
         "essential_delivered": all(path in role_paths for path in shadow_essential),
         "delivered_channels_by_node_count": channel_counts(role_nodes),
         "delivered_nodes": role_aware.delivered_nodes,
+        "delivered_edges": len(role_aware.selected_edge_ids),
         "delivered_tokens": role_aware.delivered_tokens,
         "sufficient": role_aware.sufficient,
         "critical_node_ids": list(role_aware.critical_node_ids),
@@ -328,6 +345,18 @@ def _retrieval_probe(graph, probe: Mapping[str, Any]) -> Dict[str, Any]:
         "delivered_node_count": len(delivered),
         "delivered_channels_by_node_count": channels,
         "delivered_context_tokens": outcome.context.delivered_tokens,
+        "p2_default_vs_shadow": {
+            "default_delivered_nodes": outcome.context.delivered_nodes,
+            "default_delivered_tokens": outcome.context.delivered_tokens,
+            "role_delivered_nodes": role_aware.delivered_nodes,
+            "role_delivered_tokens": role_aware.delivered_tokens,
+            "default_test_node_count": channels.get("test", 0),
+            "role_test_node_count": shadow["delivered_channels_by_node_count"].get("test", 0),
+            "test_nodes_excluded_by_role_policy": (
+                channels.get("test", 0) -
+                shadow["delivered_channels_by_node_count"].get("test", 0)
+            ),
+        },
         "delivered_context_sufficient": outcome.context.sufficient,
         "top_activated_nodes": [_node_record(item.node) for item in activated[:15]],
         "delivered_nodes": [_node_record(item) for item in delivered[:30]],
@@ -693,14 +722,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 ],
                 "delivered_files": item["observed"].get("delivered_files"),
                 "delivered_channels": item["observed"].get("delivered_channels_by_node_count"),
+                "legacy_delivery_tokens": item["observed"].get("delivered_context_tokens"),
+                "p2_default_vs_shadow": item["observed"].get("p2_default_vs_shadow"),
                 "p2_role_aware_shadow": {
                     key: value for key, value in
                     (item["observed"].get("p2_role_aware_shadow") or {}).items()
                     if key in {
                         "essential_delivered", "missing_essential_files",
                         "delivered_files", "delivered_channels_by_node_count",
-                        "delivered_nodes", "delivered_tokens", "sufficient",
-                        "packer_elapsed_ms",
+                        "delivered_nodes", "delivered_edges", "delivered_tokens",
+                        "sufficient", "packer_elapsed_ms",
+                        "all_selected_items_from_activation",
                     }
                 },
                 "minified_assets": item["observed"].get("minified_assets"),
