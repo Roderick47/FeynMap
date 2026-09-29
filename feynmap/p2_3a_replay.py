@@ -97,13 +97,16 @@ def compare(
     root: Path,
     *,
     existing_p2: bool = False,
+    previous_fixture: str = "stockroom-independent",
 ) -> Dict[str, Any]:
     if existing_p2:
-        source = manifest["source_fixtures"]["stockroom-independent"]
+        if previous_fixture not in {"stockroom-independent", "drf-calibration"}:
+            raise ValueError("unsupported old P2.2 control fixture")
+        source = manifest["source_fixtures"][previous_fixture]
         verified = _validate_source_blobs(source, root)
         tasks = [
             item for item in manifest["tasks"]
-            if item["cohort"] == "stockroom-independent"
+            if item["cohort"] == previous_fixture
         ]
         _validate_labels(tasks, source, verified["declarations"])
         arms = [
@@ -114,7 +117,7 @@ def compare(
                         "min_implementation_files": 2,
                         "max_test_fraction": 0.35}},
         ]
-        cohort = "p2_2_stockroom_diagnostic_not_fresh"
+        cohort = "p2_2_" + previous_fixture + "_diagnostic_not_fresh"
     else:
         verified = verify_fresh_source(manifest, root)
         source = manifest["source"]
@@ -352,6 +355,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--output", required=True)
     parser.add_argument("--markdown", required=True)
     parser.add_argument("--previous-p2", action="store_true")
+    parser.add_argument("--previous-fixture", default="stockroom-independent",
+                        choices=["stockroom-independent", "drf-calibration"])
     args = parser.parse_args(argv)
     output = Path(args.output)
     markdown = Path(args.markdown)
@@ -366,6 +371,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             manifest,
             Path(args.project_root).resolve(),
             existing_p2=args.previous_p2,
+            previous_fixture=args.previous_fixture,
         )
         status = 0
     except Exception as exc:
