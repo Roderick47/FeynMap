@@ -313,8 +313,12 @@ def _minified_js_probe(root: Path) -> Dict[str, Any]:
         }
     started = time.perf_counter()
     graph = JavaScriptAdapter().analyze(root)
-    graph.validate()
+    # validate() overwrites graph.diagnostics in the current graph model.
+    # Preserve adapter-specific skip messages *before* structural revalidation.
     warnings = list(graph.diagnostics.get("warnings", []))
+    structural = graph.validate()
+    if structural.get("errors"):
+        raise ValueError("JavaScript adapter produced invalid graph: %s" % structural["errors"])
     skipped = [
         path for path in minified_paths
         if any("skipped minified JavaScript: " + path in warning for warning in warnings)
