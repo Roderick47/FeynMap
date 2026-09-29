@@ -12,6 +12,7 @@ from .minimal_context import (
     MinimalContextPacker,
     MinimalContextResult,
 )
+from .delivery_channels import DeliveryChannelPolicy
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class SparseContextPipeline:
         goal: str,
         *,
         context_budget: Optional[MinimalContextBudget] = None,
+        delivery_policy: Optional[DeliveryChannelPolicy] = None,
         max_depth: int = 4,
         beam_width: int = 8,
         max_nodes: int = 64,
@@ -68,6 +70,7 @@ class SparseContextPipeline:
         context = self.packer.pack(
             activation.search,
             budget=context_budget,
+            delivery_policy=delivery_policy,
         )
         return SparseContextResult(
             activation=activation,
@@ -79,6 +82,7 @@ class SparseContextPipeline:
         concept: str,
         *,
         context_budget: Optional[MinimalContextBudget] = None,
+        delivery_policy: Optional[DeliveryChannelPolicy] = None,
         seed_limit: int = 8,
         candidate_limit: int = 64,
         max_depth: int = 3,
@@ -98,6 +102,7 @@ class SparseContextPipeline:
         context = self.packer.pack(
             activation.search,
             budget=context_budget,
+            delivery_policy=delivery_policy,
         )
         return SparseContextResult(
             activation=activation,
