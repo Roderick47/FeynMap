@@ -337,8 +337,8 @@ def as_markdown(result: Mapping[str, Any]) -> str:
         "## Per-task source labels (all arms used exactly one shared activation)",
         "",
         "| Task | Budget | Arm | Required symbols delivered | Omitted required symbols | "
-        "Sufficiency flag | Estimated context | Critical nodes |",
-        "|---|---|---|---:|---|---|---:|---:|",
+        "Sufficiency flag | Unactivated exact query identifiers | Estimated context | Critical nodes |",
+        "|---|---|---|---:|---|---|---|---:|---:|",
     ])
     for task in result["tasks"]:
         for budget in task["budgets"]:
@@ -348,11 +348,13 @@ def as_markdown(result: Mapping[str, Any]) -> str:
                     row["name"] + " (" + row["outcome"] + ")"
                     for row in required if not row["delivered"]
                 ]
-                lines.append("| %s | %s | %s | %s/%s | %s | %s | %s | %s |" % (
+                lines.append("| %s | %s | %s | %s/%s | %s | %s | %s | %s | %s |" % (
                     task["id"], budget["id"], arm["arm"],
                     sum(row["delivered"] for row in required), len(required),
                     ", ".join(omitted) or "none",
-                    arm["sufficient"], arm["estimated_context_tokens"],
+                    arm["sufficient"],
+                    ", ".join(arm.get("unresolved_query_identifiers") or []) or "none",
+                    arm["estimated_context_tokens"],
                     arm["critical_node_count"],
                 ))
     lines.extend(["", "Losses vs legacy (same source activation):", ""])
