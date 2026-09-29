@@ -495,6 +495,11 @@ def evaluate_fixture(
         if _graph_identity(graph) != initial_graph_identity:
             raise ValueError(task["id"] + ": delivery mutated source graph truth")
         first_arm = per_budget[0]["arms"][0]
+        activated_ids = {hit.node.id for hit in activation.hits}
+        eligible_edges = [
+            edge for edge in activation.edges
+            if edge.source in activated_ids and edge.target in activated_ids
+        ]
         task_reports.append({
             "id": task["id"], "cohort": fixture_id,
             "intent_authored": task["intent"],
@@ -506,11 +511,13 @@ def evaluate_fixture(
                 "elapsed_ms": round(activation_ms, 3),
                 "stage": activated_result.stage,
                 "activated_nodes": len(activation.hits),
-                "activated_edges": len(activation.edges),
+                "activated_edges": len(eligible_edges),
+                "raw_search_edges": len(activation.edges),
+                "ineligible_search_edges": len(activation.edges) - len(eligible_edges),
                 "source_node_ids": [hit.node.id for hit in activation.hits],
                 "source_edge_endpoints": [
                     {"id": edge.id, "source": edge.source, "target": edge.target}
-                    for edge in activation.edges
+                    for edge in eligible_edges
                 ],
                 "source_paths": sorted({
                     source_path(hit.node) for hit in activation.hits
