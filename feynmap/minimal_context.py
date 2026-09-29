@@ -542,6 +542,7 @@ class MinimalContextPacker:
         budget: MinimalContextBudget,
         critical_node_ids: Sequence[str] = (),
         payload_cache: Optional[_PackPayloadCache] = None,
+        delivery_policy: Optional[DeliveryChannelPolicy] = None,
     ) -> MinimalContextResult:
         hit_by_id: Dict[str, SearchHit] = {hit.node.id: hit for hit in result.hits}
         activated_ids = set(hit_by_id)
@@ -598,6 +599,7 @@ class MinimalContextPacker:
             [first_root],
             [],
             payload_cache=payload_cache,
+            delivery_policy=delivery_policy,
         ):
             anchors.append(first_root)
         else:
@@ -1002,6 +1004,7 @@ class MinimalContextPacker:
         edges: Sequence[str],
         *,
         payload_cache: Optional[_PackPayloadCache] = None,
+        delivery_policy: Optional[DeliveryChannelPolicy] = None,
     ) -> bool:
         next_nodes = selected_nodes | set(nodes)
         next_edges = selected_edges | set(edges)
@@ -1014,6 +1017,7 @@ class MinimalContextPacker:
             next_edges,
             anchors,
             payload_cache=payload_cache,
+            delivery_policy=delivery_policy,
         )
 
     def _fits(
@@ -1025,9 +1029,24 @@ class MinimalContextPacker:
         anchors: Sequence[str],
         *,
         payload_cache: Optional[_PackPayloadCache] = None,
+        delivery_policy: Optional[DeliveryChannelPolicy] = None,
     ) -> bool:
         if len(node_ids) > budget.max_nodes or len(edge_ids) > budget.max_edges:
             return False
+        if delivery_policy is not None and task_channel(result.query) != TEST:
+            test_count = sum(
+                file_channel(
+                    self.graph.node(node_id).location.path
+                    if self.graph.node(node_id) is not None
+                    and self.graph.node(node_id).location is not None else None
+                ) == TEST
+                for node_id in node_ids
+            )
+            test_limit = max(1, int(math.ceil(
+                budget.max_nodes * delivery_policy.max_test_fraction
+            )))
+            if test_count > test_limit:
+                return False
         payload = self._payload(
             result,
             sorted(node_ids),
