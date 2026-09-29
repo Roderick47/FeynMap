@@ -323,6 +323,11 @@ def compare_replay(manifest: Mapping[str, Any],
                     not after_met or len(edges) != 1
                     or edges[0].get("confidence_tier") != _P12_TIERS[pid]
                     or not edges[0].get("detectors")
+                    or edges[0].get("target_file") != probe.get("target_file")
+                    or edges[0].get("kind") != (
+                        "renders" if probe["relationship"] == "renders_template"
+                        else "uses_data"
+                    )
                 ):
                     errors.append(pid + ": required unique source edge/evidence tier regressed")
             if pid == "named-url-books":
@@ -334,6 +339,8 @@ def compare_replay(manifest: Mapping[str, Any],
                     or named[0].get("framework") != "django"
                     or named[0].get("source_file") != "catalog/urls.py"
                     or named[0].get("source_line") != 8
+                    or named[0].get("route_name") != "books"
+                    or float(named[0].get("confidence") or 0) < 0.9
                     or named[0].get("derivation") != "django.urls.static_registration"
                     or named[0].get("evidence_kind") != "static"
                 ):
@@ -348,6 +355,10 @@ def compare_replay(manifest: Mapping[str, Any],
                     and row.get("source_file") == "app/api/tokens.py"
                     and row.get("source_line") == probe["route_line"]
                     and row.get("registration_file") == "app/__init__.py"
+                    and _integer(row.get("registration_line"))
+                    and row.get("registration_line") > 0
+                    and row.get("url_prefix") == "/api"
+                    and float(row.get("confidence") or 0) >= 0.9
                     and row.get("blueprint_declaration_file") == "app/api/__init__.py"
                     and row.get("blueprint_id") == "app.api.bp"
                     and row.get("derivation") == "flask.blueprint.registered_route"
@@ -357,16 +368,33 @@ def compare_replay(manifest: Mapping[str, Any],
                     row.get("target") == "/tokens" for row in candidates
                 ):
                     errors.append(pid + ": registered Blueprint provenance/raw path regression")
-            if pid == "serializer-implementation-recall":
+            if probe["category"] == "retrieval":
                 essential = set(probe["essential_files"])
                 delivered = set(observed.get("delivered_files") or [])
-                activated = set(observed.get("activated_files") or [])
-                # The full P1.1 probe can pass only by delivery, never mere
-                # activation or presence of an unrelated source graph edge.
+                # A full original P1.1 probe passes only through final
+                # delivered implementation, not search activation.
                 if after_met != essential.issubset(delivered):
                     errors.append(pid + ": delivery score contradicts selected context")
+                recorded_missing = set(observed.get("missing_essential_files") or [])
+                if recorded_missing != essential - delivered:
+                    errors.append(pid + ": recorded missing files contradict delivery")
+            if pid == "serializer-implementation-recall":
+                activated = set(observed.get("activated_files") or [])
                 if not essential.issubset(activated):
                     errors.append(pid + ": P1.6 implementation activation regressed")
+            if pid == "vendored-js-no-crash":
+                old_assets = set(historical.get("skipped_minified_assets") or [])
+                actual_assets = set(observed.get("minified_assets") or [])
+                skipped_assets = set(observed.get("skipped_assets") or [])
+                if (
+                    not after_met
+                    or observed.get("status") != "minified_assets_skipped_without_crash"
+                    or not old_assets
+                    or actual_assets != old_assets
+                    or skipped_assets != old_assets
+                    or bool(observed.get("incorrectly_included_assets"))
+                ):
+                    errors.append(pid + ": original real minified assets not safely skipped")
             if pid in {"throttling-implementation-recall", "vendored-js-no-crash"} and not after_met:
                 errors.append(pid + ": locked original passing evidence regressed")
 
