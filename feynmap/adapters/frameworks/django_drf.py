@@ -51,6 +51,16 @@ _VIEW_BASES = {
     "rest_framework.viewsets.ModelViewSet",
     "rest_framework.viewsets.ReadOnlyModelViewSet",
 }
+_PERMISSION_BASES = {
+    "rest_framework.permissions.BasePermission",
+    "rest_framework.permissions.AllowAny",
+    "rest_framework.permissions.IsAuthenticated",
+    "rest_framework.permissions.IsAdminUser",
+    "rest_framework.permissions.IsAuthenticatedOrReadOnly",
+    "rest_framework.permissions.DjangoModelPermissions",
+    "rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly",
+    "rest_framework.permissions.DjangoObjectPermissions",
+}
 _ROUTER_TYPES = {
     "rest_framework.routers.BaseRouter",
     "rest_framework.routers.SimpleRouter",
@@ -175,16 +185,18 @@ def _static_router_registrations(root: Path, indexed: Mapping[str, Sequence[Sema
                 if isinstance(target, ast.Name):
                     router_instances[target.id] = constructor
         for statement in record.tree.body:
-            for call in ast.walk(statement):
-                if (
-                    not isinstance(call, ast.Call)
-                    or not isinstance(call.func, ast.Attribute)
+            # A nested function is not a module-level router registration.
+            if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
+                continue
+            call = statement.value
+            if (
+                    not isinstance(call.func, ast.Attribute)
                     or call.func.attr != "register"
                     or not isinstance(call.func.value, ast.Name)
                     or call.func.value.id not in router_instances
-                ):
+            ):
                     continue
-                if len(call.args) < 2:
+            if len(call.args) < 2:
                     unresolved.append({
                         "source_file": record.relative, "source_line": call.lineno,
                         "reason": "missing_router_arguments",
@@ -282,6 +294,7 @@ def enrich_django_drf(graph: SemanticGraph, root: Path) -> None:
     serializers: Set[str] = set(_SERIALIZER_BASES)
     model_serializers: Set[str] = set(_MODEL_SERIALIZER_BASES)
     views: Set[str] = set(_VIEW_BASES)
+    permissions: Set[str] = set(_PERMISSION_BASES)
     # Propagate only exact single-inheritance identities. A user class whose
     # direct base is a locally proven DRF class is still a source-backed DRF
     # class. No repository-wide matching by short name.
@@ -296,6 +309,9 @@ def enrich_django_drf(graph: SemanticGraph, root: Path) -> None:
                 changed = True
             if qname not in views and any(base in views for base in bases):
                 views.add(qname)
+                changed = True
+            if qname not in permissions and any(base in permissions for base in bases):
+                permissions.add(qname)
                 changed = True
         if not changed:
             break
@@ -313,8 +329,16 @@ def enrich_django_drf(graph: SemanticGraph, root: Path) -> None:
         node = members[0]
         is_serializer = qname in serializers
         is_view = qname in views
-        if not is_serializer and not is_view:
+        is_permission = qname in permissions
+        if not is_serializer and not is_view and not is_permission:
             continue
+        if is_permission:
+            node.attributes["drf_permission"] = {
+                "source_file": path, "source_line": definition.lineno,
+                "bases": [base for base in bases if base],
+                "derivation": "source_proven_permission_inheritance",
+            }
+            stats["recognized_permissions"] += 1
         if is_serializer:
             if node.kind == NodeKind.CLASS:
                 mark_role(node, "django", NodeKind.TRANSFORMER, "serializer",
@@ -408,9 +432,8 @@ def enrich_django_drf(graph: SemanticGraph, root: Path) -> None:
                         matches = indexed.get(target_name or "", ())
                         if (
                             not target_name
-                            or not target_name.startswith("rest_framework.permissions.")
-                            and (len(matches) != 1 or not
-                                 matches[0].attributes.get("drf_permission"))
+                            or (target_name not in permissions
+                                and not target_name.startswith("rest_framework.permissions."))
                         ):
                             detail["unresolved"].append(
                                 "permission_classes:unproved_symbol"
