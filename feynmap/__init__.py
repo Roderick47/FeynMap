@@ -21,6 +21,7 @@ from .incremental import IncrementalPlan, analyze_incrementally, incremental_sna
 from .integration import IntegrationResolver, add_contract, contracts
 from .migration import MigrationPlanner
 from .minimal_context import MinimalContextBudget, MinimalContextPacker, MinimalContextResult
+from .delivery_channels import DeliveryChannelPolicy, file_channel, channel_counts
 from .context_pipeline import SparseContextPipeline, SparseContextResult
 from .query import FeynMapQuery
 from .snapshots import FileFingerprint, RepositorySnapshot, SnapshotStore, capture_and_store, capture_repository_snapshot
@@ -43,7 +44,7 @@ __all__ = [
     "ACTIVE_STATE_SCHEMA", "ACTIVE_STATE_SCHEMA_VERSION", "ActivationMetrics",
     "ActiveRetrieval", "ActiveState", "ActiveStateBudget", "ActiveStateInvalidated",
     "ActiveStateRuntime", "ActiveStateTransition", "AdaptiveSearchResult",
-    "AdaptiveSparseSearch", "ContextBudget", "EdgeKind", "Evidence", "EvidenceKind",
+    "AdaptiveSparseSearch", "ContextBudget", "DeliveryChannelPolicy", "EdgeKind", "Evidence", "EvidenceKind",
     "FeynMapEngine", "FeynMapQuery", "FileFingerprint",
     "GROUNDING_TOOL_CONTRACT_VERSION", "GROUNDING_TOOLS", "GroundingService",
     "GroundingTool", "IncrementalPlan", "IntegrationResolver", "MigrationPlanner",
@@ -51,6 +52,7 @@ __all__ = [
     "RepositorySnapshot", "SemanticEdge", "SemanticGraph", "SemanticNode", "SnapshotStore",
     "SparseContextPipeline", "SparseContextResult", "SourceLocation",
     "StoredSnapshotContext", "add_contract", "analyze_incrementally",
+    "file_channel", "channel_counts",
     "capture_and_store", "capture_repository_snapshot", "contracts",
     "diff_file_inventories", "diff_graphs", "diff_snapshots", "diff_store_snapshots",
     "estimate_tokens", "incremental_snapshot", "measure_guided_search",
