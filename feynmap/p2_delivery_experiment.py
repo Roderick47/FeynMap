@@ -586,10 +586,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "activation_file_recall": item["shared_activation"][
                     "required_file_activation_recall"
                 ],
+                "activation_symbol_recall": item["shared_activation"][
+                    "required_symbol_activation_recall"
+                ],
+                "intent_detected": item["intent_detected_by_policy"],
                 "budgets": {
                     budget["id"]: [{
                         "arm": row["arm"], "file_recall": row["required_file_recall"],
                         "symbol_recall": row["required_symbol_recall"],
+                        "conditional_symbol_delivery": row[
+                            "conditional_delivery_recall_among_activated_required_symbols"
+                        ],
+                        "required_symbol_outcomes": [
+                            {
+                                "file": label["file"],
+                                "symbol": label["qualified_name"] or label["name"],
+                                "channel": label["channel"],
+                                "outcome": label["outcome"],
+                            }
+                            for label in row["required_symbols"]
+                        ],
                         "test_recall": row["required_test_symbol_recall"],
                         "migration_recall": row["required_migration_symbol_recall"],
                         "distractor_approx_tokens": row[
