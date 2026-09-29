@@ -237,7 +237,7 @@ are in `experiments/p1_external_framework_manifest.json`.
 - [x] **P1.4 Django named URL resolution:** static `reverse`, `reverse_lazy`, namespace and template `{% url %}` relationships
 - [x] **P1.5 Flask Blueprint composition:** resolve registrations and combine `url_prefix` with route decorators
 - [x] **P1.6 DRF/diagnostics:** serializer/model/permission wiring, routed/unrouted coverage, and actionable unresolved-count separation
-- [ ] **P1.7 External replay:** compare all original pinned cases before/after with no fabricated relationships or recall regression
+- [x] **P1.7 External replay:** compare all original pinned cases before/after with no fabricated relationships or recall regression
 
 **P1.1b frozen findings (29 Sep 2026):**
 `docs/P1_1B_EXTERNAL_BASELINE_RESULTS.md` and
@@ -336,6 +336,35 @@ docs/P1_6_DRF_GROUNDING_AND_DIAGNOSTICS.md,
 experiments/results/p1_6_20260929_drf_diagnostics.json, and
 [external replay 36525528345](https://github.com/Roderick47/FeynMap/actions/runs/36525528345).
 **Next: P1.7 frozen external replay and acceptance, then P2 context policy.**
+
+**P1.7 accepted findings (29 Sep 2026):**
+The P1.1a immutable source-author manifest and original P1.1b result were
+sealed by known Git blob identities before replay. Replaying each of the
+same three exact public revisions with strict provenance, confidence and
+diagnostic accounting gives **2/11 → 10/11 positive development probes**:
+**8 recovered**, **0 regressed**, and **1 still unmet**.
+MDN is 6/6, Microblog is 2/2, and DRF is 2/3.
+
+The DRF serializer-to-Field relation is real source evidence and restores
+both essential implementation files to sparse activation, but fields.py
+remains absent from final delivered context. The immutable serializer
+delivery probe therefore remains a failure pending P2. P1.7 did not
+fabricate more edges, weaken the source oracle, reclassify inferred
+framework convention as verified, or count normal exported endpoints
+as integration errors. Source-negative adversarial fixtures, frozen S6
+contract conformance, tamper/error paths, Python 3.8/3.12 and recursive
+self-analysis all pass. The benchmark remains *positive-only*; its
+false-positive rate and agent-repair outcomes are explicitly unmeasured.
+S7 needs a genuinely separate, sealed held-out repair corpus before
+making downstream accuracy claims.
+
+See docs/P1_7_FROZEN_EXTERNAL_ACCEPTANCE.md,
+experiments/results/p1_7_20260929_frozen_acceptance.json,
+[acceptance replay 36526547547](https://github.com/Roderick47/FeynMap/actions/runs/36526547547)
+and [full tests 36526547551](https://github.com/Roderick47/FeynMap/actions/runs/36526547551).
+**P1 is closed on the accepted development set. Next: P2 context
+delivery-channel budgeting and independent DRF serializer/throttling
+fixtures.**
 
 **P2 — retrieval policy and downstream context**
 
