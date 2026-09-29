@@ -1,6 +1,6 @@
 # P1 — Small, testable framework-semantic checkpoints
 
-Status: P1.1a and P1.1b complete; P1.2 Django CBV grounding is next.
+Status: P1.1 and P1.2 complete; P1.3 AppConfig hub semantics is next.
 
 Do NOT one-shot P1: each phase changes FeynMap's graph truth, so regression risk compounds if model, template, URL, Flask and DRF changes are mixed into one implementation.
 
@@ -38,16 +38,24 @@ per-repository reports are artifacts from
 [workflow run 36506425924](https://github.com/Roderick47/FeynMap/actions/runs/36506425924).
 The old baseline must never be retroactively replaced with post-P1.2 results.
 
-## P1.2 — Django model and template grounding
+## P1.2 — Django model and template grounding (done)
 
-- Recognize class-level `model`, `queryset` and explicit `template_name` on
-  supported CBVs using import-aware symbol resolution.
-- Infer Django's known default CBV template names only when the convention
-  and model identity are evidenced; label inferred vs explicit relationships.
-- Test both an independently pinned MDN example and source-authored tiny
-  fixtures including ambiguous imported model names.
-- Gate: expected model/template relations appear; no unsupported relation is
-  invented; preserved graph contracts and downstream impact tests pass.
+Implemented as an isolated static pass in `django_cbv.py`. Class-level
+`model`, conservative `queryset`, explicit `template_name`, and supported
+generic-view default template conventions now resolve only when imports,
+in-repository model identity and physical template identity are unambiguous.
+
+The frozen MDN fixture improves from **0/6 to 5/6** P1 probes. The five P1.2
+facts are now explicit external CI gates. The remaining named URL belongs to
+P1.4; Flask and DRF controls remain unchanged.
+
+Negative fixtures cover unrelated same-named generic bases, ambiguous model
+imports, dynamic/conflicting querysets, custom template selection and missing
+or ambiguous templates. Those cases stay unresolved rather than becoming
+speculative edges.
+
+See `docs/P1_2_DJANGO_CBV_GROUNDING.md` and
+`experiments/results/p1_2_20260929_django_cbv.json`.
 
 ## P1.3 — Django AppConfig hub semantics
 
