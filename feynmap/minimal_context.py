@@ -19,7 +19,7 @@ from .delivery_channels import (
     IMPLEMENTATION, TEST, MIGRATION, VENDOR, DeliveryChannelPolicy,
     file_channel, task_channel,
 )
-from .core import EdgeKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode
+from .core import EdgeKind, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode
 from .core.model import TIER_RANK
 from .judgment.search import GuidedSearchResult, SearchHit, _edge_search_priority
 
@@ -455,6 +455,9 @@ class MinimalContextPacker:
                 edge.kind in behavioral
                 and any(
                     item.location is not None
+                    and item.kind in {
+                        EvidenceKind.STATIC, EvidenceKind.TEST, EvidenceKind.RUNTIME,
+                    }
                     for item in edge.evidence
                 )
             )
