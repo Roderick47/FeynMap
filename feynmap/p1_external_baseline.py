@@ -24,6 +24,7 @@ from typing import Any, Dict, Mapping, Optional, Sequence
 from .adapters.javascript import JavaScriptAdapter
 from .context_pipeline import SparseContextPipeline
 from .engine import FeynMapEngine
+from .core import EdgeKind, EvidenceKind
 from .integration import contracts
 from .minimal_context import MinimalContextBudget
 from .query import FeynMapQuery
@@ -435,6 +436,16 @@ def _graph_summary(graph) -> Dict[str, Any]:
         "integration_resolved_edges": integration.get("resolved_edges"),
         "unresolved_contract_count": integration.get("unresolved_contracts"),
         "unresolved_sample": list(integration.get("unresolved_sample") or [])[:25],
+        "integration_diagnostics_v2": integration.get("diagnostics_v2") or {},
+        "django_drf_stats": (
+            (graph.metadata.get("django_drf") or {}).get("stats") or {}
+        ),
+        "django_drf_unresolved_count": len(
+            (graph.metadata.get("django_drf") or {}).get("unresolved") or []
+        ),
+        "django_drf_route_coverage_count": len(
+            (graph.metadata.get("django_drf") or {}).get("route_coverage") or []
+        ),
         "diagnostics": {
             "error_count": len(graph.diagnostics.get("errors", [])),
             "warning_count": len(graph.diagnostics.get("warnings", [])),
@@ -443,6 +454,48 @@ def _graph_summary(graph) -> Dict[str, Any]:
         },
         "framework_adapter": graph.metadata.get("framework_adapter"),
         "analysis_contract_version": graph.metadata.get("analysis_contract_version"),
+    }
+
+
+
+def _drf_field_type_source_probe(graph) -> Dict[str, Any]:
+    """Acceptance needs the actual DRF metaclass->Field usage, not any edge."""
+    method = [
+        node for node in graph.nodes
+        if node.qualified_name ==
+        "rest_framework.serializers.SerializerMetaclass._get_declared_fields"
+    ]
+    field = [
+        node for node in graph.nodes
+        if node.qualified_name == "rest_framework.fields.Field"
+    ]
+    matches = []
+    if len(method) == 1 and len(field) == 1:
+        matches = [
+            edge for edge in graph.outgoing(method[0].id)
+            if edge.target == field[0].id
+            and edge.kind == EdgeKind.USES_DATA
+            and edge.attributes.get("framework", {}).get("relationship")
+                == "drf_declared_field_type_check"
+            and any(
+                evidence.kind == EvidenceKind.STATIC
+                and evidence.detector ==
+                    "django.drf.serializer_metaclass_field_type_check"
+                and evidence.location is not None
+                and evidence.location.path == "rest_framework/serializers.py"
+                for evidence in edge.evidence
+            )
+        ]
+    return {
+        "status": "grounded_source_usage" if len(matches) == 1
+                  else "missing_or_ambiguous_source_usage",
+        "passed": len(matches) == 1,
+        "metaclass_method_count": len(method),
+        "field_target_count": len(field),
+        "source_evidenced_edge_count": len(matches),
+        "source_file": "rest_framework/serializers.py",
+        "target_file": "rest_framework/fields.py",
+        "source_expression": "isinstance(obj, Field)",
     }
 
 
@@ -505,6 +558,10 @@ def evaluate_fixture(
         "matched_probes": sum(p["passed"] for p in probes),
         "missing_probes": [p["id"] for p in probes if not p["passed"]],
         "probes": probes,
+        "p1_6_drf_field_usage": (
+            _drf_field_type_source_probe(graph)
+            if fixture["id"] == "django-rest-framework" else None
+        ),
         "p1_3_django_impact": (
             _mdn_app_config_impact_probe(graph)
             if fixture["id"] == "mdn-django-local-library" else None
@@ -585,6 +642,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     if row.get("kind") == "http_server"
                 ],
                 "missing_essential_files": item["observed"].get("missing_essential_files"),
+                "activated_files": item["observed"].get("activated_files"),
+                "activated_top": [
+                    (node.get("file"), node.get("name"))
+                    for node in item["observed"].get("top_activated_nodes", [])[:12]
+                ],
+                "delivered_top": [
+                    (node.get("file"), node.get("name"))
+                    for node in item["observed"].get("delivered_nodes", [])[:24]
+                ],
                 "delivered_files": item["observed"].get("delivered_files"),
                 "delivered_channels": item["observed"].get("delivered_channels_by_node_count"),
                 "minified_assets": item["observed"].get("minified_assets"),
@@ -598,6 +664,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if report.get("p1_3_django_impact") is not None:
             diagnostic["p1_3_django_impact"] = report["p1_3_django_impact"]
         diagnostic["integration_unresolved"] = report["graph"]["unresolved_contract_count"]
+        diagnostic["integration_diagnostics_v2"] = {
+            key: value for key, value in
+            report["graph"]["integration_diagnostics_v2"].items()
+            if key.endswith("_count") or key in {
+                "counts_by_category", "python_intrinsic_unresolved_calls",
+                "python_other_unresolved_calls", "framework_unresolved_observations",
+            }
+        }
+        if report.get("p1_6_drf_field_usage") is not None:
+            diagnostic["p1_6_drf_field_usage"] = report["p1_6_drf_field_usage"]
         diagnostic["graph_warnings"] = report["graph"]["diagnostics"]["warnings"][:6]
     print(json.dumps(diagnostic, sort_keys=True))
     # Missing known semantic relationships are the intended baseline result,

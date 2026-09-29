@@ -6,6 +6,8 @@ all language graphs have been merged, producing one cohesive application graph.
 """
 from __future__ import annotations
 
+import builtins
+from collections import Counter
 import hashlib
 import re
 from pathlib import PurePosixPath
@@ -89,7 +91,9 @@ class IntegrationResolver:
             by_kind["file_write->file_read"] = file_count
 
         unresolved = self._unresolved_contracts(graph)
+        classified = _integration_diagnostics(graph, unresolved)
         graph.metadata["integration"] = {
+            "diagnostics_v2": classified,
             "resolved_edges": resolved,
             "resolved_by_kind": by_kind,
             "unresolved_contracts": len(unresolved),
@@ -510,3 +514,121 @@ def _contract_fingerprint(payload: Optional[Dict[str, Any]]) -> Tuple[Any, ...]:
         payload.get("channel"),
         tuple(aliases) if isinstance(aliases, list) else aliases,
     )
+
+
+
+def _integration_diagnostics(graph: SemanticGraph,
+                             unresolved: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """Separate raw unmatched contracts from reviewable repository gaps.
+
+    Lack of a consumer for an exported server is normal. Lack of a repository
+    peer for a database, HTTP domain, file writer, etc. is not proof of a
+    broken relationship. Counts describe *unmatched source contracts*, not
+    bugs or graph hallucinations. Dynamic source observations live in their
+    framework adapters, outside this raw-integration denominator.
+    """
+    server_kinds = {
+        "http_server", "websocket_server", "rpc_server", "queue_subscribe",
+        "cli_entrypoint", "ffi_export", "app_route", "ipc_receive",
+        "database_server", "socket_server",
+    }
+    externally_peerable = {
+        "database_client", "ffi_import", "process_spawn", "queue_publish",
+        "socket_client", "ipc_send", "rpc_client", "websocket_client",
+    }
+    without_peer = {"file_read", "file_write"}
+    builtin_template_tags = {
+        "static", "i18n", "l10n", "tz", "cache", "humanize",
+    }
+    counts: Counter = Counter()
+    classified: List[Dict[str, Any]] = []
+    for item in unresolved:
+        kind = str(item.get("kind") or "")
+        target = str(item.get("target") or "")
+        if kind in server_kinds:
+            category = "available_boundary_without_local_consumer"
+        elif kind in without_peer:
+            category = "resource_io_without_local_peer"
+        elif kind == "template_tag_library" and target in builtin_template_tags:
+            category = "framework_intrinsic"
+        elif kind in externally_peerable:
+            category = "external_or_runtime_peer_not_proven_local"
+        elif kind in {"http_client", "script_load"} and re.match(
+            r"^[a-zA-Z][a-zA-Z0-9+.-]*://", target,
+        ):
+            category = "external_address_not_proven_local"
+        elif kind in {
+            "template_render", "template_extends", "template_include",
+            "script_load", "deep_link", "event_handler", "django_url_reverse",
+            "http_client",
+        }:
+            category = "local_static_target_requires_review"
+        else:
+            category = "unknown_or_non_peer_contract"
+        review = category == "local_static_target_requires_review"
+        counts[category] += 1
+        classified.append(dict(
+            item, category=category, actionable_review_candidate=review,
+            evidence_status=(
+                "unmatched_contract_not_proven_failure"
+                if review else "no_local_peer_required_or_not_proven"
+            ),
+        ))
+
+    intrinsic_count = 0
+    other_calls = 0
+    intrinsic_sample: List[dict] = []
+    other_sample: List[dict] = []
+    intrinsic_names = set(dir(builtins))
+    for node in graph.nodes:
+        data = node.attributes.get("python") or {}
+        if not isinstance(data, dict):
+            continue
+        calls = data.get("unresolved_calls") or []
+        if not isinstance(calls, list):
+            continue
+        for call in calls:
+            call = str(call)
+            if call in intrinsic_names or (
+                call.startswith("builtins.") and call.split(".", 1)[-1] in intrinsic_names
+            ):
+                intrinsic_count += 1
+                if len(intrinsic_sample) < 12:
+                    intrinsic_sample.append({"node": node.id, "call": call})
+            else:
+                other_calls += 1
+                if len(other_sample) < 12:
+                    other_sample.append({"node": node.id, "call": call})
+
+    framework_unknown = {}
+    for name, key in (
+        ("django_named_urls", "django_named_urls"),
+        ("flask_blueprint_composition", "flask_blueprint_composition"),
+        ("django_drf", "django_drf"),
+    ):
+        report = graph.metadata.get(key) or {}
+        entries = report.get("unresolved") or [] if isinstance(report, dict) else []
+        framework_unknown[name] = len(entries) if isinstance(entries, list) else 0
+
+    review_count = counts.get("local_static_target_requires_review", 0)
+    return {
+        "schema": "feynmap.integration_diagnostics.v2",
+        "raw_unmatched_contract_count": len(unresolved),
+        "classified_unmatched_contract_count": len(classified),
+        "actionable_review_candidate_count": review_count,
+        "non_actionable_or_unproven_count": len(unresolved) - review_count,
+        "counts_by_category": dict(sorted(counts.items())),
+        "classified_sample": classified[:40],
+        "python_intrinsic_unresolved_calls": intrinsic_count,
+        "python_other_unresolved_calls": other_calls,
+        "python_intrinsic_sample": intrinsic_sample,
+        "python_unknown_sample": other_sample,
+        "framework_unresolved_observations": framework_unknown,
+        "note": (
+            "Review candidates are NOT verified defects. Raw unmatched contracts "
+            "include legitimate exported endpoints and external peers. Python "
+            "built-in and non-built-in unresolved calls are a separate "
+            "source-analysis denominator. Dynamic framework declarations are "
+            "separately counted, not fabricated as integration edges."
+        ),
+    }

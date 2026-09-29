@@ -15,6 +15,8 @@ on:
       - "tests/test_django_app_membership.py"
       - "tests/test_django_named_urls.py"
       - "tests/test_flask_blueprint_composition.py"
+      - "tests/test_django_drf_semantics.py"
+      - "tests/test_p1_6_integration_diagnostics.py"
       - ".github/workflows/p1-external-baseline.yml"
   pull_request:
     paths:
@@ -314,6 +316,90 @@ jobs:
                   "declaration + registration provenance, no raw /tokens exposure).**",
               ])
 
+          # P1.6: Source-backed DRF metaclass Field identity must reach
+          # graph activation in the pinned serializer query. Final delivery
+          # is a separate context-packing question (explicitly deferred P2),
+          # so do NOT turn a still-missing delivery probe into a false pass.
+          p16_gaps = []
+          drf = reports.get("django-rest-framework") or {}
+          drf_probes = {row["id"]: row for row in drf.get("probes", [])}
+          field_usage = drf.get("p1_6_drf_field_usage") or {}
+          if (
+              field_usage.get("passed") is not True
+              or field_usage.get("source_evidenced_edge_count") != 1
+              or field_usage.get("metaclass_method_count") != 1
+              or field_usage.get("field_target_count") != 1
+          ):
+              p16_gaps.append("DRF core declared Field use missing/ambiguous")
+          serializer = ((drf_probes.get("serializer-implementation-recall") or {})
+                        .get("observed") or {})
+          activated = set(serializer.get("activated_files") or [])
+          if not {
+              "rest_framework/serializers.py", "rest_framework/fields.py",
+          }.issubset(activated):
+              p16_gaps.append("DRF serializer+fields implementation not activated")
+
+          # V2 diagnoses unmatched *contracts*, not failed relationships.
+          # In particular, server endpoints need no in-repo clients, Python
+          # builtins are a separate denominator, and dynamic source
+          # declarations remain framework-local unknowns.
+          for fixture_id, report in reports.items():
+              graph = report.get("graph") or {}
+              v2 = graph.get("integration_diagnostics_v2") or {}
+              raw = graph.get("unresolved_contract_count")
+              classified = v2.get("classified_unmatched_contract_count")
+              count_by_category = v2.get("counts_by_category") or {}
+              review = v2.get("actionable_review_candidate_count")
+              ordinary = v2.get("non_actionable_or_unproven_count")
+              if (
+                  not isinstance(raw, int)
+                  or raw != v2.get("raw_unmatched_contract_count")
+                  or raw != classified
+                  or raw != sum(count_by_category.values())
+                  or not isinstance(review, int)
+                  or not isinstance(ordinary, int)
+                  or review + ordinary != raw
+              ):
+                  p16_gaps.append(fixture_id + ":diagnostic_denominator_mismatch")
+          drf_v2 = (drf.get("graph") or {}).get("integration_diagnostics_v2") or {}
+          if drf_v2.get("python_intrinsic_unresolved_calls", 0) <= 0:
+              p16_gaps.append("DRF ordinary Python builtins not separated")
+          if drf_v2.get("counts_by_category", {}).get(
+              "available_boundary_without_local_consumer", 0
+          ) <= 0:
+              p16_gaps.append("DRF server endpoint missing non-actionable category")
+          if p16_gaps:
+              failed = True
+              lines.extend([
+                  "", "P1.6 DRF/diagnostic gate: FAIL " + "; ".join(p16_gaps),
+              ])
+          else:
+              delivered = set(serializer.get("delivered_files") or [])
+              pending = sorted({
+                  "rest_framework/serializers.py", "rest_framework/fields.py",
+              } - delivered)
+              lines.extend([
+                  "",
+                  "**P1.6 DRF/diagnostic gate: PASS (pinned SerializerMetaclass "
+                  "source usage -> Field; both DRF implementation files "
+                  "activated; raw vs reviewable unmatched-contract counts "
+                  "internally consistent; Python builtins separated).**",
+                  "",
+                  "Delivery still missing %s under the existing context "
+                  "packer (P2 policy, not silently counted as a probe pass)."
+                  % (", ".join(pending) if pending else "none"),
+                  "",
+                  "DRF unmatched integration contracts: %s raw; %s "
+                  "review candidates; %s non-actionable/unproven; %s "
+                  "unresolved Python builtin calls counted separately."
+                  % (
+                      drf_v2.get("raw_unmatched_contract_count"),
+                      drf_v2.get("actionable_review_candidate_count"),
+                      drf_v2.get("non_actionable_or_unproven_count"),
+                      drf_v2.get("python_intrinsic_unresolved_calls"),
+                  ),
+              ])
+
           summary = "\n".join(lines) + "\n"
           print(summary)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
@@ -340,6 +426,8 @@ jobs:
               "p1_4_named_url_gaps": p14_gaps,
               "p1_5_flask_blueprint_gate": "fail" if p15_gaps else "pass",
               "p1_5_blueprint_gaps": p15_gaps,
+              "p1_6_drf_diagnostic_gate": "fail" if p16_gaps else "pass",
+              "p1_6_drf_diagnostic_gaps": p16_gaps,
               "note": "Known unresolved later probes stay visible; P1.2's five verified facts must not regress.",
           }
           Path("p1-external-summary.json").write_text(json.dumps(report, indent=2) + "\n")
