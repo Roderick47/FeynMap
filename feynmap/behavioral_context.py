@@ -45,6 +45,7 @@ class BehavioralContextResult:
     sufficiency: SufficiencyDecision
     candidate_observations: int
     omitted_relevant_observations: int
+    omitted_critical_observations: int
     behavior_tokens: int
     total_tokens: int
     sufficient: bool
@@ -56,6 +57,7 @@ class BehavioralContextResult:
             "candidate_observations": int(self.candidate_observations),
             "delivered_observations": len(self.delivered_observations),
             "omitted_relevant_observations": int(self.omitted_relevant_observations),
+            "omitted_critical_observations": int(self.omitted_critical_observations),
             "behavior_tokens": int(self.behavior_tokens),
             "total_tokens": int(self.total_tokens),
             "sufficiency": self.sufficiency.to_dict(),
@@ -110,26 +112,28 @@ class BehavioralContextBuilder:
             if decision is None or decision.label == RelevanceLabel.IRRELEVANT:
                 continue
             useful.append((observation, decision))
-        useful.sort(
-            key=lambda item: (
-                self._LABEL_RANK[item[1].label],
-                -float(item[1].score),
-                item[0].location.path,
-                item[0].order,
-                item[0].id,
-            )
-        )
+        useful.sort(key=self._relevance_sort_key)
+        useful, dimension_witness_ids = self._reserve_task_dimensions(useful, profile)
 
         selected: List[BehaviorObservation] = []
         selected_rows: List[Dict[str, Any]] = []
         source_chars = 0
         omitted = 0
+        omitted_critical = 0
         for observation, decision in useful:
+            is_critical = (
+                observation.id in dimension_witness_ids
+                or decision.label == RelevanceLabel.ESSENTIAL
+            )
             if len(selected) >= requested.max_observations:
                 omitted += 1
+                if is_critical:
+                    omitted_critical += 1
                 continue
             row = observation.to_dict(include_source=True)
             row["relevance"] = decision.to_dict()
+            if observation.id in dimension_witness_ids:
+                row["task_dimension_witness"] = True
             source_text = str(row.get("source", ""))
             if source_text and source_chars + len(source_text) > requested.max_source_chars:
                 # Keep the structured source-derived fact and exact location;
@@ -141,6 +145,8 @@ class BehavioralContextBuilder:
             trial = self._behavior_payload(profile, trial_rows, context)
             if estimate_tokens(trial) > requested.max_tokens:
                 omitted += 1
+                if is_critical:
+                    omitted_critical += 1
                 continue
             selected.append(observation)
             selected_rows.append(row)
@@ -157,12 +163,13 @@ class BehavioralContextBuilder:
         behavior_payload = self._behavior_payload(profile, selected_rows, context)
         behavior_payload["sequences"] = self._sequences(selected)
         behavior_payload["omitted_relevant_observations"] = int(omitted)
+        behavior_payload["omitted_critical_observations"] = int(omitted_critical)
         behavior_payload["candidate_observations"] = len(candidates)
         behavior_payload["delivered_observations"] = len(selected)
         behavior_payload["source_witness_chars"] = source_chars
         behavior_payload["selection"] = {
             "judge": self.judge.__class__.__name__,
-            "rule": "essential > supporting > uncertain; irrelevant omitted",
+            "rule": "reserve one best witness for each high-priority task dimension, then essential > supporting > uncertain",
             "unknown_is_not_false": True,
             "selected_symbol_boundary": True,
         }
@@ -172,7 +179,10 @@ class BehavioralContextBuilder:
             selected,
             profile,
             unresolved_identifiers=context.unresolved_query_identifiers,
-            omitted_relevant=omitted,
+            # Supporting/uncertain enrichment can be dropped.  Only omitted
+            # task-dimension witnesses or provider-essential facts make the
+            # packet fail closed.
+            omitted_relevant=omitted_critical,
         )
         behavior_payload["sufficiency"] = sufficiency.to_dict()
         if context.unresolved_query_identifiers:
@@ -184,7 +194,11 @@ class BehavioralContextBuilder:
         combined["behavioral_evidence"] = behavior_payload
         behavior_tokens = estimate_tokens(behavior_payload)
         total_tokens = estimate_tokens(combined)
-        sufficient = bool(context.sufficient and sufficiency.sufficient and omitted == 0)
+        sufficient = bool(
+            context.sufficient
+            and sufficiency.sufficient
+            and omitted_critical == 0
+        )
         # Sanity check: every delivered row must correspond to an extracted,
         # source-backed observation from a selected symbol.
         row_ids = {str(row.get("id")) for row in selected_rows}
@@ -202,10 +216,60 @@ class BehavioralContextBuilder:
             sufficiency=sufficiency,
             candidate_observations=len(candidates),
             omitted_relevant_observations=omitted,
+            omitted_critical_observations=omitted_critical,
             behavior_tokens=behavior_tokens,
             total_tokens=total_tokens,
             sufficient=sufficient,
         )
+
+    def _relevance_sort_key(
+        self, item: Tuple[BehaviorObservation, RelevanceDecision]
+    ) -> Tuple[Any, ...]:
+        observation, decision = item
+        return (
+            self._LABEL_RANK[decision.label],
+            -float(decision.score),
+            observation.location.path,
+            observation.order,
+            observation.id,
+        )
+
+    def _reserve_task_dimensions(
+        self,
+        useful: Sequence[Tuple[BehaviorObservation, RelevanceDecision]],
+        profile: TaskEvidenceProfile,
+    ) -> Tuple[List[Tuple[BehaviorObservation, RelevanceDecision]], set]:
+        """Prevent generic evidence from crowding task-critical behavior.
+
+        P2.1 showed that a file/channel floor can still lose the actual task
+        symbol.  P2.4 applies the same lesson one level deeper: reserve the best
+        source-backed witness for every behavior kind the task profile rates
+        highly, then spend the remaining budget on normal relevance ordering.
+        """
+        critical_kinds = {
+            kind
+            for kind, weight in profile.category_weights.items()
+            if float(weight) >= 0.80
+        }
+        representatives: List[Tuple[BehaviorObservation, RelevanceDecision]] = []
+        representative_ids = set()
+        for kind in sorted(critical_kinds):
+            candidates = [item for item in useful if item[0].kind.value == kind]
+            if not candidates:
+                continue
+            best = min(candidates, key=self._relevance_sort_key)
+            representatives.append(best)
+            representative_ids.add(best[0].id)
+        representatives.sort(
+            key=lambda item: (
+                -float(profile.category_weights.get(item[0].kind.value, 0.0)),
+                -float(item[1].score),
+                item[0].location.path,
+                item[0].order,
+            )
+        )
+        remainder = [item for item in useful if item[0].id not in representative_ids]
+        return representatives + remainder, representative_ids
 
     @staticmethod
     def _behavior_payload(
