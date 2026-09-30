@@ -11,7 +11,7 @@ import keyword
 import re
 import token
 import tokenize
-from typing import Any, Dict, List, Mapping, Sequence, Set
+from typing import Any, Dict, List, Mapping, Sequence
 
 from .behavior import BehaviorObservation
 
@@ -66,6 +66,10 @@ def _python_parseable(source: str) -> str:
     return text
 
 
+def _target_text(text: str, node: ast.AST) -> str:
+    return str(ast.get_source_segment(text, node) or "").strip()
+
+
 def _python_facts(source: str) -> Dict[str, Any]:
     text = _python_parseable(source)
     if not text:
@@ -76,14 +80,31 @@ def _python_facts(source: str) -> Dict[str, Any]:
         return _python_token_facts(source)
 
     reads: List[str] = []
+    writes: List[str] = []
     literals: List[Any] = []
     operators: List[str] = []
     transforms: List[str] = []
     calls: List[str] = []
 
     for node in ast.walk(tree):
+        if isinstance(node, ast.AugAssign):
+            target = _target_text(text, node.target)
+            if target:
+                # x += y and obj.field -= y both consume the previous target
+                # value and then write a replacement value.
+                reads.append(target)
+                writes.append(target)
+        elif isinstance(node, ast.Assign):
+            for target_node in node.targets:
+                target = _target_text(text, target_node)
+                if target:
+                    writes.append(target)
+        elif isinstance(node, ast.AnnAssign):
+            target = _target_text(text, node.target)
+            if target:
+                writes.append(target)
         if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
-            segment = ast.get_source_segment(text, node)
+            segment = _target_text(text, node)
             if segment:
                 reads.append(segment)
         elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
@@ -106,6 +127,8 @@ def _python_facts(source: str) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
     if reads:
         result["reads"] = _unique(reads)
+    if writes:
+        result["writes"] = _unique(writes)
     if literals:
         result["literals"] = _unique(literals)
     if operators:
