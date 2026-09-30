@@ -1,0 +1,9 @@
+{
+  "status": "answer",
+  "claims": [
+    {"text": "A function named apply_priority_default is delivered.", "evidence_nodes": ["python:symbol:fulfillment.migrations.0001_priority.apply_priority_default"], "evidence_edges": []},
+    {"text": "A function named priority_default is delivered.", "evidence_nodes": ["python:symbol:fulfillment.models.priority_default"], "evidence_edges": []},
+    {"text": "A test symbol named test_priority_migration_sets_normal_only_when_missing is delivered.", "evidence_nodes": ["python:symbol:tests.test_migration.test_priority_migration_sets_normal_only_when_missing"], "evidence_edges": []}
+  ],
+  "missing_identifiers": []
+}
