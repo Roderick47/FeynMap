@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict, Mapping, Sequence
+from typing import Any, Dict, Iterable, Mapping, Sequence
 
 from .behavioral_context import BehaviorEvidenceBudget
 from .engine import FeynMapEngine
@@ -55,9 +55,25 @@ def _standard_budget(manifest: Mapping[str, Any]) -> MinimalContextBudget:
     )
 
 
+def _string_values(value: Any) -> Iterable[str]:
+    """Yield actual string values rather than JSON-escaped renderings."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        for key, item in value.items():
+            if isinstance(key, str):
+                yield key
+            for nested in _string_values(item):
+                yield nested
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            for nested in _string_values(item):
+                yield nested
+
+
 def _packet_text(payload: Mapping[str, Any]) -> str:
     behavior = payload.get("behavioral_evidence", {})
-    return json.dumps(behavior, sort_keys=True, ensure_ascii=False)
+    return "\n".join(_string_values(behavior))
 
 
 def run_replay(
@@ -183,6 +199,16 @@ def main(argv: Sequence[str] = None) -> int:
             json.dumps(result, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+    failing = {
+        row["task_id"]: [
+            pattern
+            for pattern, present in row["known_development_patterns"].items()
+            if not present
+        ]
+        for row in result["records"]
+        if not row["known_patterns_present"]
+        and row["task_id"] != "missing-refund-identifier"
+    }
     print(json.dumps({
         "status": result["status"],
         "answerable_known_pattern_tasks_passing": result["answerable_known_pattern_tasks_passing"],
@@ -190,6 +216,7 @@ def main(argv: Sequence[str] = None) -> int:
         "missing_identifier_control_ok": result["missing_identifier_control_ok"],
         "mean_behavior_tokens": result["mean_behavior_tokens"],
         "mean_combined_tokens": result["mean_combined_tokens"],
+        "missing_patterns_by_task": failing,
     }, sort_keys=True))
     return 0
 
