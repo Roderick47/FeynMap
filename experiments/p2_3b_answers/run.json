@@ -1,0 +1,12 @@
+{
+  "schema": "feynmap.p2_3b_model_run.v1",
+  "provider": "chatgpt_interactive",
+  "model": "GPT-5.6 Sol",
+  "generation_mode": "interactive development run over exported oracle-free packets",
+  "oracle_exposure": true,
+  "oracle_exposure_note": "The same ChatGPT session helped author/inspect the source fixture and scoring oracle before answering. Answers were intentionally constrained to model-packet contents, but this is not a blind evaluation.",
+  "eligible_for_shipping_decision": false,
+  "eligibility_reason": "Nonblind development run; cannot justify changing FeynMap's default delivery policy.",
+  "provider_usage_note": "This ChatGPT surface does not expose per-packet provider billing token counts to the repository harness; usage remains unreported rather than estimated.",
+  "usage_by_packet": {}
+}
