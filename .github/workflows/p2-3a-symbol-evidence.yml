@@ -1,0 +1,105 @@
+name: p2-3a-symbol-evidence-replay
+
+on:
+  pull_request:
+    paths:
+      - "feynmap/minimal_context.py"
+      - "feynmap/delivery_channels.py"
+      - "feynmap/p2_3a_replay.py"
+      - "tests/test_p2_3a_symbol_evidence.py"
+      - "experiments/p2_3a_source_manifest.json"
+      - "experiments/fixtures/p2_3a_dispatch/**"
+      - ".github/workflows/p2-3a-symbol-evidence.yml"
+  push:
+    paths:
+      - "feynmap/minimal_context.py"
+      - "feynmap/delivery_channels.py"
+      - "feynmap/p2_3a_replay.py"
+      - "tests/test_p2_3a_symbol_evidence.py"
+      - "experiments/p2_3a_source_manifest.json"
+      - "experiments/fixtures/p2_3a_dispatch/**"
+      - ".github/workflows/p2-3a-symbol-evidence.yml"
+  workflow_dispatch:
+
+jobs:
+  source-comparison:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [fresh-dispatch, old-stockroom, old-drf]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: feynmap-source
+      - name: Checkout original DRF source revision for old, nonfresh calibration only
+        if: matrix.case == 'old-drf'
+        uses: actions/checkout@v4
+        with:
+          repository: encode/django-rest-framework
+          ref: b578eab1cad040414b758131af1e17aa000b51e2
+          path: external-drf
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install FeynMap only; never execute or install source fixture dependencies
+        working-directory: feynmap-source
+        run: python -m pip install -e .
+      - name: Compare original legacy, P2.1 and opt-in P2.3a using same activated results
+        shell: bash
+        working-directory: feynmap-source
+        run: |
+          set -e
+          mkdir -p p2-3a-results
+          case="${{ matrix.case }}"
+          previous=""
+          fixture=""
+          if [ "$case" = "fresh-dispatch" ]; then
+            manifest="experiments/p2_3a_source_manifest.json"
+            root="experiments/fixtures/p2_3a_dispatch"
+          elif [ "$case" = "old-stockroom" ]; then
+            manifest="experiments/p2_2_delivery_manifest.json"
+            root="experiments/fixtures/p2_channels"
+            previous="--previous-p2"
+            fixture="--previous-fixture stockroom-independent"
+          else
+            manifest="experiments/p2_2_delivery_manifest.json"
+            root="../external-drf"
+            previous="--previous-p2"
+            fixture="--previous-fixture drf-calibration"
+          fi
+          python -m feynmap.p2_3a_replay \
+            --manifest "$manifest" \
+            --project-root "$root" \
+            --output "p2-3a-results/$case.json" \
+            --markdown "p2-3a-results/$case.md" \
+            $previous $fixture
+          cat "p2-3a-results/$case.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve complete per-task source reports even when analysis fails
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p2-3a-${{ matrix.case }}
+          path: feynmap-source/p2-3a-results/
+          if-no-files-found: warn
+
+  source-conformance:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install -e ".[dev]"
+      - name: Frozen source labels, real edge endpoints, negative/error-path and backward compatibility
+        run: |
+          python -m pytest -q \
+            tests/test_p2_3a_symbol_evidence.py \
+            tests/test_p2_delivery_experiment.py \
+            tests/test_p2_delivery_channels.py \
+            tests/test_contract_conformance.py

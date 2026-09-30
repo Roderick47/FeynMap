@@ -10,6 +10,7 @@ compacted using the same transport-neutral representation as stored context.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -18,7 +19,7 @@ from .delivery_channels import (
     IMPLEMENTATION, TEST, MIGRATION, VENDOR, DeliveryChannelPolicy,
     file_channel, task_channel,
 )
-from .core import EdgeKind, SemanticEdge, SemanticGraph, SemanticNode
+from .core import EdgeKind, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode
 from .core.model import TIER_RANK
 from .judgment.search import GuidedSearchResult, SearchHit, _edge_search_priority
 
@@ -137,6 +138,7 @@ class MinimalContextResult:
     sufficient: bool = True
     selected_budget_tokens: int = 0
     packing_iterations: int = 1
+    unresolved_query_identifiers: Sequence[str] = ()
 
     @property
     def token_compression_ratio(self) -> float:
@@ -151,7 +153,7 @@ class MinimalContextResult:
         return float(self.delivered_nodes) / float(self.activated_nodes)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "payload": dict(self.payload),
             "selected_node_ids": list(self.selected_node_ids),
             "selected_edge_ids": list(self.selected_edge_ids),
@@ -181,6 +183,11 @@ class MinimalContextResult:
                 "packing_iterations": int(self.packing_iterations),
             },
         }
+        if self.unresolved_query_identifiers:
+            result["metrics"]["unresolved_query_identifiers"] = list(
+                self.unresolved_query_identifiers
+            )
+        return result
 
 
 class MinimalContextPacker:
@@ -228,10 +235,16 @@ class MinimalContextPacker:
     ) -> MinimalContextResult:
         requested = (budget or MinimalContextBudget()).normalized()
         policy = delivery_policy.normalized() if delivery_policy is not None else None
-        critical = (
-            self._role_critical_node_ids(result, policy)
-            if policy is not None else self._critical_node_ids(result)
-        )
+        if policy is not None and policy.mode == "symbol_evidence":
+            critical, critical_edges = self._symbol_evidence_critical(result, policy)
+            unresolved = self._unresolved_query_identifiers(result)
+        else:
+            unresolved = ()
+            critical = (
+                self._role_critical_node_ids(result, policy)
+                if policy is not None else self._critical_node_ids(result)
+            )
+            critical_edges = ()
         payload_cache = _PackPayloadCache(nodes={}, edges={})
 
         caps: List[int] = []
@@ -255,6 +268,7 @@ class MinimalContextPacker:
                 result,
                 budget=current_budget,
                 critical_node_ids=critical,
+                critical_edge_ids=critical_edges,
                 payload_cache=payload_cache,
                 delivery_policy=policy,
             )
@@ -267,15 +281,277 @@ class MinimalContextPacker:
                 activated_nodes=packed.activated_nodes,
                 delivered_nodes=packed.delivered_nodes,
                 critical_node_ids=packed.critical_node_ids,
-                sufficient=packed.sufficient,
+                sufficient=packed.sufficient and not unresolved,
                 selected_budget_tokens=cap,
                 packing_iterations=iteration,
+                unresolved_query_identifiers=tuple(unresolved),
             )
             last = packed
-            if packed.sufficient:
+            if packed.sufficient or unresolved:
+                # Increasing the delivery budget cannot activate an
+                # explicitly named source symbol absent from S2 search.
+                # Return the bounded grounded partial context with an honest
+                # insufficient flag and machine-readable missing identifiers.
                 return packed
         assert last is not None
         return last
+
+    @staticmethod
+    def _identifier_terms(value: str) -> Set[str]:
+        """Match snake_case and camelCase identically across source languages.
+
+        The source name and task text are normalized only for *selection*.
+        Neither source location nor the evidence/confidence tier is rewritten.
+        """
+        spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(value or ""))
+        return _tokens(spaced)
+
+    @staticmethod
+    def _unresolved_query_identifiers(
+        result: GuidedSearchResult,
+    ) -> Tuple[str, ...]:
+        """Fail closed on explicit code-shaped names absent from activation.
+
+        CamelCase, PascalCase and snake_case names in the task are source
+        requests, not proof those symbols exist. Their absence cannot be
+        corrected by allocating extra S3 tokens; request more *activation*.
+        Ordinary natural-language nouns never become fabricated identifiers.
+        """
+        query = str(result.query or "")
+        pattern = re.compile(
+            r"\b(?:[A-Za-z_$][A-Za-z0-9_$]*_[A-Za-z0-9_$]+"
+            r"|[a-z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*"
+            r"|[A-Z][a-z0-9]+(?:[A-Z][A-Za-z0-9]+)+)\b"
+        )
+        named = {hit.node.name.casefold() for hit in result.hits}
+        return tuple(sorted({
+            match.group(0)
+            for match in pattern.finditer(query)
+            if match.group(0).casefold() not in named
+        }))
+
+    def _symbol_evidence_critical(
+        self,
+        result: GuidedSearchResult,
+        policy: DeliveryChannelPolicy,
+    ) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+        """Bounded, source-grounded *symbol* witnesses for opt-in P2.3a.
+
+        Important: This examines only query text, activated graph facts,
+        stored source-edge evidence and role labels. It receives no gold
+        required_file/required_symbol information from any experiment.
+        """
+        if not result.hits:
+            return (), ()
+        hit_by_id = {hit.node.id: hit for hit in result.hits}
+        active_ids = set(hit_by_id)
+        active_edges = [
+            edge for edge in result.edges
+            if edge.source in active_ids and edge.target in active_ids
+        ]
+        node_scores = self._node_scores(result, hit_by_id, active_edges)
+        intent = task_channel(result.query)
+        query_raw = result.query.casefold()
+        query_terms = self._identifier_terms(result.query)
+        # Generic task vocabulary cannot, on its own, make every test case,
+        # serializer, field, migration or dependency a required witness.
+        stop = {
+            "which", "where", "what", "when", "why", "how", "does", "this",
+            "that", "from", "with", "before", "after", "into", "some",
+            "uses", "used", "using", "source", "code", "file", "function",
+            "method", "class", "tests", "test", "migration", "migrations",
+            "implementation", "module", "values",
+            "value", "ticket", "stock", "framework",
+        }
+        query_meaningful = query_terms - stop
+        candidates: List[Tuple[float, str, bool]] = []
+        partial_candidates: List[Tuple[float, str]] = []
+        strong_ids: Set[str] = set()
+        other_requested_channels = set()
+        if "migration" in query_terms or "migrations" in query_terms:
+            other_requested_channels.add(MIGRATION)
+        if "test" in query_terms or "tests" in query_terms or (
+            re.search(r"\b(?:test|spec)[A-Z]", result.query) is not None
+        ):
+            other_requested_channels.add(TEST)
+        for hit in result.hits:
+            node = hit.node
+            name = str(node.name or "")
+            if not name or not (node.location and node.location.path):
+                continue
+            # A lexically matched location is not enough: protect the actual
+            # named source definition, not an arbitrary node from that file.
+            meaningful = self._identifier_terms(name) - stop
+            common = meaningful & query_meaningful
+            exact = bool(
+                len(name) >= 4 and re.search(
+                    r"(?<![\w])" + re.escape(name.casefold()) + r"(?![\w])",
+                    query_raw,
+                )
+            )
+            strong = bool(
+                exact
+                or len(common) >= 2
+                or (len(meaningful) == 1 and bool(common)
+                    and len(next(iter(meaningful))) >= 4)
+            )
+            role = file_channel(node.location.path)
+            intent_bonus = 0.0
+            if role == intent:
+                intent_bonus = 0.7
+            elif role == IMPLEMENTATION:
+                intent_bonus = 0.22
+            # Rank named definitions over generic module/file witnesses,
+            # without encoding repository- or label-specific exceptions.
+            score = (
+                (6.0 if exact else 0.0)
+                + 1.8 * len(common)
+                + 1.5 * (len(common) / float(max(1, len(meaningful))))
+                + 0.35 * node_scores.get(node.id, 0.0)
+                + intent_bonus
+            )
+            if strong:
+                strong_ids.add(node.id)
+                candidates.append((score, node.id, exact))
+            elif (
+                common
+                and node.kind not in {NodeKind.MODULE, NodeKind.FILE}
+                and (
+                    role == intent
+                    or role == IMPLEMENTATION
+                    or role in other_requested_channels
+                )
+            ):
+                # One lexical concept (e.g. an invoked method with a
+                # different verb) is still a meaningful activated *symbol*.
+                # Restrict such weak witnesses by task-relevant source role
+                # and rank them below exact named declarations. This is the
+                # generic complement to source-edge continuation when static
+                # analysis legitimately cannot resolve a dynamic import.
+                file_common = (
+                    self._identifier_terms(node.location.path) & query_meaningful
+                )
+                partial_score = (
+                    score
+                    + 0.45 * len(file_common)
+                    + (0.65 if role == intent else 0.0)
+                    + (0.55 if role in other_requested_channels else 0.0)
+                )
+                partial_candidates.append((partial_score, node.id))
+
+        candidates.sort(key=lambda row: (-row[0], row[1]))
+        # Reserve at most eight source-definition witnesses, leaving room for
+        # their explicit dependencies under a 12-node tight budget.
+        ordered: List[str] = [node_id for _, node_id, _ in candidates[:8]]
+        # Do not stop merely because an unrelated module/class represented
+        # the same file: choose bounded partly-matched source definitions as
+        # additional witnesses. A query-named class gives its own activated
+        # methods a small structural preference, without inventing CONTAINS
+        # edges or claiming the method has executed.
+        named_classes = [
+            hit_by_id[node_id].node for node_id in ordered
+            if hit_by_id[node_id].node.kind == NodeKind.CLASS
+            and hit_by_id[node_id].node.qualified_name
+        ]
+        promoted: List[Tuple[float, str]] = []
+        for score, node_id in partial_candidates:
+            node = hit_by_id[node_id].node
+            parent_bonus = 0.0
+            for parent in named_classes:
+                if node.qualified_name and node.qualified_name.startswith(
+                    parent.qualified_name + "."
+                ):
+                    parent_bonus = 1.4
+                    break
+            promoted.append((score + parent_bonus, node_id))
+        promoted.sort(key=lambda row: (-row[0], row[1]))
+        for _, node_id in promoted[:3]:
+            if node_id not in ordered and len(ordered) < 10:
+                ordered.append(node_id)
+
+        if not ordered:
+            # Empty lexical evidence is unknown, not a license to invent
+            # essential symbols. Use deterministic S2 source roots as anchors.
+            ordered = [
+                root.id for root in result.roots if root.id in active_ids
+            ][:2]
+            if not ordered:
+                ordered = [result.hits[0].node.id]
+
+        behavioral = {
+            EdgeKind.CALLS, EdgeKind.USES_DATA, EdgeKind.VALIDATES,
+            EdgeKind.INVOKES, EdgeKind.READS,
+            EdgeKind.WRITES, EdgeKind.SERIALIZES, EdgeKind.ROUTES_TO,
+            EdgeKind.REQUESTS, EdgeKind.RENDERS,
+        }
+        # Behavioral evidence has to be actually stored and source backed.
+        # A graph's inferred relationship is retained only at its recorded
+        # confidence tier; this routine creates no relationship of its own.
+        def source_backed(edge: SemanticEdge) -> bool:
+            return (
+                edge.kind in behavioral
+                and any(
+                    item.location is not None
+                    and item.kind in {
+                        EvidenceKind.STATIC, EvidenceKind.TEST, EvidenceKind.RUNTIME,
+                    }
+                    for item in edge.evidence
+                )
+            )
+
+        # Preserve a short outward continuation of explicitly named source
+        # functions even if a callee's vocabulary differs from the question.
+        # Example: a dispatch service method calls a separately named policy.
+        neighbors: List[Tuple[float, str, str]] = []
+        for edge in active_edges:
+            if not source_backed(edge):
+                continue
+            if edge.source not in strong_ids or edge.target in ordered:
+                continue
+            source = hit_by_id[edge.source].node
+            target = hit_by_id[edge.target].node
+            if not source.location or not target.location:
+                continue
+            role = file_channel(target.location.path)
+            if role in {VENDOR} and intent != VENDOR:
+                continue
+            if role == TEST and intent != TEST:
+                continue
+            # Direct, activated CALLS/USES_DATA facts outrank bare import or
+            # containment; cross-file continuations get a modest preference.
+            score = (
+                node_scores.get(edge.target, 0.0)
+                + 1.6 * _delivery_edge_priority(edge)
+                + (0.45 if source.location.path != target.location.path else 0.0)
+                + (0.65 if role == intent else 0.0)
+            )
+            neighbors.append((score, edge.target, edge.id))
+        neighbors.sort(key=lambda row: (-row[0], row[1], row[2]))
+        for _, node_id, _ in neighbors[:3]:
+            if node_id not in ordered and len(ordered) < 10:
+                ordered.append(node_id)
+
+        chosen = set(ordered)
+        essential_edge_candidates: List[Tuple[float, str]] = []
+        for edge in active_edges:
+            if not source_backed(edge):
+                continue
+            if edge.source not in chosen or edge.target not in chosen:
+                continue
+            # Only direct relationships involving the task-matched witnesses,
+            # not every incidental edge between ten activated nodes.
+            if edge.source not in strong_ids and edge.target not in strong_ids:
+                continue
+            essential_edge_candidates.append((
+                _delivery_edge_priority(edge)
+                + (0.4 if edge.source in strong_ids else 0.0)
+                + (0.2 if edge.target in strong_ids else 0.0),
+                edge.id,
+            ))
+        essential_edge_candidates.sort(key=lambda row: (-row[0], row[1]))
+        return tuple(ordered), tuple(
+            edge_id for _, edge_id in essential_edge_candidates[:5]
+        )
 
     def _role_critical_node_ids(
         self,
@@ -541,6 +817,7 @@ class MinimalContextPacker:
         *,
         budget: MinimalContextBudget,
         critical_node_ids: Sequence[str] = (),
+        critical_edge_ids: Sequence[str] = (),
         payload_cache: Optional[_PackPayloadCache] = None,
         delivery_policy: Optional[DeliveryChannelPolicy] = None,
     ) -> MinimalContextResult:
@@ -571,7 +848,7 @@ class MinimalContextPacker:
                 activated_nodes=0,
                 delivered_nodes=0,
                 critical_node_ids=tuple(critical_node_ids),
-                sufficient=not critical_node_ids,
+                sufficient=not critical_node_ids and not critical_edge_ids,
                 selected_budget_tokens=budget.max_tokens,
                 packing_iterations=1,
             )
@@ -587,9 +864,15 @@ class MinimalContextPacker:
         selected_edges: Set[str] = set()
         anchors: List[str] = []
 
-        # Preserve the strongest original root. Additional roots/region seeds
-        # compete normally and are delivered only if they add useful evidence.
-        first_root = primary_roots[0]
+        # Legacy and P2.1 preserve the original root. P2.3a may instead
+        # anchor in the strongest activated task-matched definition; a search
+        # root is an entrypoint, not necessarily the symbol needed downstream.
+        first_root = (
+            critical_node_ids[0]
+            if delivery_policy is not None
+            and delivery_policy.mode == "symbol_evidence"
+            and critical_node_ids else primary_roots[0]
+        )
         if self._try_add(
             result,
             budget,
@@ -650,6 +933,38 @@ class MinimalContextPacker:
                 ):
                     selected_nodes.add(node_id)
                     anchors[:] = fallback_anchors
+
+        # P2.3a: a source-backed behavioral relationship is a delivery
+        # requirement only when it was already activated and independently
+        # selected from task-relevant *symbols*. Admit endpoints atomically.
+        # A node-level file representative does not certify this relation.
+        for edge_id in critical_edge_ids:
+            edge = edge_by_id.get(edge_id)
+            if edge is None or edge_id in selected_edges:
+                continue
+            endpoints = {edge.source, edge.target}
+            if not endpoints <= activated_ids:
+                continue
+            candidate_anchors = list(anchors)
+            if not endpoints.intersection(selected_nodes):
+                anchor_id = (
+                    edge.source if edge.source in set(critical_node_ids)
+                    else edge.target
+                )
+                if anchor_id not in candidate_anchors:
+                    candidate_anchors.append(anchor_id)
+            if self._fits(
+                result,
+                budget,
+                selected_nodes | endpoints,
+                selected_edges | {edge_id},
+                candidate_anchors,
+                payload_cache=payload_cache,
+                delivery_policy=delivery_policy,
+            ):
+                selected_nodes.update(endpoints)
+                selected_edges.add(edge_id)
+                anchors[:] = candidate_anchors
 
         # Reserve a few delivery-critical boundary continuations. Unlike
         # search-time priority, delivery priority demotes generic inheritance
@@ -909,7 +1224,10 @@ class MinimalContextPacker:
             activated_nodes=len(activated_ids),
             delivered_nodes=len(selected_nodes),
             critical_node_ids=tuple(critical_node_ids),
-            sufficient=set(critical_node_ids).issubset(selected_nodes),
+            sufficient=(
+                set(critical_node_ids).issubset(selected_nodes)
+                and set(critical_edge_ids).issubset(selected_edges)
+            ),
             selected_budget_tokens=budget.max_tokens,
             packing_iterations=1,
         )

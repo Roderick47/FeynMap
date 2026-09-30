@@ -92,13 +92,35 @@ insufficient criterion for delivering the actual task-bearing symbol.
 See `docs/P2_2_CHANNEL_BUDGET_COMPARISON.md` and
 `experiments/results/p2_2_20260929_delivery_comparison.json`.
 
-**P2.3a — Correct downstream evidence selection, then revalidate.** Design
-a task-relevant, source-grounded symbol and behavioral-edge sufficiency rule
-that keeps actual test/migration essentials when the task asks for them.
-Never feed benchmark gold labels to the selector. Freeze *new* source-authored
-cases before evaluating the changed policy, rather than claiming that
-post-result fitting to P2.2 constitutes independent improvement. Retain
-legacy as the default until non-regression is measured.
+**P2.3a — Task-symbol and source-evidence sufficiency (implemented,
+opt-in; PR #47).** The separate `symbol_evidence` mode selects actual
+activated named definitions matched by the task, bounded partly matched
+source methods, and existing source-evidenced behavioral-edge continuations.
+It requires every selected critical *symbol and relationship* before
+claiming context sufficiency. It separately recognizes explicit snake_case,
+camelCase and PascalCase identifiers absent from S2 activation, reports them
+in additive `unresolved_query_identifiers` diagnostics, and sets
+`sufficient=False` instead of fabricating missing upstream evidence.
+
+An independently preauthored mixed Python/JavaScript dispatch source fixture
+(12 sealed source blobs and 8 source-authored queries, manifest Git blob
+`0512100c4a1c76969e1cfc1c8bc16d6c0fa42e18`) was frozen before
+implementation. The original P2.2 stockroom/DRF cohorts remain explicitly
+reused diagnostics, not a newly held-out score. Final exploratory refinements
+were informed by development replay and are described transparently in
+`docs/P2_3A_SYMBOL_EVIDENCE_SUFFICIENCY.md`.
+
+The fresh fixture yielded 15/16 required-symbol activations and P2.3a
+delivered all 15 activated symbols under 1,600- and 3,200-token limits,
+against P2.1's 10/15. The remaining JS `normalizeSeverity` source name
+was absent upstream and must trigger a new S2 expansion, not false S3
+coverage. Previously frozen P2.2 controls improved to 10/10 stockroom
+symbols at both caps, including essential tests and migrations; DRF reached
+6/7 at 1,600 tokens (a remaining omission is explicitly insufficient)
+and 7/7 at 3,200 tokens, including previously omitted required test
+evidence. The original graph, baseline scores, budget limits and default
+packing remain unchanged; P2.3b is still needed before considering a default
+promotion.
 
 **P2.3b — Downstream fidelity and shipping decision.** Compare actual
 supported/unsupported model claims, answer correctness, follow-up evidence

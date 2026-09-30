@@ -402,6 +402,7 @@ def _measure_arm(
         "max_nodes": budget.max_nodes,
         "max_edges": budget.max_edges,
         "sufficient": context.sufficient,
+        "unresolved_query_identifiers": list(context.unresolved_query_identifiers),
         "critical_node_count": len(context.critical_node_ids),
         "packing_iterations": context.packing_iterations,
         "all_selected_from_shared_activation_with_endpoints": selected_edges_valid,

@@ -83,7 +83,7 @@ def file_channel(path: Optional[str]) -> str:
 
 @dataclass(frozen=True)
 class DeliveryChannelPolicy:
-    """Opt-in selection preference; legacy packing stays the default in P2.1.
+    """Opt-in selection preferences; original legacy packing remains default.
 
     The source-code implementation floor is *conditional on activation*. No
     gold essential-file label, repository name, or target symbol is consulted.
@@ -94,7 +94,7 @@ class DeliveryChannelPolicy:
     max_test_fraction: float = 0.35
 
     def normalized(self) -> "DeliveryChannelPolicy":
-        if self.mode not in {"implementation_first"}:
+        if self.mode not in {"implementation_first", "symbol_evidence"}:
             raise ValueError("unsupported delivery channel policy: %r" % self.mode)
         fraction = float(self.max_test_fraction)
         if not 0.0 <= fraction <= 1.0:
