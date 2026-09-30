@@ -1,0 +1,141 @@
+{
+  "answerable_known_pattern_tasks": 5,
+  "answerable_known_pattern_tasks_passing": 5,
+  "behavior_budget": {
+    "max_observations": 48,
+    "max_source_chars": 5000,
+    "max_tokens": 2200
+  },
+  "limitations": [
+    "The P2.3b fulfillment fixture and expected development patterns were already inspected while implementing P2.4.",
+    "This replay measures representation/regression coverage, not downstream model-answer correctness.",
+    "The deterministic token estimate remains compact-JSON ceil(chars/4), not a provider tokenizer.",
+    "A fresh P2.4 corpus must be frozen before any new shipping/default decision."
+  ],
+  "mean_behavior_tokens": 2147.5,
+  "mean_combined_tokens": 3259.0,
+  "missing_identifier_control_ok": true,
+  "records": [
+    {
+      "base_context_tokens": 1556,
+      "behavior_tokens": 2146,
+      "candidate_observations": 23,
+      "combined_tokens": 3707,
+      "delivered_observations": 11,
+      "known_development_patterns": {
+        "ensure_stock": true,
+        "item.quantity -= requested_quantity": true,
+        "return reservation_message": true
+      },
+      "known_patterns_present": true,
+      "missing_identifier_control_ok": true,
+      "omitted_critical": 0,
+      "omitted_relevant": 7,
+      "query": "How does reserve_order validate stock before changing quantity, and what does it return after a successful reservation?",
+      "sufficient": true,
+      "task_id": "reserve-order-implementation",
+      "unresolved_query_identifiers": []
+    },
+    {
+      "base_context_tokens": 1491,
+      "behavior_tokens": 2165,
+      "candidate_observations": 29,
+      "combined_tokens": 3661,
+      "delivered_observations": 11,
+      "known_development_patterns": {
+        "InsufficientStock": true,
+        "item.quantity == 2": true,
+        "requested_quantity > item.quantity": true
+      },
+      "known_patterns_present": true,
+      "missing_identifier_control_ok": true,
+      "omitted_critical": 0,
+      "omitted_relevant": 13,
+      "query": "Which test demonstrates that an insufficient reserve_order request leaves stock unchanged, and what behavior does it exercise?",
+      "sufficient": true,
+      "task_id": "reservation-regression-test",
+      "unresolved_query_identifiers": []
+    },
+    {
+      "base_context_tokens": 735,
+      "behavior_tokens": 2058,
+      "candidate_observations": 13,
+      "combined_tokens": 2798,
+      "delivered_observations": 10,
+      "known_development_patterns": {
+        "\"priority\" not in row": true,
+        "return \"normal\"": true,
+        "row[\"priority\"] = priority_default()": true
+      },
+      "known_patterns_present": true,
+      "missing_identifier_control_ok": true,
+      "omitted_critical": 0,
+      "omitted_relevant": 3,
+      "query": "How does apply_priority_default initialize missing priority values without overwriting existing priority?",
+      "sufficient": true,
+      "task_id": "priority-migration-answer",
+      "unresolved_query_identifiers": []
+    },
+    {
+      "base_context_tokens": 892,
+      "behavior_tokens": 2200,
+      "candidate_observations": 19,
+      "combined_tokens": 3097,
+      "delivered_observations": 12,
+      "known_development_patterns": {
+        "return can_cancel(status)": true,
+        "status in {\"queued\", \"packed\"}": true
+      },
+      "known_patterns_present": true,
+      "missing_identifier_control_ok": true,
+      "omitted_critical": 0,
+      "omitted_relevant": 4,
+      "query": "What does cancel_order actually do, which statuses can can_cancel approve, and does this source perform a refund side effect?",
+      "sufficient": true,
+      "task_id": "cancel-policy-answer",
+      "unresolved_query_identifiers": []
+    },
+    {
+      "base_context_tokens": 1090,
+      "behavior_tokens": 2154,
+      "candidate_observations": 14,
+      "combined_tokens": 3249,
+      "delivered_observations": 11,
+      "known_development_patterns": {
+        ".trim().toUpperCase()": true,
+        "SHIPMENT:": true,
+        "normalizeStatus": true
+      },
+      "known_patterns_present": true,
+      "missing_identifier_control_ok": true,
+      "omitted_critical": 0,
+      "omitted_relevant": 3,
+      "query": "How does formatShipmentStatus use normalizeStatus, and what transformation does normalizeStatus perform?",
+      "sufficient": true,
+      "task_id": "javascript-status-answer",
+      "unresolved_query_identifiers": []
+    },
+    {
+      "base_context_tokens": 874,
+      "behavior_tokens": 2162,
+      "candidate_observations": 19,
+      "combined_tokens": 3042,
+      "delivered_observations": 12,
+      "known_development_patterns": {},
+      "known_patterns_present": true,
+      "missing_identifier_control_ok": true,
+      "omitted_critical": 0,
+      "omitted_relevant": 4,
+      "query": "How does issue_refund send money back after cancel_order?",
+      "sufficient": false,
+      "task_id": "missing-refund-identifier",
+      "unresolved_query_identifiers": [
+        "issue_refund"
+      ]
+    }
+  ],
+  "schema": "feynmap.p2_4_development_replay.v1",
+  "source_manifest_git_blob": "d136168b47939af7ce8f9440cc9abd022b777310",
+  "status": "development_regression_only_not_held_out",
+  "task_count": 6
+}
