@@ -81,20 +81,33 @@ jobs:
           if-no-files-found: error
 
   score-committed-run:
-    if: ${{ hashFiles('experiments/p2_3b_answers/run.json') != '' }}
     needs: export-contexts
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - id: answers
+        name: Detect committed answer run
+        shell: bash
+        run: |
+          if test -f experiments/p2_3b_answers/run.json; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No committed model run yet; scoring intentionally skipped."
+          fi
       - uses: actions/setup-python@v5
+        if: steps.answers.outputs.present == 'true'
         with:
           python-version: "3.12"
       - run: python -m pip install -e .
+        if: steps.answers.outputs.present == 'true'
       - uses: actions/download-artifact@v4
+        if: steps.answers.outputs.present == 'true'
         with:
           name: p2-3b-context-export
           path: p2-3b-export
       - name: Score committed downstream model outputs against frozen oracle
+        if: steps.answers.outputs.present == 'true'
         run: |
           python -m feynmap.p2_3b_fidelity score \
             --manifest experiments/p2_3b_answer_manifest.json \
@@ -102,6 +115,7 @@ jobs:
             --answers-dir experiments/p2_3b_answers \
             --output p2-3b-score.json
       - uses: actions/upload-artifact@v4
+        if: steps.answers.outputs.present == 'true'
         with:
           name: p2-3b-fidelity-score
           path: p2-3b-score.json
