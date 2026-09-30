@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from .behavior import BehaviorObservation, GroundedBehaviorExtractor
 from .context import estimate_tokens
 from .core import SemanticGraph
+from .delivery_channels import IMPLEMENTATION, MIGRATION, TEST, file_channel
 from .minimal_context import MinimalContextResult
 from .relevance import (
     DeterministicRelevanceJudge,
@@ -169,7 +170,7 @@ class BehavioralContextBuilder:
         behavior_payload["source_witness_chars"] = source_chars
         behavior_payload["selection"] = {
             "judge": self.judge.__class__.__name__,
-            "rule": "reserve one best witness for each high-priority task dimension, then essential > supporting > uncertain",
+            "rule": "reserve task-critical behavior by evidence channel, then essential > supporting > uncertain",
             "unknown_is_not_false": True,
             "selected_symbol_boundary": True,
         }
@@ -239,29 +240,47 @@ class BehavioralContextBuilder:
         useful: Sequence[Tuple[BehaviorObservation, RelevanceDecision]],
         profile: TaskEvidenceProfile,
     ) -> Tuple[List[Tuple[BehaviorObservation, RelevanceDecision]], set]:
-        """Prevent generic evidence from crowding task-critical behavior.
+        """Prevent one evidence channel from replacing the causal path.
 
-        P2.1 showed that a file/channel floor can still lose the actual task
-        symbol.  P2.4 applies the same lesson one level deeper: reserve the best
-        source-backed witness for every behavior kind the task profile rates
-        highly, then spend the remaining budget on normal relevance ordering.
+        A test task needs production behavior *and* test corroboration; a
+        migration task needs the migration operation *and* the implementation
+        or default it invokes.  Ordinary implementation tasks reserve only
+        implementation-channel witnesses.  This avoids repeating P2.1's
+        mistake one level deeper by treating all observations of one kind as
+        interchangeable.
         """
         critical_kinds = {
             kind
             for kind, weight in profile.category_weights.items()
             if float(weight) >= 0.80
         }
+        channels = {IMPLEMENTATION}
+        if profile.task_type == "test_behavior":
+            channels.add(TEST)
+        if profile.task_type == "migration_behavior":
+            channels.add(MIGRATION)
+
         representatives: List[Tuple[BehaviorObservation, RelevanceDecision]] = []
         representative_ids = set()
+        channel_rank = {IMPLEMENTATION: 0, TEST: 1, MIGRATION: 1}
         for kind in sorted(critical_kinds):
-            candidates = [item for item in useful if item[0].kind.value == kind]
-            if not candidates:
-                continue
-            best = min(candidates, key=self._relevance_sort_key)
-            representatives.append(best)
-            representative_ids.add(best[0].id)
+            for channel in sorted(channels, key=lambda value: (channel_rank.get(value, 9), value)):
+                candidates = [
+                    item
+                    for item in useful
+                    if item[0].kind.value == kind
+                    and file_channel(item[0].location.path) == channel
+                ]
+                if not candidates:
+                    continue
+                best = min(candidates, key=self._relevance_sort_key)
+                if best[0].id in representative_ids:
+                    continue
+                representatives.append(best)
+                representative_ids.add(best[0].id)
         representatives.sort(
             key=lambda item: (
+                channel_rank.get(file_channel(item[0].location.path), 9),
                 -float(profile.category_weights.get(item[0].kind.value, 0.0)),
                 -float(item[1].score),
                 item[0].location.path,
