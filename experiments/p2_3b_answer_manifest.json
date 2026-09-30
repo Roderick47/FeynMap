@@ -1,0 +1,233 @@
+{
+  "schema": "feynmap.p2_3b_answer_fidelity_manifest.v1",
+  "recorded_date": "2026-09-30",
+  "status": "preauthored_before_context_export_or_model_answers",
+  "purpose": "Evaluate downstream grounded answer fidelity, unsupported claims, explicit request-more-context behavior, and context cost for legacy versus P2.3a symbol-evidence delivery. Gold claims are scoring-only and never passed to search, packing, or the downstream answer prompt.",
+  "source": {
+    "root": "experiments/fixtures/p2_3b_fulfillment",
+    "language": "auto",
+    "framework": "none",
+    "blobs": {
+      "fulfillment/__init__.py": "abefd18b9f50c8bdc6cb662bc8e65d35713bbe82",
+      "fulfillment/models.py": "f18d5d32670e57a7c7abdd4431c1795c1c3cfe02",
+      "fulfillment/policy.py": "63da619d8949e4bdab64f333e5c2a33329e04ba4",
+      "fulfillment/audit.py": "eb49d00b5537b8e3ae6f06af130bf57bf93fea1e",
+      "fulfillment/service.py": "8ebe7a43a658e2ffaa96cafc4042a13cf87bbbab",
+      "fulfillment/migrations/__init__.py": "6292de431944e7769872404cfef5970a039570cc",
+      "fulfillment/migrations/0001_priority.py": "ee42147953f8f2fff94344bab9de35f1f8902dae",
+      "tests/test_service.py": "ed547c01ec346e4111a3d34a2d33668d60769202",
+      "tests/test_migration.py": "2c1ec2abe2c7d621f54a27a67a3462efc29dcd13",
+      "client/status.js": "1bbc83f20f0436f403f86195d740b9592040af10",
+      "client/format.js": "ceb55ee541ae58a71b6763d32654d117c76be453",
+      "tests/status.test.js": "07d6b93f44f39215e798822981a0bfd47e207362"
+    }
+  },
+  "activation": {
+    "seed_limit": 8,
+    "candidate_limit": 64,
+    "max_depth": 3,
+    "beam_width": 8,
+    "max_nodes": 64,
+    "direction": "both",
+    "provider": null
+  },
+  "budgets": [
+    {"id": "tight", "max_tokens": 1600, "max_nodes": 12, "max_edges": 12},
+    {"id": "standard", "max_tokens": 3200, "max_nodes": 24, "max_edges": 24}
+  ],
+  "model_answer_budget": "standard",
+  "arms": [
+    {"id": "legacy", "policy": null},
+    {"id": "symbol_evidence", "policy": {"mode": "symbol_evidence", "min_implementation_files": 2, "max_test_fraction": 0.35}}
+  ],
+  "answer_protocol": {
+    "format": "strict_json",
+    "schema": {
+      "status": "answer|need_more_context",
+      "claims": [{"text": "atomic factual statement", "evidence_nodes": ["delivered node ids"], "evidence_edges": ["delivered edge ids"]}],
+      "missing_identifiers": ["explicit code identifier names"]
+    },
+    "instruction": "Answer only from the supplied FeynMap context envelope. Every factual claim must cite delivered node and/or edge IDs. Do not infer absent runtime behavior. When the envelope says delivery_sufficient=false or an explicitly requested identifier is not evidenced, return need_more_context and name the missing identifier rather than guessing."
+  },
+  "scoring_contract": {
+    "required_claim": "A source-authored claim is counted only when one model claim contains all required lexical groups and at least one cited delivered node resolves to one of that claim's source-support symbols, or a cited delivered edge connects source-support symbols.",
+    "unsupported_claim": "A claim is unsupported when it has no delivered citation, cites an unavailable node/edge, matches a preregistered contradicted/unsupported trap, or cites evidence unrelated to its stated source-authored fact. This is not a proof that every imaginable unsupported paraphrase is detected.",
+    "request_more_context": "Expected only for tasks marked expected_status=need_more_context. For answerable tasks it counts as an unnecessary abstention; for an unresolved task, answering factual implementation behavior counts as a failure.",
+    "no_gold_to_model": true,
+    "no_gold_to_packer": true
+  },
+  "tasks": [
+    {
+      "id": "reserve-order-implementation",
+      "query": "How does reserve_order validate stock before changing quantity, and what does it return after a successful reservation?",
+      "expected_status": "answer",
+      "required_claims": [
+        {
+          "id": "validate-before-mutation",
+          "lexical_groups": [["reserve_order"], ["ensure_stock"], ["before", "prior"], ["quantity", "stock"]],
+          "support_symbols": [
+            {"file": "fulfillment/service.py", "name": "reserve_order"},
+            {"file": "fulfillment/policy.py", "name": "ensure_stock"}
+          ]
+        },
+        {
+          "id": "decrement-on-success",
+          "lexical_groups": [["quantity"], ["decrease", "decrement", "subtract"], ["requested_quantity", "requested"]],
+          "support_symbols": [{"file": "fulfillment/service.py", "name": "reserve_order"}]
+        },
+        {
+          "id": "returns-audit-message",
+          "lexical_groups": [["reservation_message"], ["return", "returns"], ["remaining", "quantity"]],
+          "support_symbols": [
+            {"file": "fulfillment/service.py", "name": "reserve_order"},
+            {"file": "fulfillment/audit.py", "name": "reservation_message"}
+          ]
+        }
+      ],
+      "unsupported_traps": [
+        {"id": "database-transaction", "any_phrases": ["database transaction", "transaction.atomic", "commits to the database"]},
+        {"id": "audit-file-write", "any_phrases": ["writes an audit file", "writes to disk", "persists the audit log"]},
+        {"id": "automatic-refund", "any_phrases": ["automatically refunds", "issues a refund"]}
+      ]
+    },
+    {
+      "id": "reservation-regression-test",
+      "query": "Which test demonstrates that an insufficient reserve_order request leaves stock unchanged, and what behavior does it exercise?",
+      "expected_status": "answer",
+      "required_claims": [
+        {
+          "id": "test-calls-reserve-order",
+          "lexical_groups": [["test_insufficient_stock_leaves_quantity_unchanged"], ["reserve_order"], ["3"], ["2"]],
+          "support_symbols": [
+            {"file": "tests/test_service.py", "name": "test_insufficient_stock_leaves_quantity_unchanged"},
+            {"file": "fulfillment/service.py", "name": "reserve_order"}
+          ]
+        },
+        {
+          "id": "exception-and-unchanged",
+          "lexical_groups": [["InsufficientStock"], ["unchanged", "remains", "remain"], ["2"]],
+          "support_symbols": [
+            {"file": "tests/test_service.py", "name": "test_insufficient_stock_leaves_quantity_unchanged"},
+            {"file": "fulfillment/policy.py", "name": "InsufficientStock"}
+          ]
+        }
+      ],
+      "unsupported_traps": [
+        {"id": "mock-database", "any_phrases": ["mock database", "database rollback", "transaction rollback"]},
+        {"id": "permission-error", "any_phrases": ["PermissionError"]}
+      ]
+    },
+    {
+      "id": "priority-migration-answer",
+      "query": "How does apply_priority_default initialize missing priority values without overwriting existing priority?",
+      "expected_status": "answer",
+      "required_claims": [
+        {
+          "id": "missing-only",
+          "lexical_groups": [["apply_priority_default"], ["missing", "not in"], ["priority"]],
+          "support_symbols": [{"file": "fulfillment/migrations/0001_priority.py", "name": "apply_priority_default"}]
+        },
+        {
+          "id": "domain-default",
+          "lexical_groups": [["priority_default"], ["normal"]],
+          "support_symbols": [
+            {"file": "fulfillment/migrations/0001_priority.py", "name": "apply_priority_default"},
+            {"file": "fulfillment/models.py", "name": "priority_default"}
+          ]
+        },
+        {
+          "id": "existing-preserved",
+          "lexical_groups": [["existing", "already"], ["priority"], ["preserve", "unchanged", "not overwrite"]],
+          "support_symbols": [
+            {"file": "fulfillment/migrations/0001_priority.py", "name": "apply_priority_default"},
+            {"file": "tests/test_migration.py", "name": "test_priority_migration_sets_normal_only_when_missing"}
+          ]
+        }
+      ],
+      "unsupported_traps": [
+        {"id": "urgent-rewrite", "any_phrases": ["changes urgent to normal", "overwrites urgent"]},
+        {"id": "sql-update", "any_phrases": ["SQL UPDATE", "bulk database update"]}
+      ]
+    },
+    {
+      "id": "cancel-policy-answer",
+      "query": "What does cancel_order actually do, which statuses can can_cancel approve, and does this source perform a refund side effect?",
+      "expected_status": "answer",
+      "required_claims": [
+        {
+          "id": "delegates-policy",
+          "lexical_groups": [["cancel_order"], ["can_cancel"], ["delegate", "return", "calls"]],
+          "support_symbols": [
+            {"file": "fulfillment/service.py", "name": "cancel_order"},
+            {"file": "fulfillment/policy.py", "name": "can_cancel"}
+          ]
+        },
+        {
+          "id": "allowed-statuses",
+          "lexical_groups": [["queued"], ["packed"]],
+          "support_symbols": [{"file": "fulfillment/policy.py", "name": "can_cancel"}]
+        },
+        {
+          "id": "no-refund-side-effect",
+          "lexical_groups": [["refund"], ["no", "does not", "none", "not"]],
+          "support_symbols": [{"file": "fulfillment/service.py", "name": "cancel_order"}]
+        }
+      ],
+      "unsupported_traps": [
+        {"id": "refund-provider", "any_phrases": ["calls the payment provider", "refund API", "sends money back"]},
+        {"id": "shipped-cancel", "any_phrases": ["shipped can be cancelled", "approves shipped"]}
+      ]
+    },
+    {
+      "id": "javascript-status-answer",
+      "query": "How does formatShipmentStatus use normalizeStatus, and what transformation does normalizeStatus perform?",
+      "expected_status": "answer",
+      "required_claims": [
+        {
+          "id": "format-calls-normalizer",
+          "lexical_groups": [["formatShipmentStatus"], ["normalizeStatus"], ["SHIPMENT"]],
+          "support_symbols": [
+            {"file": "client/format.js", "name": "formatShipmentStatus"},
+            {"file": "client/status.js", "name": "normalizeStatus"}
+          ]
+        },
+        {
+          "id": "normalizer-transform",
+          "lexical_groups": [["trim"], ["upper", "uppercase"], ["string"]],
+          "support_symbols": [{"file": "client/status.js", "name": "normalizeStatus"}]
+        }
+      ],
+      "unsupported_traps": [
+        {"id": "lowercase", "any_phrases": ["lowercase", "toLowerCase"]},
+        {"id": "network-request", "any_phrases": ["network request", "fetches from", "calls an API"]}
+      ]
+    },
+    {
+      "id": "missing-refund-identifier",
+      "query": "How does issue_refund send money back after cancel_order?",
+      "expected_status": "need_more_context",
+      "expected_missing_identifiers": ["issue_refund"],
+      "required_claims": [],
+      "unsupported_traps": [
+        {"id": "invented-refund", "any_phrases": ["issue_refund calls", "sends money", "payment provider", "bank transfer", "refund API"]}
+      ]
+    }
+  ],
+  "decision_rule": {
+    "promote_symbol_evidence_only_if": [
+      "No required-claim recall regression against legacy on answerable tasks in the standard model run.",
+      "No increase in unsupported-claim count.",
+      "Correct need_more_context behavior on the missing-identifier task without invented implementation behavior.",
+      "Grounded-citation validity is 100% for counted claims.",
+      "Mean FeynMap context estimate is lower than or equal to legacy, or any increase is justified by strictly better fidelity.",
+      "All prior P1, P2.2 and P2.3a integrity/regression workflows remain green."
+    ],
+    "otherwise": "Keep symbol_evidence opt-in and carry unresolved questions into S7/provider-controlled evaluation."
+  },
+  "limitations": [
+    "This fresh source/claim corpus is synthetic and source-authored in-repository, not an externally reviewed production corpus.",
+    "A lexical scoring contract cannot exhaustively identify every unsupported paraphrase; evidence citation validity and preregistered traps are reported separately.",
+    "The S7 agent-repair holdout remains disjoint and unused.",
+    "Actual provider input/output billing tokens must be reported only when a provider supplies them; FeynMap context char/4 remains a separate deterministic estimate."
+  ]
+}
