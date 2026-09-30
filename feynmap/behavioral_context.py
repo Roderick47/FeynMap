@@ -69,13 +69,7 @@ class BehavioralContextResult:
 
 
 class BehavioralContextBuilder:
-    """Attach the smallest useful source behavior to an existing S3 result.
-
-    The builder can only inspect symbols already selected by S3. It does not
-    mutate or expand the semantic graph. If a task needs an unselected or
-    unresolved symbol, the result stays insufficient and the caller may choose
-    a separate bounded expansion step.
-    """
+    """Attach the smallest useful source behavior to an existing S3 result."""
 
     _LABEL_RANK = {
         RelevanceLabel.ESSENTIAL: 0,
@@ -118,7 +112,7 @@ class BehavioralContextBuilder:
         useful.sort(key=self._relevance_sort_key)
         useful, dimension_witness_ids = self._reserve_task_dimensions(useful, profile)
 
-        # Each entry is (observation, decision, serialized row, critical, source_chars).
+        # (observation, decision, compact model row, critical, source chars)
         entries: List[Tuple[BehaviorObservation, RelevanceDecision, Dict[str, Any], bool, int]] = []
         source_chars = 0
         omitted = 0
@@ -133,13 +127,11 @@ class BehavioralContextBuilder:
                 if is_critical:
                     omitted_critical += 1
                 continue
-            row = observation.to_dict(include_source=True)
-            row["relevance"] = decision.to_dict()
-            source_facts = dict(structured_behavior_facts(observation))
-            if source_facts:
-                row["source_facts"] = source_facts
-            if observation.id in dimension_witness_ids:
-                row["task_dimension_witness"] = True
+            row = self._model_row(
+                observation,
+                decision,
+                dimension_witness=observation.id in dimension_witness_ids,
+            )
             source_text = str(row.get("source", ""))
             if source_text and source_chars + len(source_text) > requested.max_source_chars:
                 row.pop("source", None)
@@ -148,41 +140,25 @@ class BehavioralContextBuilder:
             source_chars += len(source_text)
 
         behavior_payload, sufficiency = self._render_final_payload(
-            task,
-            profile,
-            context,
-            candidates,
-            entries,
-            omitted,
-            omitted_critical,
-            source_chars,
+            task, profile, context, candidates, entries,
+            omitted, omitted_critical, source_chars,
         )
 
-        # Enforce the cap on the final model-facing envelope, not merely on its
-        # observation rows. Drop lowest-value noncritical enrichment first;
-        # if the budget is extremely small, fail closed and eventually drop a
-        # critical witness rather than silently exceeding the declared cap.
+        # Enforce the cap on the complete model-facing behavioral envelope.
         while entries and estimate_tokens(behavior_payload) > requested.max_tokens:
             remove_index = self._least_valuable_entry(entries, prefer_noncritical=True)
-            observation, decision, row, was_critical, chars = entries.pop(remove_index)
+            _, _, _, was_critical, chars = entries.pop(remove_index)
             source_chars -= chars
             omitted += 1
             if was_critical:
                 omitted_critical += 1
             behavior_payload, sufficiency = self._render_final_payload(
-                task,
-                profile,
-                context,
-                candidates,
-                entries,
-                omitted,
-                omitted_critical,
-                source_chars,
+                task, profile, context, candidates, entries,
+                omitted, omitted_critical, source_chars,
             )
 
         if estimate_tokens(behavior_payload) > requested.max_tokens:
-            # Metadata alone can exceed a deliberately tiny budget. Preserve a
-            # truthful minimal failure packet rather than violating the cap.
+            # The intentionally tiny-budget path preserves only failure state.
             sufficiency = self.judge.sufficiency(
                 task,
                 (),
@@ -192,15 +168,12 @@ class BehavioralContextBuilder:
             )
             behavior_payload = {
                 "schema": BEHAVIOR_SCHEMA,
-                "task_profile": profile.to_dict(),
+                "task": self._compact_task_profile(profile),
                 "observations": [],
                 "budget_exhausted": True,
-                "unresolved_query_identifiers": list(context.unresolved_query_identifiers),
+                "unresolved": list(context.unresolved_query_identifiers),
                 "sufficiency": sufficiency.to_dict(),
-                "grounding": {
-                    "truth_source": "repository source selected by S3 semantic symbols",
-                    "unknown_is_not_false": True,
-                },
+                "grounding": {"source": True, "unknown_is_not_false": True},
             }
             entries = []
             source_chars = 0
@@ -210,8 +183,7 @@ class BehavioralContextBuilder:
         selected = [entry[0] for entry in entries]
         selected_rows = [entry[2] for entry in entries]
         delivered_ids = {item.id for item in selected}
-        row_ids = {str(row.get("id")) for row in selected_rows}
-        if row_ids != delivered_ids:
+        if {str(row.get("id")) for row in selected_rows} != delivered_ids:
             raise ValueError("behavioral envelope observation identity mismatch")
         selected_symbol_ids = set(context.selected_node_ids)
         if any(item.symbol_id not in selected_symbol_ids for item in selected):
@@ -220,6 +192,8 @@ class BehavioralContextBuilder:
         combined: Dict[str, Any] = dict(context.payload)
         combined["behavioral_evidence"] = behavior_payload
         behavior_tokens = estimate_tokens(behavior_payload)
+        if behavior_tokens > requested.max_tokens:
+            raise ValueError("behavioral envelope exceeded requested token budget")
         total_tokens = estimate_tokens(combined)
         sufficient = bool(
             context.sufficient
@@ -241,6 +215,50 @@ class BehavioralContextBuilder:
             sufficient=sufficient,
         )
 
+    def _model_row(
+        self,
+        observation: BehaviorObservation,
+        decision: RelevanceDecision,
+        *,
+        dimension_witness: bool,
+    ) -> Dict[str, Any]:
+        """Compact model view; rich Evidence/Decision objects remain internal."""
+        location = observation.location
+        row: Dict[str, Any] = {
+            "id": observation.id,
+            "symbol_id": observation.symbol_id,
+            "kind": observation.kind.value,
+            "summary": observation.summary,
+            "location": {
+                "path": location.path,
+                "line": location.line,
+                "end_line": location.end_line,
+            },
+            "order": int(observation.order),
+            "confidence_tier": observation.confidence_tier,
+            "provenance": {
+                "kind": observation.evidence.kind.value,
+                "detector": observation.evidence.detector,
+                "confidence": round(float(observation.evidence.confidence), 4),
+            },
+            "relevance": {
+                "label": decision.label.value,
+                "score": round(float(decision.score), 4),
+            },
+        }
+        if observation.source:
+            row["source"] = observation.source
+        if observation.condition:
+            row["condition"] = observation.condition
+        if observation.attributes:
+            row["attributes"] = dict(observation.attributes)
+        facts = dict(structured_behavior_facts(observation))
+        if facts:
+            row["source_facts"] = facts
+        if dimension_witness:
+            row["task_dimension_witness"] = True
+        return row
+
     def _render_final_payload(
         self,
         task: str,
@@ -253,9 +271,8 @@ class BehavioralContextBuilder:
         source_chars: int,
     ) -> Tuple[Dict[str, Any], SufficiencyDecision]:
         selected = [entry[0] for entry in entries]
-        rows = [entry[2] for entry in entries]
         rows = sorted(
-            rows,
+            [entry[2] for entry in entries],
             key=lambda row: (
                 str(row.get("location", {}).get("path", "")),
                 int(row.get("order", 0)),
@@ -269,19 +286,6 @@ class BehavioralContextBuilder:
             unresolved_identifiers=context.unresolved_query_identifiers,
             omitted_relevant=omitted_critical,
         )
-        payload = self._behavior_payload(profile, rows, context)
-        payload["sequences"] = self._sequences(selected)
-        payload["omitted_relevant_observations"] = int(omitted)
-        payload["omitted_critical_observations"] = int(omitted_critical)
-        payload["candidate_observations"] = len(candidates)
-        payload["delivered_observations"] = len(selected)
-        payload["source_witness_chars"] = source_chars
-        payload["selection"] = {
-            "judge": self.judge.__class__.__name__,
-            "rule": "reserve task-critical behavior by evidence channel, then essential > supporting > uncertain",
-            "unknown_is_not_false": True,
-            "selected_symbol_boundary": True,
-        }
         coverage = behavior_coverage(
             self.graph,
             context.selected_node_ids,
@@ -291,22 +295,55 @@ class BehavioralContextBuilder:
             omitted_relevant=max(0, omitted - omitted_critical),
             omitted_critical=omitted_critical,
         )
-        # Model-facing coverage stays compact; detailed per-symbol coverage is
-        # recomputable and would duplicate the already delivered node list.
-        payload["coverage"] = {
-            "scanned_selected_symbols": len(coverage["symbols"]),
-            "claims": coverage["claims"],
-            "unknowns": coverage["unknowns"],
-            "call_targets_without_selected_behavior": coverage[
-                "call_targets_without_selected_behavior"
-            ][:8],
+        payload: Dict[str, Any] = {
+            "schema": BEHAVIOR_SCHEMA,
+            "task": self._compact_task_profile(profile),
+            "observations": rows,
+            "sequences": self._sequences(selected),
+            "counts": {
+                "candidate": len(candidates),
+                "delivered": len(selected),
+                "omitted": int(omitted),
+                "omitted_critical": int(omitted_critical),
+                "source_chars": int(source_chars),
+            },
+            "selection": {
+                "judge": self.judge.__class__.__name__,
+                "order": "dimension_witness,essential,supporting,uncertain",
+            },
+            "coverage": {
+                "scanned_selected_symbols": len(coverage["symbols"]),
+                "local_source_scan": "complete_supported_extractor",
+                "transitive_runtime": "not_claimed_complete",
+                "dynamic_dispatch": "unknown_unless_evidenced",
+                "external_effects": "unknown_unless_evidenced",
+                "unknowns": coverage["unknowns"],
+                "unselected_call_targets": [
+                    {
+                        "callee": item["callee"],
+                        "symbol_id": item["symbol_id"],
+                    }
+                    for item in coverage["call_targets_without_selected_behavior"][:8]
+                ],
+            },
+            "sufficiency": sufficiency.to_dict(),
+            "grounding": {
+                "source_backed": True,
+                "relevance_does_not_change_truth": True,
+                "order_scope": "local_source_order_only",
+                "unknown_is_not_false": True,
+            },
         }
-        payload["sufficiency"] = sufficiency.to_dict()
         if context.unresolved_query_identifiers:
-            payload["unresolved_query_identifiers"] = list(
-                context.unresolved_query_identifiers
-            )
+            payload["unresolved"] = list(context.unresolved_query_identifiers)
         return payload, sufficiency
+
+    @staticmethod
+    def _compact_task_profile(profile: TaskEvidenceProfile) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"type": profile.task_type}
+        if profile.identifiers:
+            payload["identifiers"] = list(profile.identifiers)
+        return payload
 
     def _least_valuable_entry(
         self,
@@ -346,7 +383,7 @@ class BehavioralContextBuilder:
         useful: Sequence[Tuple[BehaviorObservation, RelevanceDecision]],
         profile: TaskEvidenceProfile,
     ) -> Tuple[List[Tuple[BehaviorObservation, RelevanceDecision]], set]:
-        """Prevent one evidence channel from replacing the causal path."""
+        """Reserve causal behavior separately from test/migration corroboration."""
         critical_kinds = {
             kind
             for kind, weight in profile.category_weights.items()
@@ -387,26 +424,6 @@ class BehavioralContextBuilder:
         )
         remainder = [item for item in useful if item[0].id not in representative_ids]
         return representatives + remainder, representative_ids
-
-    @staticmethod
-    def _behavior_payload(
-        profile: TaskEvidenceProfile,
-        rows: Sequence[Mapping[str, Any]],
-        context: MinimalContextResult,
-    ) -> Dict[str, Any]:
-        return {
-            "schema": BEHAVIOR_SCHEMA,
-            "task_profile": profile.to_dict(),
-            "observations": [dict(row) for row in rows],
-            "grounding": {
-                "truth_source": "repository source selected by S3 semantic symbols",
-                "relevance_not_truth": "task judge may rank observations but cannot change evidence confidence",
-                "source_order_scope": "ordering is local source order within each symbol; it is not global runtime order",
-                "minimal_source_witnesses": True,
-                "structured_source_facts": "reads/writes/literals/operators/calls/transforms are derived only from each observation's source witness",
-                "base_delivery_sufficient": bool(context.sufficient),
-            },
-        }
 
     @staticmethod
     def _sequences(observations: Sequence[BehaviorObservation]) -> Dict[str, List[str]]:
