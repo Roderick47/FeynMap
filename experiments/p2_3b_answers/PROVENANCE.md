@@ -1,0 +1,1 @@
+A P2.3b model run must record whether its generator had prior access to the source-authored answer oracle. That provenance is part of the shipping gate, not descriptive metadata that may be omitted after seeing results.
