@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .behavior import BehaviorObservation, GroundedBehaviorExtractor
+from .behavior_facts import structured_behavior_facts
 from .context import estimate_tokens
 from .core import SemanticGraph
 from .delivery_channels import IMPLEMENTATION, MIGRATION, TEST, file_channel
@@ -133,6 +134,9 @@ class BehavioralContextBuilder:
                 continue
             row = observation.to_dict(include_source=True)
             row["relevance"] = decision.to_dict()
+            source_facts = dict(structured_behavior_facts(observation))
+            if source_facts:
+                row["source_facts"] = source_facts
             if observation.id in dimension_witness_ids:
                 row["task_dimension_witness"] = True
             source_text = str(row.get("source", ""))
@@ -305,6 +309,7 @@ class BehavioralContextBuilder:
                 "relevance_not_truth": "task judge may rank observations but cannot change evidence confidence",
                 "source_order_scope": "ordering is local source order within each symbol; it is not global runtime order",
                 "minimal_source_witnesses": True,
+                "structured_source_facts": "reads/literals/operators/calls/transforms are derived only from each observation's source witness",
                 "base_delivery_sufficient": bool(context.sufficient),
             },
         }
