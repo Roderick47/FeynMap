@@ -1,0 +1,78 @@
+name: p2-4-grounded-behavior
+
+on:
+  push:
+    paths:
+      - "feynmap/behavior.py"
+      - "feynmap/behavior_facts.py"
+      - "feynmap/behavior_coverage.py"
+      - "feynmap/behavioral_context.py"
+      - "feynmap/relevance.py"
+      - "feynmap/task_evidence.py"
+      - "feynmap/p2_4_dev_replay.py"
+      - "tests/test_p2_4_behavioral_context.py"
+      - "experiments/fixtures/p2_3b_fulfillment/**"
+      - "experiments/p2_3b_answer_manifest.json"
+      - ".github/workflows/p2-4-behavior.yml"
+  pull_request:
+    paths:
+      - "feynmap/behavior.py"
+      - "feynmap/behavior_facts.py"
+      - "feynmap/behavior_coverage.py"
+      - "feynmap/behavioral_context.py"
+      - "feynmap/relevance.py"
+      - "feynmap/task_evidence.py"
+      - "feynmap/p2_4_dev_replay.py"
+      - "tests/test_p2_4_behavioral_context.py"
+      - "experiments/fixtures/p2_3b_fulfillment/**"
+      - "experiments/p2_3b_answer_manifest.json"
+      - ".github/workflows/p2-4-behavior.yml"
+  workflow_dispatch:
+
+jobs:
+  behavior-regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.12"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install -e ".[dev]"
+      - name: Behavioral evidence contract tests
+        run: python -m pytest -q tests/test_p2_4_behavioral_context.py
+
+  development-replay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Replay known P2.3b behavioral gaps
+        run: |
+          python -m feynmap.p2_4_dev_replay \
+            --manifest experiments/p2_3b_answer_manifest.json \
+            --project-root experiments/fixtures/p2_3b_fulfillment \
+            --behavior-tokens 2200 \
+            --output p2-4-dev-replay.json
+      - name: Enforce development-only representation gates
+        run: |
+          python - <<'PY'
+          import json
+          value = json.load(open('p2-4-dev-replay.json', encoding='utf-8'))
+          assert value['status'] == 'development_regression_only_not_held_out'
+          assert value['answerable_known_pattern_tasks_passing'] == value['answerable_known_pattern_tasks'] == 5
+          assert value['missing_identifier_control_ok'] is True
+          assert all(row['behavior_tokens'] <= 2200 for row in value['records'])
+          print('P2.4 development representation gates passed')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p2-4-development-replay
+          path: p2-4-dev-replay.json
+          if-no-files-found: error
