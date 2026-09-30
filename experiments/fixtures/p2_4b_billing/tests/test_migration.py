@@ -1,4 +1,7 @@
-from billing.migrations import _0001_grace_days as grace_migration
+import importlib
+
+
+grace_migration = importlib.import_module("billing.migrations.0001_grace_days")
 
 
 def test_grace_days_default_only_fills_missing_value():
