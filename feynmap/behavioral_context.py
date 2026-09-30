@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from .behavior import BehaviorObservation, GroundedBehaviorExtractor
+from .behavior import BehaviorKind, BehaviorObservation, GroundedBehaviorExtractor
 from .behavior_coverage import behavior_coverage
 from .behavior_facts import structured_behavior_facts
 from .context import estimate_tokens
@@ -78,6 +78,80 @@ class BehavioralContextBuilder:
         RelevanceLabel.IRRELEVANT: 3,
     }
 
+    _TASK_CHANNEL_KINDS = {
+        "failure_behavior": {
+            IMPLEMENTATION: (
+                BehaviorKind.CONDITION,
+                BehaviorKind.RAISE,
+                BehaviorKind.CALL,
+            ),
+        },
+        "return_behavior": {
+            IMPLEMENTATION: (
+                BehaviorKind.RETURN,
+                BehaviorKind.CALL,
+            ),
+        },
+        "state_change": {
+            IMPLEMENTATION: (
+                BehaviorKind.MUTATION,
+                BehaviorKind.ASSIGNMENT,
+                BehaviorKind.CONDITION,
+                BehaviorKind.CALL,
+                BehaviorKind.RETURN,
+            ),
+        },
+        "test_behavior": {
+            IMPLEMENTATION: (
+                BehaviorKind.CONDITION,
+                BehaviorKind.RAISE,
+                BehaviorKind.MUTATION,
+                BehaviorKind.CALL,
+            ),
+            TEST: (
+                BehaviorKind.ASSERTION,
+                BehaviorKind.CALL,
+            ),
+        },
+        "migration_behavior": {
+            MIGRATION: (
+                BehaviorKind.CONDITION,
+                BehaviorKind.MUTATION,
+                BehaviorKind.ASSIGNMENT,
+                BehaviorKind.CALL,
+                BehaviorKind.RETURN,
+            ),
+            IMPLEMENTATION: (
+                BehaviorKind.RETURN,
+                BehaviorKind.CALL,
+            ),
+        },
+        "transformation": {
+            IMPLEMENTATION: (
+                BehaviorKind.TRANSFORM,
+                BehaviorKind.RETURN,
+                BehaviorKind.CALL,
+            ),
+        },
+        "side_effect": {
+            IMPLEMENTATION: (
+                BehaviorKind.SIDE_EFFECT,
+                BehaviorKind.CALL,
+                BehaviorKind.RETURN,
+                BehaviorKind.CONDITION,
+                BehaviorKind.MUTATION,
+            ),
+        },
+        "general_behavior": {
+            IMPLEMENTATION: (
+                BehaviorKind.CALL,
+                BehaviorKind.RETURN,
+                BehaviorKind.CONDITION,
+                BehaviorKind.MUTATION,
+            ),
+        },
+    }
+
     def __init__(
         self,
         graph: SemanticGraph,
@@ -118,10 +192,10 @@ class BehavioralContextBuilder:
         omitted = 0
         omitted_critical = 0
         for observation, decision in useful:
-            is_critical = (
-                observation.id in dimension_witness_ids
-                or decision.label == RelevanceLabel.ESSENTIAL
-            )
+            # Relevance drives packing order. Only explicitly reserved task
+            # dimensions are hard sufficiency requirements; otherwise a broad
+            # deterministic "essential" score would simply recreate crowding.
+            is_critical = observation.id in dimension_witness_ids
             if len(entries) >= requested.max_observations:
                 omitted += 1
                 if is_critical:
@@ -130,7 +204,7 @@ class BehavioralContextBuilder:
             row = self._model_row(
                 observation,
                 decision,
-                dimension_witness=observation.id in dimension_witness_ids,
+                dimension_witness=is_critical,
             )
             source_text = str(row.get("source", ""))
             if source_text and source_chars + len(source_text) > requested.max_source_chars:
@@ -158,7 +232,6 @@ class BehavioralContextBuilder:
             )
 
         if estimate_tokens(behavior_payload) > requested.max_tokens:
-            # The intentionally tiny-budget path preserves only failure state.
             sufficiency = self.judge.sufficiency(
                 task,
                 (),
@@ -299,7 +372,6 @@ class BehavioralContextBuilder:
             "schema": BEHAVIOR_SCHEMA,
             "task": self._compact_task_profile(profile),
             "observations": rows,
-            "sequences": self._sequences(selected),
             "counts": {
                 "candidate": len(candidates),
                 "delivered": len(selected),
@@ -309,7 +381,7 @@ class BehavioralContextBuilder:
             },
             "selection": {
                 "judge": self.judge.__class__.__name__,
-                "order": "dimension_witness,essential,supporting,uncertain",
+                "order": "task-dimension-witnesses,essential,supporting,uncertain",
             },
             "coverage": {
                 "scanned_selected_symbols": len(coverage["symbols"]),
@@ -323,7 +395,7 @@ class BehavioralContextBuilder:
                         "callee": item["callee"],
                         "symbol_id": item["symbol_id"],
                     }
-                    for item in coverage["call_targets_without_selected_behavior"][:8]
+                    for item in coverage["call_targets_without_selected_behavior"][:4]
                 ],
             },
             "sufficiency": sufficiency.to_dict(),
@@ -383,36 +455,48 @@ class BehavioralContextBuilder:
         useful: Sequence[Tuple[BehaviorObservation, RelevanceDecision]],
         profile: TaskEvidenceProfile,
     ) -> Tuple[List[Tuple[BehaviorObservation, RelevanceDecision]], set]:
-        """Reserve causal behavior separately from test/migration corroboration."""
-        critical_kinds = {
-            kind
-            for kind, weight in profile.category_weights.items()
-            if float(weight) >= 0.80
-        }
-        channels = {IMPLEMENTATION}
-        if profile.task_type == "test_behavior":
-            channels.add(TEST)
-        if profile.task_type == "migration_behavior":
-            channels.add(MIGRATION)
+        """Reserve only the behavior/channel pairs needed by this task type.
 
+        For explicitly named code symbols, reserve a matching witness where the
+        required behavior kind exists. This prevents a second relevant symbol
+        (e.g. normalizeStatus beside formatShipmentStatus) from being displaced
+        by generic high-scoring enrichment.
+        """
+        requirements = self._TASK_CHANNEL_KINDS.get(
+            profile.task_type,
+            self._TASK_CHANNEL_KINDS["general_behavior"],
+        )
         representatives: List[Tuple[BehaviorObservation, RelevanceDecision]] = []
         representative_ids = set()
         channel_rank = {IMPLEMENTATION: 0, TEST: 1, MIGRATION: 1}
-        for kind in sorted(critical_kinds):
-            for channel in sorted(channels, key=lambda value: (channel_rank.get(value, 9), value)):
+
+        def reserve_best(candidates):
+            if not candidates:
+                return
+            best = min(candidates, key=self._relevance_sort_key)
+            if best[0].id not in representative_ids:
+                representatives.append(best)
+                representative_ids.add(best[0].id)
+
+        for channel, kinds in requirements.items():
+            for kind in kinds:
                 candidates = [
                     item
                     for item in useful
-                    if item[0].kind.value == kind
+                    if item[0].kind == kind
                     and file_channel(item[0].location.path) == channel
                 ]
                 if not candidates:
                     continue
-                best = min(candidates, key=self._relevance_sort_key)
-                if best[0].id in representative_ids:
-                    continue
-                representatives.append(best)
-                representative_ids.add(best[0].id)
+                reserve_best(candidates)
+                for identifier in profile.identifiers:
+                    named = []
+                    for item in candidates:
+                        node = self.graph.node(item[0].symbol_id)
+                        if node is not None and node.name == identifier:
+                            named.append(item)
+                    reserve_best(named)
+
         representatives.sort(
             key=lambda item: (
                 channel_rank.get(file_channel(item[0].location.path), 9),
@@ -424,13 +508,3 @@ class BehavioralContextBuilder:
         )
         remainder = [item for item in useful if item[0].id not in representative_ids]
         return representatives + remainder, representative_ids
-
-    @staticmethod
-    def _sequences(observations: Sequence[BehaviorObservation]) -> Dict[str, List[str]]:
-        by_symbol: Dict[str, List[BehaviorObservation]] = {}
-        for item in observations:
-            by_symbol.setdefault(item.symbol_id, []).append(item)
-        return {
-            symbol_id: [item.id for item in sorted(items, key=lambda value: (value.order, value.id))]
-            for symbol_id, items in sorted(by_symbol.items())
-        }
