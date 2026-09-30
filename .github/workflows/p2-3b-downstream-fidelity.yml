@@ -4,18 +4,22 @@ on:
   push:
     paths:
       - "feynmap/p2_3b_fidelity.py"
+      - "feynmap/p2_3b_shipping.py"
       - "experiments/p2_3b_answer_manifest.json"
       - "experiments/fixtures/p2_3b_fulfillment/**"
       - "experiments/p2_3b_answers/**"
       - "tests/test_p2_3b_fidelity.py"
+      - "tests/test_p2_3b_shipping.py"
       - ".github/workflows/p2-3b-downstream-fidelity.yml"
   pull_request:
     paths:
       - "feynmap/p2_3b_fidelity.py"
+      - "feynmap/p2_3b_shipping.py"
       - "experiments/p2_3b_answer_manifest.json"
       - "experiments/fixtures/p2_3b_fulfillment/**"
       - "experiments/p2_3b_answers/**"
       - "tests/test_p2_3b_fidelity.py"
+      - "tests/test_p2_3b_shipping.py"
       - ".github/workflows/p2-3b-downstream-fidelity.yml"
   workflow_dispatch:
 
@@ -32,10 +36,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install -e ".[dev]"
-      - name: P2.3b source/oracle/answer protocol tests
+      - name: P2.3b source/oracle/answer/shipping protocol tests
         run: |
           python -m pytest -q \
             tests/test_p2_3b_fidelity.py \
+            tests/test_p2_3b_shipping.py \
             tests/test_p2_3a_symbol_evidence.py \
             tests/test_p2_delivery_experiment.py \
             tests/test_contract_conformance.py
@@ -114,9 +119,17 @@ jobs:
             --index p2-3b-export/index.json \
             --answers-dir experiments/p2_3b_answers \
             --output p2-3b-score.json
+      - name: Apply absolute downstream-fidelity shipping guard
+        if: steps.answers.outputs.present == 'true'
+        run: |
+          python -m feynmap.p2_3b_shipping \
+            --score p2-3b-score.json \
+            --output p2-3b-shipping.json
       - uses: actions/upload-artifact@v4
         if: steps.answers.outputs.present == 'true'
         with:
           name: p2-3b-fidelity-score
-          path: p2-3b-score.json
+          path: |
+            p2-3b-score.json
+            p2-3b-shipping.json
           if-no-files-found: error
