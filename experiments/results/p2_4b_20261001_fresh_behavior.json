@@ -1,0 +1,161 @@
+{
+  "schema": "feynmap.p2_4b_fresh_behavior_checkpoint.v1",
+  "recorded_date": "2026-10-01",
+  "status": "accepted_first_completed_fresh_replay",
+  "canonical_run": {
+    "workflow_run_id": 36780685329,
+    "head_sha": "e92d173b363fd1a6f21ed01daf3460d316ccb42d",
+    "artifact_id": 11127114242,
+    "artifact_name": "p2-4b-fresh-result",
+    "artifact_zip_sha256": "a50e5c431a624aaffc3f80329920625b2b69279c223c714263bcdaa8bfbeeeba"
+  },
+  "freeze": {
+    "manifest_path": "experiments/p2_4b_behavior_manifest.json",
+    "manifest_git_blob": "5900e1f64cb482a720cb12ad7fd87d0ccb176172",
+    "source_commit_before_oracle": "738b7d46767f9060851ea5545317a0fe9759cc43",
+    "oracle_authored_before_evaluator": true,
+    "gold_used_only_after_context_construction": true,
+    "selector_tuning_after_first_completed_score": false
+  },
+  "first_attempt_note": {
+    "workflow_run_id": 36780529363,
+    "scored": false,
+    "reason": "Evaluator raised NameError while assembling the result object because JSON-style false was used instead of Python False. The only correction before the first completed score was this harness boolean typo; source, frozen oracle, activation, extraction, relevance, and packing were unchanged."
+  },
+  "cohort": {
+    "tasks": 7,
+    "answerable_tasks": 6,
+    "unresolved_controls": 1,
+    "required_behavior_patterns": 15,
+    "domain": "billing/invoice settlement",
+    "languages": ["python", "javascript"]
+  },
+  "arms": {
+    "symbol_evidence": {
+      "matched_patterns": 1,
+      "required_patterns": 15,
+      "pattern_recall": 0.066667,
+      "description": "P2.3a symbol_evidence model-facing context only"
+    },
+    "behavior_deterministic": {
+      "matched_patterns": 13,
+      "required_patterns": 15,
+      "pattern_recall": 0.866667,
+      "mean_behavior_tokens_estimate": 2114.71,
+      "mean_combined_tokens_estimate": 3162.14,
+      "description": "The exact same sparse context plus P2.4 GroundedBehaviorExtractor and DeterministicRelevanceJudge"
+    },
+    "behavior_provider_optional": {
+      "status": "not_run",
+      "reason": "No real JudgmentProvider/model identity was explicitly configured. No mock-provider result is presented as model evidence."
+    }
+  },
+  "fresh_representation_gate": {
+    "behavior_improves_aggregate_pattern_recall": true,
+    "no_per_task_pattern_regression": true,
+    "missing_identifier_control_ok": true,
+    "all_behavior_packets_within_budget": true,
+    "pass": true
+  },
+  "records": [
+    {
+      "task_id": "apply-payment-implementation",
+      "symbol_evidence": "0/4",
+      "behavior_deterministic": "4/4",
+      "behavior_tokens_estimate": 2060,
+      "combined_tokens_estimate": 2934,
+      "behavior_sufficient": true,
+      "omitted_critical": 0,
+      "missed_patterns": []
+    },
+    {
+      "task_id": "overpayment-regression-test",
+      "symbol_evidence": "0/2",
+      "behavior_deterministic": "1/2",
+      "behavior_tokens_estimate": 2195,
+      "combined_tokens_estimate": 3028,
+      "behavior_sufficient": true,
+      "omitted_critical": 0,
+      "missed_patterns": ["overpayment-condition-and-error"]
+    },
+    {
+      "task_id": "exact-payment-test",
+      "symbol_evidence": "0/2",
+      "behavior_deterministic": "2/2",
+      "behavior_tokens_estimate": 2115,
+      "combined_tokens_estimate": 2959,
+      "behavior_sufficient": true,
+      "omitted_critical": 0,
+      "missed_patterns": []
+    },
+    {
+      "task_id": "grace-days-migration",
+      "symbol_evidence": "0/3",
+      "behavior_deterministic": "3/3",
+      "behavior_tokens_estimate": 2164,
+      "combined_tokens_estimate": 3362,
+      "behavior_sufficient": true,
+      "omitted_critical": 0,
+      "missed_patterns": []
+    },
+    {
+      "task_id": "retry-policy",
+      "symbol_evidence": "1/2",
+      "behavior_deterministic": "1/2",
+      "behavior_tokens_estimate": 2106,
+      "combined_tokens_estimate": 3352,
+      "behavior_sufficient": true,
+      "omitted_critical": 0,
+      "missed_patterns": ["delegates-can-retry"]
+    },
+    {
+      "task_id": "javascript-payment-label",
+      "symbol_evidence": "0/2",
+      "behavior_deterministic": "2/2",
+      "behavior_tokens_estimate": 2081,
+      "combined_tokens_estimate": 3614,
+      "behavior_sufficient": true,
+      "omitted_critical": 0,
+      "missed_patterns": []
+    },
+    {
+      "task_id": "missing-capture-card",
+      "symbol_evidence": "0/0",
+      "behavior_deterministic": "0/0",
+      "behavior_tokens_estimate": 2082,
+      "combined_tokens_estimate": 2886,
+      "symbol_sufficient": false,
+      "behavior_sufficient": false,
+      "unresolved_query_identifiers": ["capture_card"],
+      "missing_identifier_control_ok": true,
+      "missed_patterns": []
+    }
+  ],
+  "preserved_fresh_misses": [
+    {
+      "task_id": "overpayment-regression-test",
+      "pattern_id": "overpayment-condition-and-error",
+      "classification": "unresolved_posthoc_diagnostic",
+      "note": "P2.4b does not tune the selector/extractor/relevance layer against this miss. Determine later whether it arose in activation, symbol delivery, extraction, relevance, or budget selection."
+    },
+    {
+      "task_id": "retry-policy",
+      "pattern_id": "delegates-can-retry",
+      "classification": "unresolved_posthoc_diagnostic",
+      "note": "P2.4b does not tune the selector/extractor/relevance layer against this miss. Determine later whether it arose in activation, symbol delivery, extraction, relevance, or budget selection."
+    }
+  ],
+  "decision": {
+    "fresh_behavioral_representation_gate": "pass",
+    "change_legacy_product_default": false,
+    "claim_downstream_llm_accuracy_improvement": false,
+    "next": "Preserve the two misses for a later development slice, then run a separate downstream answer-fidelity checkpoint and real-provider relevance comparison before any product-default or end-user accuracy claim."
+  },
+  "limitations": [
+    "This is a fresh synthetic source-authored corpus, not an externally reviewed production population.",
+    "Behavior-pattern recall measures whether source-backed evidence is available in the model-facing packet; it does not measure whether a downstream LLM answers correctly.",
+    "The token numbers are deterministic compact-JSON ceil(chars/4) estimates, not provider billing tokens.",
+    "The provider-backed relevance arm was not run because no real provider/model was explicitly configured.",
+    "S7 remained sealed and unused."
+  ]
+}
