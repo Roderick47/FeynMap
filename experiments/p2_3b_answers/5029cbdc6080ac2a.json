@@ -1,0 +1,9 @@
+{
+  "status": "answer",
+  "claims": [
+    {"text": "The client/status.js module contains a normalizeStatus function symbol.", "evidence_nodes": ["javascript:module:client/status.js", "javascript:symbol:64a48cf87cc7d73b"], "evidence_edges": []},
+    {"text": "The client/format.js module contains a formatShipmentStatus function symbol.", "evidence_nodes": ["javascript:module:client/format.js", "javascript:symbol:4093526889397db8"], "evidence_edges": []},
+    {"text": "The tests/status.test.js module contains a testFormatShipmentStatus function symbol.", "evidence_nodes": ["javascript:module:tests/status.test.js", "javascript:symbol:905176d172b53679"], "evidence_edges": []}
+  ],
+  "missing_identifiers": []
+}

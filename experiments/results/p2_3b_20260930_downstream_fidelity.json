@@ -1,0 +1,115 @@
+{
+  "schema": "feynmap.p2_3b_checkpoint.v1",
+  "recorded_on": "2026-09-30",
+  "status": "downstream_fidelity_failed_keep_symbol_evidence_opt_in",
+  "fresh_source_oracle": {
+    "manifest": "experiments/p2_3b_answer_manifest.json",
+    "manifest_git_blob": "d136168b47939af7ce8f9440cc9abd022b777310",
+    "source_root": "experiments/fixtures/p2_3b_fulfillment",
+    "source_files": 12,
+    "tasks": 6,
+    "answerable_tasks": 5,
+    "need_more_context_tasks": 1,
+    "frozen_before_context_export_or_model_answers": true,
+    "model_packets_contained_scoring_gold": false
+  },
+  "model_run": {
+    "provider": "chatgpt_interactive",
+    "model": "GPT-5.6 Sol",
+    "blind_to_oracle": false,
+    "eligible_for_shipping_decision": false,
+    "provider_input_tokens": null,
+    "provider_output_tokens": null,
+    "provider_usage_note": "Per-packet provider billing-token counts are unavailable in this ChatGPT surface and are not estimated.",
+    "answer_policy": "Only packet-visible FeynMap evidence was used in committed answers; source-body facts remembered from fixture authoring were deliberately not reconstructed."
+  },
+  "reference_ci": {
+    "workflow_run": 36700106598,
+    "workflow_url": "https://github.com/Roderick47/FeynMap/actions/runs/36700106598",
+    "p2_3b_conformance_python_3_8": "pass",
+    "p2_3b_conformance_python_3_12": "pass",
+    "oracle_free_context_export": "pass",
+    "downstream_scoring": "pass",
+    "absolute_shipping_guard": "pass",
+    "full_test_run_for_pre_guard_answer_commit": 36699474118,
+    "full_test_run_for_guard_commit": 36700106446
+  },
+  "standard_budget_results": [
+    {
+      "arm": "legacy",
+      "required_claims": 13,
+      "matched_required_claims": 0,
+      "required_claim_recall": 0.0,
+      "answerable_tasks": 5,
+      "answerable_task_passes": 0,
+      "unsupported_trap_hits": 0,
+      "invalid_or_uncited_claims": 0,
+      "request_more_context_tasks": 1,
+      "correct_request_more_context_tasks": 1,
+      "context_estimated_tokens_sum": 9262,
+      "mean_context_estimated_tokens": 1543.67
+    },
+    {
+      "arm": "symbol_evidence",
+      "required_claims": 13,
+      "matched_required_claims": 0,
+      "required_claim_recall": 0.0,
+      "answerable_tasks": 5,
+      "answerable_task_passes": 0,
+      "unsupported_trap_hits": 0,
+      "invalid_or_uncited_claims": 0,
+      "request_more_context_tasks": 1,
+      "correct_request_more_context_tasks": 1,
+      "context_estimated_tokens_sum": 6638,
+      "mean_context_estimated_tokens": 1106.33
+    }
+  ],
+  "relative_context_reduction": {
+    "legacy_sum": 9262,
+    "symbol_evidence_sum": 6638,
+    "estimated_token_reduction": 2624,
+    "estimated_token_reduction_fraction": 0.2833,
+    "interpretation": "FeynMap deterministic compact-JSON char/4 estimate only; not provider billing tokens."
+  },
+  "missing_identifier_control": {
+    "query_identifier": "issue_refund",
+    "source_exists": false,
+    "legacy_delivery_sufficient": true,
+    "legacy_unresolved_query_identifiers": [],
+    "symbol_evidence_delivery_sufficient": false,
+    "symbol_evidence_unresolved_query_identifiers": ["issue_refund"],
+    "downstream_legacy_answer": "need_more_context",
+    "downstream_symbol_evidence_answer": "need_more_context",
+    "interpretation": "P2.3a gives the stronger substrate-level unknown signal; the conservative downstream development answer also abstained under legacy after observing no issue_refund evidence."
+  },
+  "shipping_gates": {
+    "frozen_comparative_metric_gate_passed": true,
+    "why_comparative_gate_is_not_quality_success": "Both policies tied at 0.0 required-claim recall, had no trap/citation regressions, handled the missing identifier conservatively, and symbol_evidence was cheaper. Relative no-regression therefore passes mechanically even though neither arm answered any preauthored behavioral task fully.",
+    "absolute_fidelity_guard_added_after_first_development_score": true,
+    "absolute_fidelity_gate_passed": false,
+    "final_shipping_decision": "keep_opt_in_absolute_downstream_fidelity_not_met",
+    "default_policy_changed": false
+  },
+  "primary_finding": "P2.3a repaired task-bearing symbol selection, but the current model-facing compact semantic payload usually exposes symbol identity and graph relationships rather than the source-body behavioral facts required by downstream implementation questions. Correct symbol delivery is therefore necessary but not sufficient for answer fidelity.",
+  "observed_examples": [
+    "reserve_order and ensure_stock were delivered with a real call edge, but mutation ordering and return-value construction were not represented in the compact payload.",
+    "apply_priority_default and priority_default were delivered, but the literal normal default and preserve-existing behavior were absent from model-facing evidence.",
+    "cancel_order and can_cancel were delivered, but the queued/packed literal set and no-refund behavior were absent.",
+    "formatShipmentStatus and normalizeStatus were delivered, but the JavaScript call/import relationship and trim/toUpperCase body semantics were absent.",
+    "symbol_evidence correctly represented absent issue_refund as unresolved and insufficient; legacy incorrectly reported sufficient at the substrate level."
+  ],
+  "decision": {
+    "promote_symbol_evidence_to_default": false,
+    "keep_legacy_default": true,
+    "keep_symbol_evidence_available_opt_in": true,
+    "next_checkpoint": "Grounded behavioral evidence delivery: expose compact source-body facts/snippets or normalized source assertions for selected symbols, preserve source provenance and unknown semantics, then rerun a newly frozen downstream-fidelity corpus before any default promotion or S7 outcome claims."
+  },
+  "limitations": [
+    "The fulfillment corpus is fresh and preauthored but synthetic and not externally reviewed.",
+    "The GPT-5.6 Sol development run was not blind to the fixture/oracle and cannot support a shipping promotion.",
+    "The lexical required-claim/trap scorer is intentionally bounded and not exhaustive semantic fact checking.",
+    "Zero required-claim recall here measures inability to produce the preregistered behavioral claims from the compact packet under the conservative answer protocol; it is not a general-purpose model accuracy measurement.",
+    "No actual provider billing-token usage was available; context sizes are FeynMap deterministic estimates.",
+    "S7 remains disjoint and unused."
+  ]
+}

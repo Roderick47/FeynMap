@@ -1,0 +1,9 @@
+{
+  "status": "answer",
+  "claims": [
+    {"text": "A function named cancel_order is delivered.", "evidence_nodes": ["python:symbol:fulfillment.service.cancel_order"], "evidence_edges": []},
+    {"text": "A function named can_cancel is delivered.", "evidence_nodes": ["python:symbol:fulfillment.policy.can_cancel"], "evidence_edges": []},
+    {"text": "A test symbol named test_cancel_order_is_policy_only is delivered.", "evidence_nodes": ["python:symbol:tests.test_service.test_cancel_order_is_policy_only"], "evidence_edges": []}
+  ],
+  "missing_identifiers": []
+}

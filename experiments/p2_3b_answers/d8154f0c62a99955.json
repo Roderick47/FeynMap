@@ -1,0 +1,9 @@
+{
+  "status": "answer",
+  "claims": [
+    {"text": "reserve_order calls ensure_stock.", "evidence_nodes": ["python:symbol:fulfillment.service.reserve_order", "python:symbol:fulfillment.policy.ensure_stock"], "evidence_edges": []},
+    {"text": "The delivered test_successful_reservation_returns_remaining_quantity symbol calls reserve_order.", "evidence_nodes": ["python:symbol:tests.test_service.test_successful_reservation_returns_remaining_quantity", "python:symbol:fulfillment.service.reserve_order"], "evidence_edges": []},
+    {"text": "The fulfillment.service module imports reservation_message.", "evidence_nodes": ["python:module:fulfillment.service", "python:symbol:fulfillment.audit.reservation_message"], "evidence_edges": []}
+  ],
+  "missing_identifiers": []
+}

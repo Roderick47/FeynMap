@@ -1,0 +1,135 @@
+name: p2-3b-downstream-fidelity
+
+on:
+  push:
+    paths:
+      - "feynmap/p2_3b_fidelity.py"
+      - "feynmap/p2_3b_shipping.py"
+      - "experiments/p2_3b_answer_manifest.json"
+      - "experiments/fixtures/p2_3b_fulfillment/**"
+      - "experiments/p2_3b_answers/**"
+      - "tests/test_p2_3b_fidelity.py"
+      - "tests/test_p2_3b_shipping.py"
+      - ".github/workflows/p2-3b-downstream-fidelity.yml"
+  pull_request:
+    paths:
+      - "feynmap/p2_3b_fidelity.py"
+      - "feynmap/p2_3b_shipping.py"
+      - "experiments/p2_3b_answer_manifest.json"
+      - "experiments/fixtures/p2_3b_fulfillment/**"
+      - "experiments/p2_3b_answers/**"
+      - "tests/test_p2_3b_fidelity.py"
+      - "tests/test_p2_3b_shipping.py"
+      - ".github/workflows/p2-3b-downstream-fidelity.yml"
+  workflow_dispatch:
+
+jobs:
+  conformance:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.12"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install -e ".[dev]"
+      - name: P2.3b source/oracle/answer/shipping protocol tests
+        run: |
+          python -m pytest -q \
+            tests/test_p2_3b_fidelity.py \
+            tests/test_p2_3b_shipping.py \
+            tests/test_p2_3a_symbol_evidence.py \
+            tests/test_p2_delivery_experiment.py \
+            tests/test_contract_conformance.py
+
+  export-contexts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Export oracle-free downstream packets
+        run: |
+          rm -rf p2-3b-export
+          python -m feynmap.p2_3b_fidelity export \
+            --manifest experiments/p2_3b_answer_manifest.json \
+            --project-root experiments/fixtures/p2_3b_fulfillment \
+            --output-dir p2-3b-export
+      - name: Prove model packets contain no source-authored oracle labels
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          forbidden = (
+              'required_claims', 'unsupported_traps', 'expected_status',
+              'support_symbols', 'symbol_evidence', 'legacy',
+          )
+          files = sorted(Path('p2-3b-export/model_inputs').glob('*.json'))
+          assert len(files) == 12, len(files)
+          for path in files:
+              text = path.read_text(encoding='utf-8')
+              for value in forbidden:
+                  assert value not in text, (path, value)
+              packet = json.loads(text)
+              assert packet['packet_id'] == path.stem
+          print('verified oracle-free model packets:', len(files))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p2-3b-context-export
+          path: p2-3b-export
+          if-no-files-found: error
+
+  score-committed-run:
+    needs: export-contexts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: answers
+        name: Detect committed answer run
+        shell: bash
+        run: |
+          if test -f experiments/p2_3b_answers/run.json; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No committed model run yet; scoring intentionally skipped."
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.answers.outputs.present == 'true'
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+        if: steps.answers.outputs.present == 'true'
+      - uses: actions/download-artifact@v4
+        if: steps.answers.outputs.present == 'true'
+        with:
+          name: p2-3b-context-export
+          path: p2-3b-export
+      - name: Score committed downstream model outputs against frozen oracle
+        if: steps.answers.outputs.present == 'true'
+        run: |
+          python -m feynmap.p2_3b_fidelity score \
+            --manifest experiments/p2_3b_answer_manifest.json \
+            --index p2-3b-export/index.json \
+            --answers-dir experiments/p2_3b_answers \
+            --output p2-3b-score.json
+      - name: Apply absolute downstream-fidelity shipping guard
+        if: steps.answers.outputs.present == 'true'
+        run: |
+          python -m feynmap.p2_3b_shipping \
+            --score p2-3b-score.json \
+            --output p2-3b-shipping.json
+      - uses: actions/upload-artifact@v4
+        if: steps.answers.outputs.present == 'true'
+        with:
+          name: p2-3b-fidelity-score
+          path: |
+            p2-3b-score.json
+            p2-3b-shipping.json
+          if-no-files-found: error

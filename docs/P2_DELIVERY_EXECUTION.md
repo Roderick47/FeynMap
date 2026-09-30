@@ -1,135 +1,172 @@
 # P2 — Evidence-channel delivery and task-relevant context
 
-P1 grounded framework relationships and proved that the DRF source graph
-activates both serializer implementation files. The remaining P1.7 failure is
-downstream: the S3 minimal context packer gave most of the delivered node
-budget to test cases while omitting the activated `rest_framework/fields.py`.
-
-P2 changes **delivery policy**, not static graph truth. It must not rely on
-benchmark gold labels at selection time or silently re-score the frozen P1
-development positives. Its independent controls include actual activated
-versus delivered implementation files, tests/migrations/vendor channels,
-evidence-tier consistency, context tokens, supported claims and task outcomes.
+P1 grounded framework relationships and showed that a correct activated graph
+is not enough when S3 delivers the wrong subset. P2 therefore changes
+**delivery and downstream evidence policy**, not static graph truth. It must
+never feed benchmark gold labels into selection, invent an unactivated fact,
+or turn missing evidence into falsehood.
 
 ## P2.1 — Role-aware delivery (completed in PR #45)
 
-Source location maps each activated node to a conservative delivery role:
-implementation, test, migration, vendor/generated, documentation, configuration, or unknown for missing locations. Classification is path-only; it cannot create a dependency or
-downgrade an otherwise valid source node. Migration wins over test path
-collisions; generated/vendor wins over nested test names.
+`DeliveryChannelPolicy(mode="implementation_first")` introduced opt-in source
+roles for implementation, tests, migrations, vendor/generated files,
+documentation, configuration and unknown locations. It preserves activated
+source identities, stored edges, endpoint integrity and token/node/edge
+budgets while preferring implementation-file witnesses and limiting incidental
+test-node saturation for ordinary implementation questions.
 
-`DeliveryChannelPolicy(mode="implementation_first")` is an **opt-in** policy
-passed to `SparseContextPipeline.concept`, `from_node` or
-`MinimalContextPacker.pack` via `delivery_policy=`. The P1/S3 default,
-serialized payload shape, graph and frozen source oracle stay unchanged.
+The initial pinned DRF serializer shadow recovered the previously omitted
+`rest_framework/fields.py` under a smaller model-facing context. Legacy
+remained the default and the frozen P1 acceptance remained 10/11. P2.1 was a
+file-level delivery measurement, not downstream correctness evidence.
 
-At selection time the policy:
+## P2.2 — Source-locked channel-budget comparison (completed in PR #46)
 
-1. Inspects the task text for explicit test/migration/vendor intent;
-   otherwise treats the request as implementation-oriented.
-2. Prioritizes distinct *already activated* source-file witnesses, including
-   actual source-evidenced cross-file behavioral dependencies. It has no access
-   to the evaluator's `essential_files` labels, repository-specific exceptions,
-   or the frozen manifest.
-3. Reserves at least two activated implementation-file witnesses for ordinary
-   implementation requests when they exist, before admitting optional test
-   enrichment. Explicit test/migration/vendor requests retain corresponding
-   relevant channel nodes and one implementation witness.
-4. Caps incidental test-node saturation at 35% of the requested node budget
-   for non-test questions. The cap is on **nodes**, not falsely presented as a
-   token allocation.
-5. Preserves the activated graph restriction, exact source node and stored
-   edge evidence, atomic edge endpoints, query anchors, the requested token,
-   node and relationship budget, and a truthful insufficient flag when a
-   critical source witness cannot fit. If a long test-only search-parent path
-   does not fit, the activated implementation is exposed as an explicit
-   separate grounded anchor rather than fabricated provenance.
+Before measuring P2.1 more broadly, P2.2 froze a separate stockroom source
+fixture plus reused DRF symbol-level controls. Eight source-authored tasks,
+two budgets (1600/12/12 and 3200/24/24) and three policies consumed identical
+per-task S2 activation. The evaluator separately recorded activated versus
+delivered files and symbols, genuinely required test/migration evidence,
+individually labelled distractors and exact compact-JSON character accounting.
 
-The P1 runner now computes both packing variants on the **same activation**.
-The role-aware measurements are additive
-`observed.p2_role_aware_shadow`; frozen P1 `passed` still depends on
-unchanged legacy packing, preserving the P1.7 10/11 result. The collector
-independently checks that both locked DRF retrieval questions deliver their
-essential implementation files in the opt-in shadow, all chosen IDs originate
-in activation, actual endpoints accompany delivered edges, all budgets hold,
-source file role counts reconcile and the existing P1.2–P1.7 gates remain
-green. Synthetic positive and adversarial fixtures cover explicit test/
-migration/vendor intent, channel classification and cannot-deliver-unactivated
-behavior.
+All required source-authored symbols were actually activated (stockroom 10/10,
+DRF 7/7), isolating a delivery failure. At the standard budget legacy retained
+10/10 stockroom and 6/7 DRF symbols while P2.1 retained 5/10 and 4/7. A
+pre-registered balanced file-floor variant did not repair the problem.
+Required tests and migrations were also lost by file-first packing.
 
-**P2.1 is an implementation-recall and delivery-selectivity measurement, not
-a claim that model-answer correctness, precision or agent repair accuracy has
-been established.** The independent framework source labels are used to
-score the resulting delivery only, never to choose context.
-
-## Remaining incremental checkpoints
-
-**P2.2 — Source-locked channel-budget comparison (completed with measured
-regressions).** The frozen independent stockroom source fixture and reused DRF
-calibration yield eight preauthored queries with explicit essential source
-files, finer-grained symbols, required tests/migrations, optional useful
-support, and individually named irrelevant nodes. The source file blobs and
-manifest Git digest were locked *before* the experiment. The runner rechecks
-the literal source AST declarations and pinned revision rather than scoring
-its own graph as gold.
-
-Three packers (unchanged legacy, P2.1 source-first, and a pre-registered
-balanced floor/cap variant) consume one *identical* activation per query under
-1,600-token/12-node/12-edge and 3,200-token/24-node/24-edge budgets. Reports
-distinguish not-indexed, not-activated, activated-but-omitted and delivered
-source symbols, per-channel JSON character contribution and named
-distractors; common token/edge metadata reconciles exactly under the
-deterministic estimator. No model outputs are scored.
-
-All required source-authored symbols were actually activated in both cohorts
-(stockroom 10/10, DRF 7/7). At standard budget, legacy retained 10/10
-stockroom and 6/7 DRF symbols; P2.1 source-first retained 5/10 and 4/7,
-respectively. Source-first omitted both required migration symbols and one
-of two required stockroom test symbols, despite lower estimated context.
-The balanced floor/cap did not resolve the problem (4/10 and 5/7).
-**Do not change the default.** Source role/file coverage alone is an
-insufficient criterion for delivering the actual task-bearing symbol.
+**P2.2 decision:** do not make file-oriented source-first packing the default.
+A correct file is not proof that the task-bearing method/class was delivered.
 See `docs/P2_2_CHANNEL_BUDGET_COMPARISON.md` and
 `experiments/results/p2_2_20260929_delivery_comparison.json`.
 
-**P2.3a — Task-symbol and source-evidence sufficiency (implemented,
-opt-in; PR #47).** The separate `symbol_evidence` mode selects actual
-activated named definitions matched by the task, bounded partly matched
-source methods, and existing source-evidenced behavioral-edge continuations.
-It requires every selected critical *symbol and relationship* before
-claiming context sufficiency. It separately recognizes explicit snake_case,
-camelCase and PascalCase identifiers absent from S2 activation, reports them
-in additive `unresolved_query_identifiers` diagnostics, and sets
-`sufficient=False` instead of fabricating missing upstream evidence.
+## P2.3a — Task-symbol and source-evidence sufficiency (completed in PR #47)
 
-An independently preauthored mixed Python/JavaScript dispatch source fixture
-(12 sealed source blobs and 8 source-authored queries, manifest Git blob
-`0512100c4a1c76969e1cfc1c8bc16d6c0fa42e18`) was frozen before
-implementation. The original P2.2 stockroom/DRF cohorts remain explicitly
-reused diagnostics, not a newly held-out score. Final exploratory refinements
-were informed by development replay and are described transparently in
-`docs/P2_3A_SYMBOL_EVIDENCE_SUFFICIENCY.md`.
+P2.3a added opt-in `DeliveryChannelPolicy(mode="symbol_evidence")`. It ranks
+activated named definitions from the query, preserves actual source-backed
+behavioral continuations where the graph already proves them, and requires
+selected task-critical symbols/edges before declaring the packed result
+sufficient. Explicit code identifiers absent from activation appear in
+`unresolved_query_identifiers`; their absence yields `sufficient=False`
+instead of invented context.
 
-The fresh fixture yielded 15/16 required-symbol activations and P2.3a
-delivered all 15 activated symbols under 1,600- and 3,200-token limits,
-against P2.1's 10/15. The remaining JS `normalizeSeverity` source name
-was absent upstream and must trigger a new S2 expansion, not false S3
-coverage. Previously frozen P2.2 controls improved to 10/10 stockroom
-symbols at both caps, including essential tests and migrations; DRF reached
-6/7 at 1,600 tokens (a remaining omission is explicitly insufficient)
-and 7/7 at 3,200 tokens, including previously omitted required test
-evidence. The original graph, baseline scores, budget limits and default
-packing remain unchanged; P2.3b is still needed before considering a default
-promotion.
+A newly frozen Python/JavaScript dispatch fixture contained 16 required-symbol
+occurrences, of which 15 were activated. P2.3a delivered all 15 activated
+symbols at both budgets versus P2.1's 10/15. Reused P2.2 controls improved to
+10/10 stockroom symbols at both budgets and 7/7 DRF at the standard budget,
+including required test/migration evidence. The remaining missing JavaScript
+identifier was truthfully unresolved upstream.
 
-**P2.3b — Downstream fidelity and shipping decision.** Compare actual
-supported/unsupported model claims, answer correctness, follow-up evidence
-requests and cost using preauthored questions. Keep the independent sealed
-S7 repair holdout disjoint and do not present a development-set improvement
-as a general hallucination-reduction percentage. Ship a validated default
-or retain explicit policy selection based on measured evidence.
+**P2.3a decision:** symbol-aware sufficiency is a strong development correction
+but remains opt-in until actual downstream answer fidelity is measured.
+See `docs/P2_3A_SYMBOL_EVIDENCE_SUFFICIENCY.md`.
 
-**P2 exit gate:** source-only graph unchanged; a documented per-channel policy
-whose reported counts reconcile; original P1 truth/tier/URL and recursive
-quality tests still pass; no gold leakage into selection; no false claim of
-recall when an implementation file is activated but cannot be delivered.
+## P2.3b — Downstream fidelity and shipping gate (completed in PR #48)
+
+P2.3b froze a fresh 12-file fulfillment Python/JavaScript source fixture and
+six downstream questions **before exporting contexts or collecting model
+answers**. Five questions require 13 source-authored behavioral claims; one
+asks about nonexistent `issue_refund` and should yield `need_more_context`.
+Gold required claims, source support labels and unsupported-claim traps exist
+only in the scorer index and are proven absent from model-facing packets.
+
+Legacy and `symbol_evidence` consume one identical S2 activation per question.
+The downstream answer protocol requires atomic factual claims citing actually
+delivered FeynMap node/edge IDs. Missing facts remain unknown rather than
+being reconstructed from likely source behavior.
+
+The committed GPT-5.6 Sol development run is explicitly **nonblind** because
+the interactive session had already seen the source/oracle; it is therefore
+ineligible to promote a default even if it had passed. Actual provider billing
+tokens were unavailable and are not estimated.
+
+### P2.3b measured result (standard budget)
+
+| Downstream result | Legacy | `symbol_evidence` |
+|---|---:|---:|
+| Required claims | 13 | 13 |
+| Matched required claims | **0** | **0** |
+| Answerable tasks fully passing | 0/5 | 0/5 |
+| Unsupported trap hits | 0 | 0 |
+| Invalid/uncited claims | 0 | 0 |
+| Correct missing-identifier control | 1/1 | 1/1 |
+| FeynMap context estimate total | 9,262 | **6,638** |
+| Mean context estimate | 1,543.67 | **1,106.33** |
+
+`symbol_evidence` reduces the deterministic compact-JSON context estimate by
+2,624 units (~28.3%) while staying conservative, but **0/13 behavioral-claim
+recall is not usable downstream fidelity**.
+
+The missing-identifier control remains valuable: legacy reports its nearby
+cancellation context `sufficient=True`, whereas `symbol_evidence` explicitly
+reports `issue_refund` unresolved and `sufficient=False`. Both conservative
+downstream answers abstained.
+
+The frozen relative no-regression comparison mechanically passes because both
+arms tie at zero recall, add no unsupported/citation regressions, handle the
+missing control, and the candidate is cheaper. After the first development
+score exposed that 0%-vs-0% degeneracy, an additive absolute shipping guard
+was added. It does **not** alter the frozen source/claim oracle, answers, or
+relative score; it only prevents promotion unless the candidate has complete
+required-claim recall, all answerable tasks passing, clean citations/traps and
+correct need-more-context behavior.
+
+Final gate:
+
+- comparative metric: **pass**,
+- absolute downstream fidelity: **fail**,
+- model run eligible for shipping: **false**,
+- final decision: `keep_opt_in_absolute_downstream_fidelity_not_met`.
+
+Reference CI: [P2.3b run 36700106598](https://github.com/Roderick47/FeynMap/actions/runs/36700106598).
+See `docs/P2_3B_DOWNSTREAM_FIDELITY.md` and
+`experiments/results/p2_3b_20260930_downstream_fidelity.json`.
+
+## P2.4 — Grounded behavioral evidence delivery (next)
+
+P2.3b changes the bottleneck. Correct files and correct symbols are both
+necessary, but the compact node representation often exposes only identity,
+location, confidence and graph relations—not the source-body fact needed by a
+question. Examples include mutation order, literal values, branch conditions,
+return construction and JavaScript operations.
+
+P2.4 should add a bounded **behavioral evidence envelope** for selected
+symbols without turning the context layer into raw whole-file retrieval. The
+design should investigate normalized, source-backed facts and/or narrowly
+bounded snippets for:
+
+1. calls and their source ordering when statically proven;
+2. assignments/mutations and affected identifiers;
+3. branch predicates and literal/member sets;
+4. return expressions and constructed values;
+5. important constants/literals used by the selected behavior;
+6. test assertions and migration operations when the task explicitly needs
+   those channels;
+7. equivalent JavaScript/other-language source facts through adapter-neutral
+   contracts where practical.
+
+Every behavioral item must retain exact source location/evidence provenance,
+be bounded by the same downstream token budget, and remain absent/unknown when
+not proven. Do not synthesize prose facts from benchmark expected answers.
+Freeze a **new** source-authored downstream corpus before evaluating P2.4; the
+P2.3b fulfillment questions are now development diagnostics.
+
+After P2.4 reaches useful behavioral fidelity, run a blind provider-controlled
+answer comparison before changing the default. The independent S7 agent-repair
+holdout remains disjoint and should only be used for broader task-level
+outcome claims.
+
+## P2 invariant/exit gates
+
+- static graph/source truth remains unchanged by delivery policy;
+- selected context never escapes activated grounded evidence;
+- no benchmark gold labels are selection inputs;
+- file, symbol and behavioral-evidence coverage are reported separately;
+- missing evidence is unknown, not false;
+- exact budgets and edge endpoints reconcile;
+- original P1 truth/tier/route controls and recursive quality tests remain
+  green;
+- no default promotion from a merely relative win when absolute downstream
+  fidelity is inadequate;
+- no P2 development result is presented as an S7/general hallucination-rate
+  claim.

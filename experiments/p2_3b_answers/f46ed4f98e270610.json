@@ -1,0 +1,9 @@
+{
+  "status": "answer",
+  "claims": [
+    {"text": "The delivered test_insufficient_stock_leaves_quantity_unchanged symbol calls InventoryItem.", "evidence_nodes": ["python:symbol:tests.test_service.test_insufficient_stock_leaves_quantity_unchanged", "python:symbol:fulfillment.models.InventoryItem"], "evidence_edges": []},
+    {"text": "ensure_stock calls InsufficientStock.", "evidence_nodes": ["python:symbol:fulfillment.policy.ensure_stock", "python:symbol:fulfillment.policy.InsufficientStock"], "evidence_edges": []},
+    {"text": "reserve_order calls reservation_message.", "evidence_nodes": ["python:symbol:fulfillment.service.reserve_order", "python:symbol:fulfillment.audit.reservation_message"], "evidence_edges": []}
+  ],
+  "missing_identifiers": []
+}
