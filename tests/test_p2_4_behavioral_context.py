@@ -13,6 +13,7 @@ from feynmap.judgment.contracts import (
 )
 from feynmap.minimal_context import MinimalContextBudget
 from feynmap.relevance import JudgmentProviderRelevanceJudge
+from feynmap.task_evidence import TaskConditionedEvidencePipeline
 
 
 ROOT = Path(__file__).resolve().parents[1] / "experiments" / "fixtures" / "p2_3b_fulfillment"
@@ -78,6 +79,9 @@ def test_reserve_order_envelope_exposes_validation_mutation_and_return_in_source
     mutation_position = next(i for i, row in enumerate(ordered) if "item.quantity -= requested_quantity" in row["summary"])
     return_position = next(i for i, row in enumerate(ordered) if "return reservation_message" in row["summary"])
     assert ensure_position < mutation_position < return_position
+    mutation = next(row for row in reserve if "item.quantity -= requested_quantity" in row["summary"])
+    assert "item.quantity" in mutation["source_facts"]["reads"]
+    assert "-" in mutation["source_facts"]["operators"]
     assert result.payload["behavioral_evidence"]["grounding"]["source_order_scope"].startswith("ordering is local")
 
 
@@ -100,6 +104,11 @@ def test_failure_behavior_preserves_condition_raise_and_test_assertions_when_sel
         for row in rows
     )
     assert any(row["kind"] == BehaviorKind.ASSERTION.value for row in rows)
+    test_assertion = next(
+        row for row in rows
+        if row["kind"] == BehaviorKind.ASSERTION.value and "item.quantity == 2" in row["summary"]
+    )
+    assert 2 in test_assertion["source_facts"]["literals"]
 
 
 def test_migration_and_default_behavior_exposes_guard_mutation_and_literal_return():
@@ -107,22 +116,25 @@ def test_migration_and_default_behavior_exposes_guard_mutation_and_literal_retur
     _, result = _build(task)
     rows = _observations(result)
     assert any("\"priority\" not in row" in row["summary"] for row in rows)
-    assert any(
-        "row[\"priority\"] = priority_default()" in row["summary"]
+    migration_write = next(
+        row for row in rows
+        if "row[\"priority\"] = priority_default()" in row["summary"]
         and "\"priority\" not in row" in row.get("condition", "")
-        for row in rows
     )
-    assert any("return \"normal\"" in row["summary"] for row in rows)
+    assert migration_write["attributes"]["migration"] is True
+    assert "priority" in migration_write["source_facts"]["literals"]
+    normal = next(row for row in rows if "return \"normal\"" in row["summary"])
+    assert "normal" in normal["source_facts"]["literals"]
 
 
 def test_cancel_policy_exposes_allowed_status_literals_without_inventing_refund():
     task = "What does cancel_order actually do, which statuses can can_cancel approve, and does this source perform a refund side effect?"
     _, result = _build(task)
     rows = _observations(result)
-    assert any(
-        "status in {\"queued\", \"packed\"}" in row["summary"]
-        for row in rows
+    allowed = next(
+        row for row in rows if "status in {\"queued\", \"packed\"}" in row["summary"]
     )
+    assert set(allowed["source_facts"]["literals"]) >= {"queued", "packed"}
     assert not any("refund" in row["summary"].casefold() for row in rows)
 
 
@@ -130,17 +142,14 @@ def test_javascript_behavior_keeps_exact_normalization_source_witness():
     task = "How does formatShipmentStatus use normalizeStatus, and what transformation does normalizeStatus perform?"
     _, result = _build(task)
     rows = _observations(result)
-    normalize_rows = [
-        row for row in rows
-        if row["symbol_id"].startswith("javascript:symbol:")
-        and "normalizeStatus" in str(row.get("source", "")) + str(row.get("summary", ""))
-    ]
     # The formatter call is separately represented; the normalizer's return
     # witness must preserve the raw transformation chain itself.
-    assert any(
-        ".trim().toUpperCase()" in str(row.get("source", ""))
-        for row in rows
+    normalized = next(
+        row for row in rows
+        if ".trim().toUpperCase()" in str(row.get("source", ""))
     )
+    assert {"trim", "toUpperCase"} <= set(normalized["source_facts"]["transforms"])
+    assert "String" in normalized["source_facts"]["calls"]
     assert any("normalizeStatus" in row["summary"] for row in rows)
 
 
@@ -202,3 +211,27 @@ def test_behavior_budget_fails_closed_when_relevant_observations_are_omitted():
     assert result.omitted_relevant_observations > 0
     assert result.sufficient is False
     assert result.sufficiency.label.value == "needs_expansion"
+
+
+def test_public_task_conditioned_pipeline_composes_symbol_and_behavior_evidence():
+    graph = _graph()
+    pipeline = TaskConditionedEvidencePipeline(
+        graph,
+        ROOT,
+        behavior_budget=BehaviorEvidenceBudget(
+            max_tokens=2200,
+            max_observations=48,
+            max_source_chars=5000,
+        ),
+    )
+    task = "How does reserve_order validate stock before changing quantity, and what does it return?"
+    result = pipeline.concept(
+        task,
+        context_budget=MinimalContextBudget(max_tokens=3200, max_nodes=24, max_edges=24),
+    )
+    assert result.sparse.context.unresolved_query_identifiers == ()
+    assert result.payload["behavioral_evidence"]["schema"] == "feynmap.behavioral_evidence.v1"
+    assert any(
+        row["kind"] == "mutation" and "item.quantity -= requested_quantity" in row["summary"]
+        for row in result.payload["behavioral_evidence"]["observations"]
+    )
