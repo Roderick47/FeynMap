@@ -369,8 +369,9 @@ fixtures.**
 **P2 — retrieval policy and downstream context** (incremental: see `docs/P2_DELIVERY_EXECUTION.md`)
 
 - [x] **P2.1 Opt-in source role-aware delivery:** distinguish implementation, test, migration, vendor/generated and other evidence channels; preserve the unchanged default while comparing policy selection on the exact same activated graph
-- [ ] **P2.2 Independent channel-budget comparison:** preauthor serializer/throttling/migration fixtures and test-specific questions; verify necessary test evidence and symbol-level implementation recall, distractor tokens and latency before changing any default
-- [ ] **P2.3 Downstream fidelity and shipping decision:** measure supported/unsupported claims and real task quality, with S7 held-out agent repairs remaining independently sealed
+- [x] **P2.2 Source-locked channel-budget comparison:** five independently authored stockroom implementation/test/migration tasks plus three pinned DRF symbol-level controls, two fixed budgets and three arms; measure exact activated-versus-delivered file/symbol labels, genuine required test/migration evidence, named distractor char/4 equivalents and single-run timings. Valid comparison revealed policy regressions, so **do not make P2.1 source-first the default**.
+- [ ] **P2.3a Correct delivery sufficiency:** preserve task-relevant activated symbols and source-backed behavioral continuations, including genuinely necessary test and migration evidence; freeze new examples before tuning/re-evaluation, never read gold labels during selection.
+- [ ] **P2.3b Downstream fidelity and shipping decision:** compare supported/unsupported claims and real task quality, with S7 held-out agent repairs remaining independently sealed.
 
 P2.1's initial pinned-DRF shadow replay demonstrates the previously missing
 `rest_framework/fields.py` delivered alongside `serializers.py`, using the
@@ -381,6 +382,29 @@ This is a delivery-policy measurement, not an independent agent-task accuracy
 or population false-positive claim. Implementation witnesses are selected
 from activated source nodes and real stored cross-file edges only; source
 channel classification never modifies graph truth.
+
+**P2.2 accepted experiment (29 Sep 2026):**
+The newly frozen source-authored stockroom cohort and reused pinned DRF
+calibration contain **8 tasks**, two budgets (1,600/12/12 and 3,200/24/24)
+and three policies (legacy, P2.1 source-first, balanced floor-1). All
+source-authored required symbols were activated upstream (stockroom 10/10,
+DRF 7/7). At the standard budget, legacy delivered **10/10 stockroom symbols
+and 6/7 DRF symbols**; P2.1 source-first delivered **5/10 and 4/7** despite
+using fewer estimated context tokens. Source-first retained only 1/2 required
+stockroom test symbols and 0/2 required migration symbols, while legacy
+retained both. The pre-registered balanced variant did not repair this
+(4/10 stockroom, 5/7 DRF). One DRF test-suite symbol was omitted by all
+three policies. The collector exposes 31 label-regression *occurrences* over
+arms/budgets; these are not 31 unique defects or task outcomes.
+
+The result invalidates a blanket assumption that per-file implementation
+floors and a test-node cap imply good symbol delivery. Neither graph
+truth, legacy default, nor the frozen P1 oracle was changed; P1 remains
+10/11. Read `docs/P2_2_CHANNEL_BUDGET_COMPARISON.md`,
+`experiments/results/p2_2_20260929_delivery_comparison.json` and
+[full P2.2 replay 36555370204](https://github.com/Roderick47/FeynMap/actions/runs/36555370204).
+The next design checkpoint is **P2.3a** task/evidence-aware sufficiency,
+then P2.3b actual downstream answer fidelity.
 
 **P3 — first usable integration surface**
 

@@ -1,0 +1,430 @@
+{
+  "schema": "feynmap.p2_delivery_experiment_manifest.v1",
+  "recorded_date": "2026-09-29",
+  "status": "source_authored_pre_result_oracle",
+  "purpose": "P2.2 compare delivery channels on a separate, preauthored stockroom source fixture, with frozen DRF calibration controls. Source references/labels are chosen from code, not generated from FeynMap outputs.",
+  "exclusions": [
+    "Not the S7 held-out agent-repair corpus",
+    "DRF controls are reused source revision, not independent held-out tasks",
+    "No model answers are scored",
+    "Distractor labels apply only to named source symbols, never to all unlabeled nodes"
+  ],
+  "source_fixtures": {
+    "stockroom-independent": {
+      "kind": "checked_in_new_source_fixture",
+      "root": "experiments/fixtures/p2_channels",
+      "language": "python",
+      "framework": "none",
+      "blobs": {
+        "stockroom/__init__.py": "782e97e033f386a4b73f6e6e45540d00ae186e1e",
+        "stockroom/models.py": "da0b120f479ca6a4ebdb5faf35d5bf375b8035f4",
+        "stockroom/rules.py": "bda551225cccc0bd73de8d9e2aaa67525e3ee3a0",
+        "stockroom/inventory.py": "a914a734da994df95570628e7878ce58a1720e5a",
+        "stockroom/migrations/__init__.py": "9f41f19dca717ab812d5d15ade2e640a06cf00fd",
+        "stockroom/migrations/0001_opening_stock.py": "6372303b7438d6520b40265ec86953b55213c501",
+        "stockroom/migrations/0002_legacy_pricing.py": "25e056ad0ea53e895307bd4bbc2103be382f103f",
+        "tests/test_inventory.py": "69f1f0722bb6d036684d302ede6f5e64223d7bff",
+        "tests/test_opening_stock.py": "e15432b130735ccaf36f7a6afe65666219e9587c",
+        "vendor/generated_stock_report.py": "92eb6c59c93f5fc5ea3b6e0a4cc347a2c6623097"
+      },
+      "source_review": "Static source inspection before evaluation: apply_stock_movement explicitly calls validate_adjustment; test_negative_stock_is_rejected invokes apply_stock_movement; Migration.forwards uses stock_default_value; unrelated discount/pricing/vendor are intentional distractors. Files and blob IDs are frozen before obtaining retrieval output. Fixture resides under experiments/, outside pytest collection."
+    },
+    "drf-calibration": {
+      "kind": "reused_p1_public_revision_new_symbol_criteria",
+      "repository": "encode/django-rest-framework",
+      "revision": "b578eab1cad040414b758131af1e17aa000b51e2",
+      "language": "python",
+      "framework": "django",
+      "blobs": {
+        "rest_framework/serializers.py": "adb6a65b5b56c5bc459e3e3516b7b28f39190e6b",
+        "rest_framework/fields.py": "9b922ed918cf5fed90c036be932d40bb3ebc8a5a",
+        "rest_framework/throttling.py": "90ce01c42834f480dc44454176a3ef1df2172f62",
+        "tests/test_throttling.py": "d3341f93bb1f6e55d842ecef49dc2b49530304d8"
+      },
+      "source_review": "Verified source at pinned commit before evaluation: SerializerMetaclass._get_declared_fields (serializers.py line 286); Field and bind (fields.py lines 283/344); SimpleRateThrottle and allow_request/wait (throttling.py lines 50/109/149); SimpleRateThrottleTests (tests/test_throttling.py line 456)."
+    }
+  },
+  "budgets": [
+    {
+      "id": "tight",
+      "max_tokens": 1600,
+      "max_nodes": 12,
+      "max_edges": 12
+    },
+    {
+      "id": "standard",
+      "max_tokens": 3200,
+      "max_nodes": 24,
+      "max_edges": 24
+    }
+  ],
+  "activation": {
+    "mode": "concept",
+    "seed_limit": 8,
+    "candidate_limit": 64,
+    "max_depth": 3,
+    "beam_width": 8,
+    "max_nodes": 64,
+    "direction": "both",
+    "provider": null
+  },
+  "arms": [
+    {
+      "id": "legacy",
+      "policy": null
+    },
+    {
+      "id": "source_first_p21",
+      "policy": {
+        "mode": "implementation_first",
+        "min_implementation_files": 2,
+        "max_test_fraction": 0.35
+      }
+    },
+    {
+      "id": "balanced_floor1",
+      "policy": {
+        "mode": "implementation_first",
+        "min_implementation_files": 1,
+        "max_test_fraction": 0.5
+      }
+    }
+  ],
+  "label_contract": {
+    "source_symbol_match": "unique node from exact repository-relative path plus exact symbol name; optional qualified_name disambiguates methods",
+    "required_files": "coarse context-file recall, separately reported for activated and delivered results",
+    "required_symbols": "more granular node recall, separately reported for activated and delivered results",
+    "useful_support_symbols": "independently designated optional supporting evidence: missing is informative, not an automatic failing outcome",
+    "distractor_symbols": "independently designated source-authored irrelevant facts, not all non-required context",
+    "omission_reasons": [
+      "not_activated",
+      "activated_but_not_delivered",
+      "delivered"
+    ],
+    "outcome_boundary": "The implementation can select only from activated search and may fail to retrieve preauthored essentials. Record failures without fabricating activation or amending frozen labels."
+  },
+  "tasks": [
+    {
+      "id": "stock-negative-implementation",
+      "cohort": "stockroom-independent",
+      "intent": "implementation",
+      "query": "Where does apply_stock_movement reject negative quantity before changing stock?",
+      "required_files": [
+        "stockroom/inventory.py",
+        "stockroom/rules.py"
+      ],
+      "required_symbols": [
+        {
+          "file": "stockroom/inventory.py",
+          "name": "apply_stock_movement"
+        },
+        {
+          "file": "stockroom/rules.py",
+          "name": "validate_adjustment"
+        }
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "stockroom/models.py",
+          "name": "StockRecord"
+        },
+        {
+          "file": "tests/test_inventory.py",
+          "name": "test_negative_stock_is_rejected"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "stockroom/rules.py",
+          "name": "unrelated_discount_rule"
+        },
+        {
+          "file": "tests/test_inventory.py",
+          "name": "test_unrelated_price_rounding"
+        },
+        {
+          "file": "vendor/generated_stock_report.py",
+          "name": "generated_stock_report"
+        }
+      ],
+      "source_basis": "inventory.py explicitly calls validate_adjustment from rules.py before incrementing record.quantity; the related test is supporting rather than the implementation itself."
+    },
+    {
+      "id": "stock-negative-regression-test",
+      "cohort": "stockroom-independent",
+      "intent": "test",
+      "query": "Which test proves negative stock movement is rejected and what production function does it exercise?",
+      "required_files": [
+        "tests/test_inventory.py",
+        "stockroom/inventory.py"
+      ],
+      "required_symbols": [
+        {
+          "file": "tests/test_inventory.py",
+          "name": "test_negative_stock_is_rejected"
+        },
+        {
+          "file": "stockroom/inventory.py",
+          "name": "apply_stock_movement"
+        }
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "stockroom/rules.py",
+          "name": "validate_adjustment"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "tests/test_inventory.py",
+          "name": "test_reorder_point_is_respected"
+        },
+        {
+          "file": "tests/test_inventory.py",
+          "name": "test_unrelated_price_rounding"
+        },
+        {
+          "file": "vendor/generated_stock_report.py",
+          "name": "generated_stock_report"
+        }
+      ],
+      "source_basis": "test_negative_stock_is_rejected calls apply_stock_movement with -3 from quantity 2 and asserts ValueError does not mutate the record."
+    },
+    {
+      "id": "opening-stock-migration",
+      "cohort": "stockroom-independent",
+      "intent": "migration",
+      "query": "How does opening stock migration initialize quantity using stock_default_value?",
+      "required_files": [
+        "stockroom/migrations/0001_opening_stock.py",
+        "stockroom/models.py"
+      ],
+      "required_symbols": [
+        {
+          "file": "stockroom/migrations/0001_opening_stock.py",
+          "name": "apply_opening_stock"
+        },
+        {
+          "file": "stockroom/models.py",
+          "name": "stock_default_value"
+        }
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "stockroom/migrations/0001_opening_stock.py",
+          "name": "Migration"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "stockroom/migrations/0002_legacy_pricing.py",
+          "name": "install_legacy_price_column"
+        },
+        {
+          "file": "tests/test_opening_stock.py",
+          "name": "test_legacy_pricing_migration_does_not_initialize_quantity"
+        }
+      ],
+      "source_basis": "apply_opening_stock calls Migration.forwards which populates a missing quantity through stockroom.models.stock_default_value, unlike legacy pricing migration."
+    },
+    {
+      "id": "opening-stock-regression-test",
+      "cohort": "stockroom-independent",
+      "intent": "test",
+      "query": "Which test verifies opening stock migration initializes missing quantity to zero?",
+      "required_files": [
+        "tests/test_opening_stock.py",
+        "stockroom/migrations/0001_opening_stock.py"
+      ],
+      "required_symbols": [
+        {
+          "file": "tests/test_opening_stock.py",
+          "name": "test_opening_stock_migration_sets_zero"
+        },
+        {
+          "file": "stockroom/migrations/0001_opening_stock.py",
+          "name": "apply_opening_stock"
+        }
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "stockroom/models.py",
+          "name": "stock_default_value"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "tests/test_opening_stock.py",
+          "name": "test_legacy_pricing_migration_does_not_initialize_quantity"
+        },
+        {
+          "file": "stockroom/migrations/0002_legacy_pricing.py",
+          "name": "install_legacy_price_column"
+        }
+      ],
+      "source_basis": "The test dynamically imports 0001_opening_stock and asserts apply_opening_stock populates 0. Dynamic import is deliberately a potential activation unknown, never proof of a static edge."
+    },
+    {
+      "id": "reorder-implementation",
+      "cohort": "stockroom-independent",
+      "intent": "implementation",
+      "query": "How does needs_restock decide when stock is below the reorder point?",
+      "required_files": [
+        "stockroom/inventory.py",
+        "stockroom/rules.py"
+      ],
+      "required_symbols": [
+        {
+          "file": "stockroom/inventory.py",
+          "name": "needs_restock"
+        },
+        {
+          "file": "stockroom/rules.py",
+          "name": "is_reorder_required"
+        }
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "tests/test_inventory.py",
+          "name": "test_reorder_point_is_respected"
+        }
+      ],
+      "distractor_symbols": [
+        {
+          "file": "tests/test_inventory.py",
+          "name": "test_negative_stock_is_rejected"
+        },
+        {
+          "file": "stockroom/rules.py",
+          "name": "unrelated_discount_rule"
+        },
+        {
+          "file": "vendor/generated_stock_report.py",
+          "name": "generated_stock_report"
+        }
+      ],
+      "source_basis": "needs_restock explicitly calls is_reorder_required which returns current_quantity < reorder_point."
+    },
+    {
+      "id": "drf-serializer-source-control",
+      "cohort": "drf-calibration",
+      "intent": "implementation",
+      "query": "How does SerializerMetaclass collect declared Field values and how does Field bind to a parent serializer?",
+      "required_files": [
+        "rest_framework/serializers.py",
+        "rest_framework/fields.py"
+      ],
+      "required_symbols": [
+        {
+          "file": "rest_framework/serializers.py",
+          "name": "_get_declared_fields",
+          "qualified_name": "rest_framework.serializers.SerializerMetaclass._get_declared_fields"
+        },
+        {
+          "file": "rest_framework/fields.py",
+          "name": "Field",
+          "qualified_name": "rest_framework.fields.Field"
+        }
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "rest_framework/fields.py",
+          "name": "bind",
+          "qualified_name": "rest_framework.fields.Field.bind"
+        },
+        {
+          "file": "rest_framework/serializers.py",
+          "name": "SerializerMetaclass"
+        }
+      ],
+      "distractor_symbols": [],
+      "source_basis": "The pinned SerializerMetaclass._get_declared_fields contains isinstance(obj, Field), with Field imported from rest_framework.fields; Field.bind is implemented in the same source file.",
+      "calibration_only": true
+    },
+    {
+      "id": "drf-throttling-source-control",
+      "cohort": "drf-calibration",
+      "intent": "implementation",
+      "query": "Where does SimpleRateThrottle check whether a request exceeds its history rate and calculate a wait duration?",
+      "required_files": [
+        "rest_framework/throttling.py"
+      ],
+      "required_symbols": [
+        {
+          "file": "rest_framework/throttling.py",
+          "name": "SimpleRateThrottle",
+          "qualified_name": "rest_framework.throttling.SimpleRateThrottle"
+        },
+        {
+          "file": "rest_framework/throttling.py",
+          "name": "allow_request",
+          "qualified_name": "rest_framework.throttling.SimpleRateThrottle.allow_request"
+        },
+        {
+          "file": "rest_framework/throttling.py",
+          "name": "wait",
+          "qualified_name": "rest_framework.throttling.SimpleRateThrottle.wait"
+        }
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "tests/test_throttling.py",
+          "name": "SimpleRateThrottleTests"
+        }
+      ],
+      "distractor_symbols": [],
+      "source_basis": "Pinned throttling.py declares SimpleRateThrottle at line 50, allow_request at line 109 and wait at line 149.",
+      "calibration_only": true
+    },
+    {
+      "id": "drf-throttling-tests-control",
+      "cohort": "drf-calibration",
+      "intent": "test",
+      "query": "Which tests verify SimpleRateThrottle request history and how is its implementation defined?",
+      "required_files": [
+        "tests/test_throttling.py",
+        "rest_framework/throttling.py"
+      ],
+      "required_symbols": [
+        {
+          "file": "tests/test_throttling.py",
+          "name": "SimpleRateThrottleTests"
+        },
+        {
+          "file": "rest_framework/throttling.py",
+          "name": "SimpleRateThrottle",
+          "qualified_name": "rest_framework.throttling.SimpleRateThrottle"
+        }
+      ],
+      "useful_support_symbols": [
+        {
+          "file": "rest_framework/throttling.py",
+          "name": "allow_request",
+          "qualified_name": "rest_framework.throttling.SimpleRateThrottle.allow_request"
+        }
+      ],
+      "distractor_symbols": [],
+      "source_basis": "tests/test_throttling.py contains SimpleRateThrottleTests at line 456 and imports the implementation class from rest_framework.throttling.",
+      "calibration_only": true
+    }
+  ],
+  "pre_registered_reporting": {
+    "metrics": [
+      "activation_file_recall",
+      "activation_symbol_recall",
+      "delivery_file_recall",
+      "delivery_symbol_recall",
+      "required_test_evidence_recall",
+      "required_migration_evidence_recall",
+      "symbol_omission_reasons",
+      "channel_payload_character_accounting",
+      "labelled_distractor_node_count_and_approximate_payload_token_equivalents",
+      "context_estimated_tokens",
+      "delivered_node_edge_counts",
+      "activation_and_packing_elapsed_ms",
+      "policy_sufficient",
+      "graph_identity_unchanged"
+    ],
+    "scope_note": "Two budgets x three arms, same activation per task and exact pinned source; report all eight tasks even when missing, not just successful cases."
+  }
+}

@@ -1,0 +1,131 @@
+name: p2-independent-delivery-comparison
+
+on:
+  push:
+    paths:
+      - "feynmap/p2_delivery_experiment.py"
+      - "feynmap/p2_delivery_collect.py"
+      - "feynmap/delivery_channels.py"
+      - "feynmap/minimal_context.py"
+      - "feynmap/context_pipeline.py"
+      - "experiments/p2_2_delivery_manifest.json"
+      - "experiments/fixtures/p2_channels/**"
+      - "tests/test_p2_delivery_experiment.py"
+      - ".github/workflows/p2-delivery-comparison.yml"
+  pull_request:
+    paths:
+      - "feynmap/p2_delivery_experiment.py"
+      - "feynmap/p2_delivery_collect.py"
+      - "feynmap/delivery_channels.py"
+      - "feynmap/minimal_context.py"
+      - "feynmap/context_pipeline.py"
+      - "experiments/p2_2_delivery_manifest.json"
+      - "experiments/fixtures/p2_channels/**"
+      - "tests/test_p2_delivery_experiment.py"
+      - ".github/workflows/p2-delivery-comparison.yml"
+  workflow_dispatch:
+
+jobs:
+  source-comparison:
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture:
+          - stockroom-independent
+          - drf-calibration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout P2.2 source and immutable preauthored labels
+        uses: actions/checkout@v4
+        with:
+          path: feynmap-source
+      - name: Checkout exact DRF reference source (never install its dependencies)
+        if: matrix.fixture == 'drf-calibration'
+        uses: actions/checkout@v4
+        with:
+          repository: encode/django-rest-framework
+          ref: b578eab1cad040414b758131af1e17aa000b51e2
+          path: external-source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install only the FeynMap source under comparison
+        working-directory: feynmap-source
+        run: python -m pip install -e .
+      - name: Verify source blobs and compare three policies on identical activated contexts
+        shell: bash
+        working-directory: feynmap-source
+        run: |
+          mkdir -p p2-results
+          fixture="${{ matrix.fixture }}"
+          if test "$fixture" = "stockroom-independent"; then
+            root="experiments/fixtures/p2_channels"
+          else
+            root="../external-source"
+          fi
+          python -m feynmap.p2_delivery_experiment \
+            --manifest experiments/p2_2_delivery_manifest.json \
+            --fixture "$fixture" \
+            --project-root "$root" \
+            --output "p2-results/p2-2-$fixture.json"
+      - name: Preserve full per-case JSON on success or analysis failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-2-report-${{ matrix.fixture }}
+          path: feynmap-source/p2-results/p2-2-*.json
+          if-no-files-found: warn
+
+  collect:
+    if: always()
+    needs: source-comparison
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: p2-2-report-*
+          path: collected
+          merge-multiple: true
+      - name: Reconcile immutable source labels, exact budget accounting and known misses
+        shell: bash
+        run: |
+          set +e
+          python -m feynmap.p2_delivery_collect \
+            --manifest experiments/p2_2_delivery_manifest.json \
+            --reports-dir collected \
+            --output p2-2-collection.json \
+            --markdown p2-2-comparison.md
+          status=$?
+          cat p2-2-comparison.md >> "$GITHUB_STEP_SUMMARY"
+          test "${{ needs.source-comparison.result }}" = "success" || exit 1
+          exit "$status"
+      - name: Upload audit summary, including any gaps or integrity errors
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p2-2-independent-comparison
+          path: |
+            p2-2-collection.json
+            p2-2-comparison.md
+          if-no-files-found: warn
+
+  comparison-conformance:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.12"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install -e ".[dev]"
+      - name: Source oracle, tamper, budget and channel comparison tests
+        run: |
+          python -m pytest -q \
+            tests/test_p2_delivery_channels.py \
+            tests/test_p2_delivery_experiment.py \
+            tests/test_contract_conformance.py
