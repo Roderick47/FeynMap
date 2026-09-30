@@ -280,7 +280,7 @@ def run_evaluation(manifest_path: Path, *, output: Path = None) -> Dict[str, Any
             },
         },
         "fresh_representation_gate": gate,
-        "default_product_policy_changed": false,
+        "default_product_policy_changed": False,
         "records": records,
         "limitations": manifest["limitations"],
     }
