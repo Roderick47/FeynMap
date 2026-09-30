@@ -82,7 +82,7 @@ def test_reserve_order_envelope_exposes_validation_mutation_and_return_in_source
     mutation = next(row for row in reserve if "item.quantity -= requested_quantity" in row["summary"])
     assert "item.quantity" in mutation["source_facts"]["reads"]
     assert "-" in mutation["source_facts"]["operators"]
-    assert result.payload["behavioral_evidence"]["grounding"]["source_order_scope"].startswith("ordering is local")
+    assert result.payload["behavioral_evidence"]["grounding"]["order_scope"] == "local_source_order_only"
 
 
 def test_failure_behavior_preserves_condition_raise_and_test_assertions_when_selected():
