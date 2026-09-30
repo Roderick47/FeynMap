@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from .behavior import BehaviorObservation, GroundedBehaviorExtractor
+from .behavior_coverage import behavior_coverage
 from .behavior_facts import structured_behavior_facts
 from .context import estimate_tokens
 from .core import SemanticGraph
@@ -70,8 +71,8 @@ class BehavioralContextResult:
 class BehavioralContextBuilder:
     """Attach the smallest useful source behavior to an existing S3 result.
 
-    The builder can only inspect symbols already selected by S3.  It does not
-    mutate or expand the semantic graph.  If a task needs an unselected or
+    The builder can only inspect symbols already selected by S3. It does not
+    mutate or expand the semantic graph. If a task needs an unselected or
     unresolved symbol, the result stays insufficient and the caller may choose
     a separate bounded expansion step.
     """
@@ -117,8 +118,8 @@ class BehavioralContextBuilder:
         useful.sort(key=self._relevance_sort_key)
         useful, dimension_witness_ids = self._reserve_task_dimensions(useful, profile)
 
-        selected: List[BehaviorObservation] = []
-        selected_rows: List[Dict[str, Any]] = []
+        # Each entry is (observation, decision, serialized row, critical, source_chars).
+        entries: List[Tuple[BehaviorObservation, RelevanceDecision, Dict[str, Any], bool, int]] = []
         source_chars = 0
         omitted = 0
         omitted_critical = 0
@@ -127,7 +128,7 @@ class BehavioralContextBuilder:
                 observation.id in dimension_witness_ids
                 or decision.label == RelevanceLabel.ESSENTIAL
             )
-            if len(selected) >= requested.max_observations:
+            if len(entries) >= requested.max_observations:
                 omitted += 1
                 if is_critical:
                     omitted_critical += 1
@@ -141,59 +142,80 @@ class BehavioralContextBuilder:
                 row["task_dimension_witness"] = True
             source_text = str(row.get("source", ""))
             if source_text and source_chars + len(source_text) > requested.max_source_chars:
-                # Keep the structured source-derived fact and exact location;
-                # drop only the redundant inline witness when its char budget
-                # is exhausted.
                 row.pop("source", None)
                 source_text = ""
-            trial_rows = selected_rows + [row]
-            trial = self._behavior_payload(profile, trial_rows, context)
-            if estimate_tokens(trial) > requested.max_tokens:
-                omitted += 1
-                if is_critical:
-                    omitted_critical += 1
-                continue
-            selected.append(observation)
-            selected_rows.append(row)
+            entries.append((observation, decision, row, is_critical, len(source_text)))
             source_chars += len(source_text)
 
-        delivered_ids = {item.id for item in selected}
-        selected_rows.sort(
-            key=lambda row: (
-                str(row.get("location", {}).get("path", "")),
-                int(row.get("order", 0)),
-                str(row.get("id", "")),
-            )
-        )
-        behavior_payload = self._behavior_payload(profile, selected_rows, context)
-        behavior_payload["sequences"] = self._sequences(selected)
-        behavior_payload["omitted_relevant_observations"] = int(omitted)
-        behavior_payload["omitted_critical_observations"] = int(omitted_critical)
-        behavior_payload["candidate_observations"] = len(candidates)
-        behavior_payload["delivered_observations"] = len(selected)
-        behavior_payload["source_witness_chars"] = source_chars
-        behavior_payload["selection"] = {
-            "judge": self.judge.__class__.__name__,
-            "rule": "reserve task-critical behavior by evidence channel, then essential > supporting > uncertain",
-            "unknown_is_not_false": True,
-            "selected_symbol_boundary": True,
-        }
-
-        sufficiency = self.judge.sufficiency(
+        behavior_payload, sufficiency = self._render_final_payload(
             task,
-            selected,
             profile,
-            unresolved_identifiers=context.unresolved_query_identifiers,
-            # Supporting/uncertain enrichment can be dropped.  Only omitted
-            # task-dimension witnesses or provider-essential facts make the
-            # packet fail closed.
-            omitted_relevant=omitted_critical,
+            context,
+            candidates,
+            entries,
+            omitted,
+            omitted_critical,
+            source_chars,
         )
-        behavior_payload["sufficiency"] = sufficiency.to_dict()
-        if context.unresolved_query_identifiers:
-            behavior_payload["unresolved_query_identifiers"] = list(
-                context.unresolved_query_identifiers
+
+        # Enforce the cap on the final model-facing envelope, not merely on its
+        # observation rows. Drop lowest-value noncritical enrichment first;
+        # if the budget is extremely small, fail closed and eventually drop a
+        # critical witness rather than silently exceeding the declared cap.
+        while entries and estimate_tokens(behavior_payload) > requested.max_tokens:
+            remove_index = self._least_valuable_entry(entries, prefer_noncritical=True)
+            observation, decision, row, was_critical, chars = entries.pop(remove_index)
+            source_chars -= chars
+            omitted += 1
+            if was_critical:
+                omitted_critical += 1
+            behavior_payload, sufficiency = self._render_final_payload(
+                task,
+                profile,
+                context,
+                candidates,
+                entries,
+                omitted,
+                omitted_critical,
+                source_chars,
             )
+
+        if estimate_tokens(behavior_payload) > requested.max_tokens:
+            # Metadata alone can exceed a deliberately tiny budget. Preserve a
+            # truthful minimal failure packet rather than violating the cap.
+            sufficiency = self.judge.sufficiency(
+                task,
+                (),
+                profile,
+                unresolved_identifiers=context.unresolved_query_identifiers,
+                omitted_relevant=max(1, omitted_critical or omitted or len(useful)),
+            )
+            behavior_payload = {
+                "schema": BEHAVIOR_SCHEMA,
+                "task_profile": profile.to_dict(),
+                "observations": [],
+                "budget_exhausted": True,
+                "unresolved_query_identifiers": list(context.unresolved_query_identifiers),
+                "sufficiency": sufficiency.to_dict(),
+                "grounding": {
+                    "truth_source": "repository source selected by S3 semantic symbols",
+                    "unknown_is_not_false": True,
+                },
+            }
+            entries = []
+            source_chars = 0
+            omitted = max(omitted, len(useful))
+            omitted_critical = max(omitted_critical, 1 if useful else 0)
+
+        selected = [entry[0] for entry in entries]
+        selected_rows = [entry[2] for entry in entries]
+        delivered_ids = {item.id for item in selected}
+        row_ids = {str(row.get("id")) for row in selected_rows}
+        if row_ids != delivered_ids:
+            raise ValueError("behavioral envelope observation identity mismatch")
+        selected_symbol_ids = set(context.selected_node_ids)
+        if any(item.symbol_id not in selected_symbol_ids for item in selected):
+            raise ValueError("behavioral envelope escaped selected symbol boundary")
 
         combined: Dict[str, Any] = dict(context.payload)
         combined["behavioral_evidence"] = behavior_payload
@@ -203,16 +225,8 @@ class BehavioralContextBuilder:
             context.sufficient
             and sufficiency.sufficient
             and omitted_critical == 0
+            and not behavior_payload.get("budget_exhausted")
         )
-        # Sanity check: every delivered row must correspond to an extracted,
-        # source-backed observation from a selected symbol.
-        row_ids = {str(row.get("id")) for row in selected_rows}
-        if row_ids != delivered_ids:
-            raise ValueError("behavioral envelope observation identity mismatch")
-        selected_symbol_ids = set(context.selected_node_ids)
-        if any(item.symbol_id not in selected_symbol_ids for item in selected):
-            raise ValueError("behavioral envelope escaped selected symbol boundary")
-
         return BehavioralContextResult(
             payload=combined,
             profile=profile,
@@ -226,6 +240,94 @@ class BehavioralContextBuilder:
             total_tokens=total_tokens,
             sufficient=sufficient,
         )
+
+    def _render_final_payload(
+        self,
+        task: str,
+        profile: TaskEvidenceProfile,
+        context: MinimalContextResult,
+        candidates: Sequence[BehaviorObservation],
+        entries: Sequence[Tuple[BehaviorObservation, RelevanceDecision, Dict[str, Any], bool, int]],
+        omitted: int,
+        omitted_critical: int,
+        source_chars: int,
+    ) -> Tuple[Dict[str, Any], SufficiencyDecision]:
+        selected = [entry[0] for entry in entries]
+        rows = [entry[2] for entry in entries]
+        rows = sorted(
+            rows,
+            key=lambda row: (
+                str(row.get("location", {}).get("path", "")),
+                int(row.get("order", 0)),
+                str(row.get("id", "")),
+            ),
+        )
+        sufficiency = self.judge.sufficiency(
+            task,
+            selected,
+            profile,
+            unresolved_identifiers=context.unresolved_query_identifiers,
+            omitted_relevant=omitted_critical,
+        )
+        payload = self._behavior_payload(profile, rows, context)
+        payload["sequences"] = self._sequences(selected)
+        payload["omitted_relevant_observations"] = int(omitted)
+        payload["omitted_critical_observations"] = int(omitted_critical)
+        payload["candidate_observations"] = len(candidates)
+        payload["delivered_observations"] = len(selected)
+        payload["source_witness_chars"] = source_chars
+        payload["selection"] = {
+            "judge": self.judge.__class__.__name__,
+            "rule": "reserve task-critical behavior by evidence channel, then essential > supporting > uncertain",
+            "unknown_is_not_false": True,
+            "selected_symbol_boundary": True,
+        }
+        coverage = behavior_coverage(
+            self.graph,
+            context.selected_node_ids,
+            candidates,
+            selected,
+            unresolved_identifiers=context.unresolved_query_identifiers,
+            omitted_relevant=max(0, omitted - omitted_critical),
+            omitted_critical=omitted_critical,
+        )
+        # Model-facing coverage stays compact; detailed per-symbol coverage is
+        # recomputable and would duplicate the already delivered node list.
+        payload["coverage"] = {
+            "scanned_selected_symbols": len(coverage["symbols"]),
+            "claims": coverage["claims"],
+            "unknowns": coverage["unknowns"],
+            "call_targets_without_selected_behavior": coverage[
+                "call_targets_without_selected_behavior"
+            ][:8],
+        }
+        payload["sufficiency"] = sufficiency.to_dict()
+        if context.unresolved_query_identifiers:
+            payload["unresolved_query_identifiers"] = list(
+                context.unresolved_query_identifiers
+            )
+        return payload, sufficiency
+
+    def _least_valuable_entry(
+        self,
+        entries: Sequence[Tuple[BehaviorObservation, RelevanceDecision, Dict[str, Any], bool, int]],
+        *,
+        prefer_noncritical: bool,
+    ) -> int:
+        candidates = list(enumerate(entries))
+        if prefer_noncritical:
+            noncritical = [item for item in candidates if not item[1][3]]
+            if noncritical:
+                candidates = noncritical
+        return max(
+            candidates,
+            key=lambda item: (
+                self._LABEL_RANK[item[1][1].label],
+                -float(item[1][1].score),
+                item[1][0].order,
+                item[0],
+            ),
+        )[0]
 
     def _relevance_sort_key(
         self, item: Tuple[BehaviorObservation, RelevanceDecision]
@@ -244,15 +346,7 @@ class BehavioralContextBuilder:
         useful: Sequence[Tuple[BehaviorObservation, RelevanceDecision]],
         profile: TaskEvidenceProfile,
     ) -> Tuple[List[Tuple[BehaviorObservation, RelevanceDecision]], set]:
-        """Prevent one evidence channel from replacing the causal path.
-
-        A test task needs production behavior *and* test corroboration; a
-        migration task needs the migration operation *and* the implementation
-        or default it invokes.  Ordinary implementation tasks reserve only
-        implementation-channel witnesses.  This avoids repeating P2.1's
-        mistake one level deeper by treating all observations of one kind as
-        interchangeable.
-        """
+        """Prevent one evidence channel from replacing the causal path."""
         critical_kinds = {
             kind
             for kind, weight in profile.category_weights.items()
@@ -309,7 +403,7 @@ class BehavioralContextBuilder:
                 "relevance_not_truth": "task judge may rank observations but cannot change evidence confidence",
                 "source_order_scope": "ordering is local source order within each symbol; it is not global runtime order",
                 "minimal_source_witnesses": True,
-                "structured_source_facts": "reads/literals/operators/calls/transforms are derived only from each observation's source witness",
+                "structured_source_facts": "reads/writes/literals/operators/calls/transforms are derived only from each observation's source witness",
                 "base_delivery_sufficient": bool(context.sufficient),
             },
         }
