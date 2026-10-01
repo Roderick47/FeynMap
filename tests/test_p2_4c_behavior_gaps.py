@@ -169,30 +169,6 @@ def _source_node(identifier, name, path):
     )
 
 
-def _search_with_edge(edge):
-    source = _source_node("test", "test_behavior", "tests/test_behavior.py")
-    wrapper = _source_node("wrapper", "run_behavior", "service.py")
-    dependency = _source_node("dependency", "validate_behavior", "policy.py")
-    graph = SemanticGraph(nodes=[source, wrapper, dependency], edges=[edge])
-    search = GuidedSearchResult(
-        mode="concept",
-        query="Which test proves invalid behavior is rejected?",
-        roots=[source],
-        hits=[
-            SearchHit(source, depth=0),
-            SearchHit(wrapper, depth=1),
-            SearchHit(dependency, depth=2),
-        ],
-        edges=[edge],
-        trace=[],
-        provider=None,
-        model=None,
-        exhausted=True,
-        truncated=False,
-    )
-    return graph, search
-
-
 def test_continuation_never_promotes_ai_inferred_relationship():
     source = _source_node("test", "test_behavior", "tests/test_behavior.py")
     dependency = _source_node("dependency", "validate_behavior", "policy.py")
@@ -227,6 +203,8 @@ def test_continuation_never_promotes_ai_inferred_relationship():
         budget=budget,
         delivery_policy=DeliveryChannelPolicy(mode="symbol_evidence"),
     )
+    before_nodes = tuple(base.selected_node_ids)
+    before_edges = tuple(base.selected_edge_ids)
     continued = BehavioralSymbolContinuation(graph).extend(
         search.query,
         search,
@@ -234,9 +212,12 @@ def test_continuation_never_promotes_ai_inferred_relationship():
         budget=budget,
         delivery_policy=DeliveryChannelPolicy(mode="symbol_evidence"),
     )
+    # S3 may already carry an inferred relationship at its recorded tier; the
+    # P2.4 continuation is forbidden from promoting or newly admitting it.
     assert continued.added_node_ids == ()
     assert continued.added_edge_ids == ()
-    assert "guess" not in continued.context.selected_edge_ids
+    assert tuple(continued.context.selected_node_ids) == before_nodes
+    assert tuple(continued.context.selected_edge_ids) == before_edges
 
 
 def test_continuation_cannot_add_node_absent_from_activation():
