@@ -1,0 +1,94 @@
+{
+  "schema": "feynmap.p2_4d_checkpoint.v1",
+  "recorded_date": "2026-10-01",
+  "status": "fresh_representation_complete_oracle_blind_downstream_pending",
+  "freeze": {
+    "source_root": "experiments/fixtures/p2_4d_rollout",
+    "source_commit_before_oracle": "3d34727a39275576cfbff3f630bf8b1998e70a0b",
+    "oracle_commit_before_evaluator": "15e3c361a852c985b8a36759ddebdfe94768723c",
+    "manifest_path": "experiments/p2_4d_downstream_manifest.json",
+    "manifest_git_blob": "153bd1d1e0912c6b008ac8b0ba00c76c3529662e",
+    "evaluator_first_commit": "aafc7d2171af2c1d32535796887617a7a16911a4"
+  },
+  "fresh_representation": {
+    "workflow_run": 36828061283,
+    "task_count": 8,
+    "answerable_task_count": 7,
+    "required_behavior_patterns": 17,
+    "symbol_evidence": {
+      "matched_patterns": 0,
+      "pattern_recall": 0.0
+    },
+    "behavior_repaired": {
+      "matched_patterns": 16,
+      "pattern_recall": 0.941176
+    },
+    "gate_passed": true,
+    "missing_identifier_control": "pass",
+    "all_behavior_packets_within_2200_estimated_tokens": true,
+    "fresh_misses": [
+      {
+        "task": "oversized-batch-regression",
+        "pattern": "oversized-condition-error",
+        "missing_source_fact": "batch_size > release.remaining_hosts",
+        "handling": "preserved as a P2.4d miss; P2.4c is not retuned against this corpus"
+      }
+    ],
+    "diagnostics_preserved_for_later": [
+      "The JavaScript rollout-label task spent its single continuation slot on python:symbol:rollout.models.Release. Required JavaScript behavior still passed, but the cross-language continuation is irrelevant noise and is not repaired inside P2.4d."
+    ]
+  },
+  "nonblind_downstream_diagnostic": {
+    "workflow_run": 36828626613,
+    "provider": "chatgpt_interactive",
+    "model": "GPT-5.6 Sol",
+    "oracle_exposure": true,
+    "eligible_for_shipping_decision": false,
+    "provider_usage": null,
+    "required_answer_claims": 20,
+    "symbol_evidence": {
+      "matched_claims": 0,
+      "grounded_claims": 0,
+      "required_claim_recall": 0.0,
+      "answerable_task_passes": 0,
+      "answerable_tasks": 7,
+      "correct_missing_context": 1,
+      "unsupported_trap_hits": 0,
+      "invalid_citations": 0,
+      "uncited_claims": 0
+    },
+    "behavior_repaired": {
+      "matched_claims": 19,
+      "grounded_claims": 19,
+      "required_claim_recall": 0.95,
+      "grounded_required_claim_recall": 0.95,
+      "answerable_task_passes": 6,
+      "answerable_tasks": 7,
+      "answerable_task_pass_rate": 0.857143,
+      "correct_missing_context": 1,
+      "unsupported_trap_hits": 0,
+      "invalid_citations": 0,
+      "uncited_claims": 0
+    },
+    "failed_answerable_tasks": [
+      "oversized-batch-regression"
+    ],
+    "blind_downstream_comparative_gate_passed": false,
+    "absolute_fidelity_guard_passed": false,
+    "reason_not_eligible": "This answer run was authored in the same oracle-exposed interactive session. It validates packet/scorer usability but cannot support a shipping/default decision."
+  },
+  "decision": {
+    "legacy_default_changed": false,
+    "task_conditioned_evidence_pipeline": "remains_opt_in",
+    "fresh_representation_checkpoint": "passed",
+    "oracle_blind_downstream_checkpoint": "pending",
+    "next_required_evidence": "Run the already-frozen oracle-free P2.4d model packets through a provider/model process that has not seen the source oracle, then score those answers without changing the corpus or P2.4c."
+  },
+  "limitations": [
+    "The corpus is synthetic even though it was source-locked before the oracle and evaluator.",
+    "Fresh behavior-pattern recall measures evidence availability, not downstream model correctness.",
+    "The 95% answer-claim recall is from an oracle-exposed diagnostic run and is not eligible for promotion.",
+    "Token counts remain FeynMap compact-JSON ceil(chars/4) estimates, not provider billing tokens.",
+    "S7 remains sealed and unused."
+  ]
+}
