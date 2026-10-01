@@ -1,0 +1,80 @@
+name: p2-4d-fresh-downstream
+
+on:
+  push:
+    branches:
+      - p2-4d-fresh-downstream-validation
+    paths:
+      - "feynmap/p2_4d_evaluate.py"
+      - "experiments/p2_4d_downstream_manifest.json"
+      - "experiments/fixtures/p2_4d_rollout/**"
+      - ".github/workflows/p2-4d-fresh-downstream.yml"
+  pull_request:
+    paths:
+      - "feynmap/p2_4d_evaluate.py"
+      - "experiments/p2_4d_downstream_manifest.json"
+      - "experiments/fixtures/p2_4d_rollout/**"
+      - ".github/workflows/p2-4d-fresh-downstream.yml"
+
+jobs:
+  fresh-context-export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e .
+      - name: Export frozen P2.4d contexts
+        run: |
+          python -m feynmap.p2_4d_evaluate export \
+            --manifest experiments/p2_4d_downstream_manifest.json \
+            --output artifacts/p2_4d
+      - name: Enforce preregistered representation gate and oracle separation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("artifacts/p2_4d")
+          result = json.loads((root / "representation.json").read_text())
+          index = json.loads((root / "index.json").read_text())
+          assert result["task_count"] == 8
+          assert result["answerable_task_count"] == 7
+          assert result["required_behavior_patterns"] == 17
+          assert result["fresh_representation_gate"]["pass"] is True
+          assert len(index["records"]) == 16
+          assert index["gold_present_only_in_index_not_model_inputs"] is True
+
+          forbidden = {
+              "arm",
+              "expected_status",
+              "expected_missing_identifiers",
+              "required_claims",
+              "required_behavior_patterns",
+              "support_symbols",
+              "support_index",
+              "unsupported_traps",
+          }
+          packets = sorted((root / "model_inputs").glob("*.json"))
+          assert len(packets) == 16
+          for path in packets:
+              packet = json.loads(path.read_text())
+              assert packet["schema"] == "feynmap.p2_4d_model_input.v1"
+              assert forbidden.isdisjoint(packet)
+              text = path.read_text()
+              for key in (
+                  '"required_claims"',
+                  '"required_behavior_patterns"',
+                  '"support_symbols"',
+                  '"support_index"',
+                  '"unsupported_traps"',
+              ):
+                  assert key not in text
+          PY
+      - name: Upload oracle-free packets and scorer index
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-4d-context-export
+          path: artifacts/p2_4d
