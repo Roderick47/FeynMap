@@ -1,0 +1,745 @@
+{
+  "schema": "feynmap.p2_4d_downstream_manifest.v1",
+  "recorded_date": "2026-10-01",
+  "status": "preauthored_after_source_freeze_before_p2_4d_evaluator_or_model_packets",
+  "purpose": "Fresh source-locked validation of repaired P2.4c task-conditioned evidence delivery. Representation evidence recall and downstream answer fidelity are scored separately. Gold claims, behavior patterns, support symbols, traps, and expected statuses are scoring-only and must never enter activation, relevance ranking, continuation, packing, or model prompts.",
+  "source": {
+    "root": "experiments/fixtures/p2_4d_rollout",
+    "language": "auto",
+    "framework": "none",
+    "source_commit_before_oracle": "3d34727a39275576cfbff3f630bf8b1998e70a0b",
+    "blobs": {
+      "rollout/__init__.py": "444a3bca4132bb3fea8b063df054e70ed5718a43",
+      "rollout/models.py": "7e0b55a08653544ca354a1d51c8a698a444da745",
+      "rollout/policy.py": "2b7962a4b2e5a6b8f3bba4eff0f32b9082b6e4f3",
+      "rollout/audit.py": "e211b5ea5cbbe38900920dedbcdbd02f619634a8",
+      "rollout/service.py": "e63860de20955881adf4a188e507e89319445ecf",
+      "rollout/migrations/__init__.py": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "rollout/migrations/0001_health_window.py": "6d3c9a28f60f0b2e9dbf8790408df991e89f7a93",
+      "tests/test_service.py": "ce36bd13692a3f003bf2beb70a5b84a9753b5f09",
+      "tests/test_migration.py": "43733ef8c8ed1f7a8e704ec5afb14caacf120c7a",
+      "client/channel.js": "28bf78753eea5ecad28c7f3a00cc6a2afd7089f0",
+      "client/rollout_label.js": "7eecaf98cc0c43ce768a46439ea25bbac89ab2c8",
+      "tests/rollout_label.test.js": "167989fd4acf294c11ffa970f3d84aa4e75d6778"
+    }
+  },
+  "activation": {
+    "seed_limit": 8,
+    "candidate_limit": 64,
+    "max_depth": 3,
+    "beam_width": 8,
+    "max_nodes": 64,
+    "direction": "both",
+    "provider": null
+  },
+  "context_budget": {
+    "max_tokens": 3200,
+    "max_nodes": 24,
+    "max_edges": 24
+  },
+  "behavior_budget": {
+    "max_tokens": 2200,
+    "max_observations": 48,
+    "max_source_chars": 5000
+  },
+  "answer_contract": {
+    "format": "strict_json",
+    "status_values": [
+      "answer",
+      "need_more_context"
+    ],
+    "shape": {
+      "status": "answer|need_more_context",
+      "claims": [
+        {
+          "text": "string",
+          "evidence_refs": [
+            "model-facing evidence ref"
+          ]
+        }
+      ],
+      "missing_identifiers": [
+        "string"
+      ]
+    },
+    "rules": [
+      "Answer only from the supplied FeynMap packet.",
+      "Do not infer absent implementation, runtime, network, database, or provider behavior.",
+      "Every answer claim must cite at least one evidence ref that exists in the supplied packet.",
+      "Use need_more_context when a requested identifier is unresolved or the supplied evidence is insufficient."
+    ]
+  },
+  "arms": [
+    {
+      "id": "symbol_evidence",
+      "description": "P2.3a symbol-evidence context only, using the same S2 activation result as the repaired arm."
+    },
+    {
+      "id": "behavior_repaired",
+      "description": "Same activation plus repaired P2.4c TaskConditionedEvidencePipeline with DeterministicRelevanceJudge and bounded one-best activated-dependency continuation."
+    }
+  ],
+  "scoring_contract": {
+    "representation_recall": "A required behavior pattern counts only when every phrase in one listed alternative occurs in actual delivered model-facing values for that arm. Scoring happens only after both contexts are built.",
+    "answer_claim_recall": "A required answer claim counts only when every phrase in one listed alternative occurs in the model's claim text. Gold alternatives are never shown to the model.",
+    "citation_validity": "Each model claim must cite only refs exposed in its own packet. A matched required claim is source-grounded only when at least one cited ref maps, in the scorer-only index, to one of that claim's preauthored support symbols or a delivered observation belonging to one of those symbols.",
+    "trap_hit": "A task fails the unsupported-claim guard when model claim text asserts a preauthored unsupported trap.",
+    "missing_identifier": "The unresolved control passes only when force_promote is surfaced as unresolved/insufficient, the answer status is need_more_context, and no delivered/model claim invents force_promote implementation.",
+    "no_gold_to_activation": true,
+    "no_gold_to_relevance": true,
+    "no_gold_to_continuation": true,
+    "no_gold_to_packer": true,
+    "no_gold_to_model_packet": true,
+    "no_tuning_after_first_completed_replay": "After the first completed P2.4d representation replay, selector/extractor/relevance/continuation changes motivated by these labels belong to a later development slice. Harness-only correctness fixes must be explicitly identified."
+  },
+  "tasks": [
+    {
+      "id": "deploy-batch-implementation",
+      "query": "How does deploy_batch validate a rollout before changing it, how does it update status, and what does it return?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {
+          "id": "validate-before-mutation",
+          "alternatives": [
+            [
+              "ensure_rollout_allowed(release, batch_size)",
+              "release.remaining_hosts -= batch_size"
+            ]
+          ]
+        },
+        {
+          "id": "status-branches",
+          "alternatives": [
+            [
+              "release.remaining_hosts == 0",
+              "release.status = \"complete\"",
+              "release.status = \"rolling\""
+            ]
+          ]
+        },
+        {
+          "id": "return-reference",
+          "alternatives": [
+            [
+              "return rollout_reference(release)"
+            ]
+          ]
+        }
+      ],
+      "required_claims": [
+        {
+          "id": "validation-precedes-mutation",
+          "alternatives": [
+            [
+              "ensure_rollout_allowed",
+              "before",
+              "remaining_hosts"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "rollout/service.py",
+              "name": "deploy_batch"
+            },
+            {
+              "file": "rollout/policy.py",
+              "name": "ensure_rollout_allowed"
+            }
+          ]
+        },
+        {
+          "id": "decrements-hosts",
+          "alternatives": [
+            [
+              "remaining_hosts",
+              "batch_size"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "rollout/service.py",
+              "name": "deploy_batch"
+            }
+          ]
+        },
+        {
+          "id": "status-complete-or-rolling",
+          "alternatives": [
+            [
+              "complete",
+              "rolling",
+              "remaining_hosts"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "rollout/service.py",
+              "name": "deploy_batch"
+            }
+          ]
+        },
+        {
+          "id": "returns-rollout-reference",
+          "alternatives": [
+            [
+              "rollout_reference",
+              "return"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "rollout/service.py",
+              "name": "deploy_batch"
+            },
+            {
+              "file": "rollout/audit.py",
+              "name": "rollout_reference"
+            }
+          ]
+        }
+      ],
+      "unsupported_traps": [
+        "database save",
+        "cloud deployment API",
+        "parallel deployment",
+        "transaction commit"
+      ]
+    },
+    {
+      "id": "oversized-batch-regression",
+      "query": "Which regression test proves an oversized rollout batch is rejected before release state changes, and what concrete values does it verify?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {
+          "id": "oversized-condition-error",
+          "alternatives": [
+            [
+              "batch_size > release.remaining_hosts",
+              "BatchTooLarge"
+            ]
+          ]
+        },
+        {
+          "id": "oversized-test-values",
+          "alternatives": [
+            [
+              "deploy_batch(release, 7)",
+              "release.remaining_hosts == 5",
+              "release.status == \"ready\""
+            ]
+          ]
+        }
+      ],
+      "required_claims": [
+        {
+          "id": "oversized-raises",
+          "alternatives": [
+            [
+              "batch_size",
+              "remaining_hosts",
+              "BatchTooLarge"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "rollout/policy.py",
+              "name": "ensure_rollout_allowed"
+            },
+            {
+              "file": "rollout/policy.py",
+              "name": "BatchTooLarge"
+            }
+          ]
+        },
+        {
+          "id": "test-uses-seven-vs-five",
+          "alternatives": [
+            [
+              "7",
+              "5",
+              "deploy_batch"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "tests/test_service.py",
+              "name": "test_oversized_batch_preserves_release_state"
+            }
+          ]
+        },
+        {
+          "id": "test-preserves-ready-state",
+          "alternatives": [
+            [
+              "remaining_hosts",
+              "5",
+              "status",
+              "ready"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "tests/test_service.py",
+              "name": "test_oversized_batch_preserves_release_state"
+            }
+          ]
+        }
+      ],
+      "unsupported_traps": [
+        "rollback transaction",
+        "compensating deployment",
+        "provider cancellation"
+      ]
+    },
+    {
+      "id": "exact-batch-regression",
+      "query": "What does the exact-batch regression test prove about the final release state and returned rollout reference?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {
+          "id": "exact-final-state",
+          "alternatives": [
+            [
+              "release.remaining_hosts == 0",
+              "release.status == \"complete\""
+            ]
+          ]
+        },
+        {
+          "id": "exact-reference",
+          "alternatives": [
+            [
+              "ROLLOUT:edge-api:0"
+            ]
+          ]
+        }
+      ],
+      "required_claims": [
+        {
+          "id": "exact-zero",
+          "alternatives": [
+            [
+              "remaining_hosts",
+              "0"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "tests/test_service.py",
+              "name": "test_exact_batch_completes_rollout"
+            }
+          ]
+        },
+        {
+          "id": "exact-complete",
+          "alternatives": [
+            [
+              "status",
+              "complete"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "tests/test_service.py",
+              "name": "test_exact_batch_completes_rollout"
+            }
+          ]
+        },
+        {
+          "id": "exact-reference",
+          "alternatives": [
+            [
+              "ROLLOUT:edge-api:0"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "tests/test_service.py",
+              "name": "test_exact_batch_completes_rollout"
+            },
+            {
+              "file": "rollout/audit.py",
+              "name": "rollout_reference"
+            }
+          ]
+        }
+      ],
+      "unsupported_traps": [
+        "database persistence",
+        "deployment webhook",
+        "async callback"
+      ]
+    },
+    {
+      "id": "rollback-delegation",
+      "query": "What does request_rollback delegate to, and exactly which statuses are allowed or rejected by the rollback policy and its test?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {
+          "id": "rollback-delegation",
+          "alternatives": [
+            [
+              "return can_rollback(status)"
+            ]
+          ]
+        },
+        {
+          "id": "rollback-statuses",
+          "alternatives": [
+            [
+              "rolling",
+              "failed",
+              "complete",
+              "ready"
+            ]
+          ]
+        }
+      ],
+      "required_claims": [
+        {
+          "id": "delegates-can-rollback",
+          "alternatives": [
+            [
+              "request_rollback",
+              "can_rollback"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "rollout/service.py",
+              "name": "request_rollback"
+            },
+            {
+              "file": "rollout/policy.py",
+              "name": "can_rollback"
+            }
+          ]
+        },
+        {
+          "id": "rollback-policy-statuses",
+          "alternatives": [
+            [
+              "rolling",
+              "failed",
+              "complete",
+              "ready"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "rollout/policy.py",
+              "name": "can_rollback"
+            },
+            {
+              "file": "tests/test_service.py",
+              "name": "test_rollback_policy_allows_active_or_failed_only"
+            }
+          ]
+        }
+      ],
+      "unsupported_traps": [
+        "performs rollback",
+        "mutates release",
+        "cloud provider rollback"
+      ]
+    },
+    {
+      "id": "health-window-migration",
+      "query": "How does apply_health_window_default fill a missing health window while preserving an existing value, and what values does the regression test establish?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {
+          "id": "missing-window-guard",
+          "alternatives": [
+            [
+              "\"health_window_minutes\" not in row"
+            ]
+          ]
+        },
+        {
+          "id": "window-default-fifteen",
+          "alternatives": [
+            [
+              "health_window_default",
+              "return 15"
+            ]
+          ]
+        },
+        {
+          "id": "preserve-thirty",
+          "alternatives": [
+            [
+              "health_window_minutes",
+              "30"
+            ]
+          ]
+        }
+      ],
+      "required_claims": [
+        {
+          "id": "fills-only-missing",
+          "alternatives": [
+            [
+              "health_window_minutes",
+              "not in",
+              "row"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "rollout/migrations/0001_health_window.py",
+              "name": "apply_health_window_default"
+            }
+          ]
+        },
+        {
+          "id": "default-is-fifteen",
+          "alternatives": [
+            [
+              "health_window_default",
+              "15"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "rollout/models.py",
+              "name": "health_window_default"
+            },
+            {
+              "file": "rollout/migrations/0001_health_window.py",
+              "name": "apply_health_window_default"
+            }
+          ]
+        },
+        {
+          "id": "preserves-thirty",
+          "alternatives": [
+            [
+              "30",
+              "health_window_minutes"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "tests/test_migration.py",
+              "name": "test_health_window_default_only_fills_missing_value"
+            }
+          ]
+        }
+      ],
+      "unsupported_traps": [
+        "sets every row to 15",
+        "overwrites 30",
+        "SQL UPDATE"
+      ]
+    },
+    {
+      "id": "javascript-rollout-label",
+      "query": "How does formatRolloutLabel use normalizeChannel, what normalization is source-backed, and what exact label does the test expect?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {
+          "id": "channel-normalization",
+          "alternatives": [
+            [
+              "String(value).trim().toLowerCase()"
+            ]
+          ]
+        },
+        {
+          "id": "rollout-label-format",
+          "alternatives": [
+            [
+              "ROLLOUT ${normalizeChannel(channel)}:${percent}%"
+            ]
+          ]
+        },
+        {
+          "id": "rollout-label-test",
+          "alternatives": [
+            [
+              "ROLLOUT canary:25%"
+            ]
+          ]
+        }
+      ],
+      "required_claims": [
+        {
+          "id": "normalizes-trim-lower",
+          "alternatives": [
+            [
+              "trim",
+              "toLowerCase"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "client/channel.js",
+              "name": "normalizeChannel"
+            }
+          ]
+        },
+        {
+          "id": "formats-rollout-label",
+          "alternatives": [
+            [
+              "ROLLOUT",
+              "normalizeChannel",
+              "percent"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "client/rollout_label.js",
+              "name": "formatRolloutLabel"
+            },
+            {
+              "file": "tests/rollout_label.test.js",
+              "name": "testRolloutLabel"
+            }
+          ]
+        },
+        {
+          "id": "test-expects-canary-25",
+          "alternatives": [
+            [
+              "ROLLOUT canary:25%"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "tests/rollout_label.test.js",
+              "name": "testRolloutLabel"
+            }
+          ]
+        }
+      ],
+      "unsupported_traps": [
+        "uppercase",
+        "fetch",
+        "API request",
+        "network call"
+      ]
+    },
+    {
+      "id": "invalid-batch-size",
+      "query": "What happens when deploy_batch receives a zero or negative batch size, and why should release state remain unchanged according to the source ordering?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {
+          "id": "invalid-size-condition",
+          "alternatives": [
+            [
+              "batch_size <= 0",
+              "InvalidBatchSize"
+            ]
+          ]
+        },
+        {
+          "id": "validation-before-decrement",
+          "alternatives": [
+            [
+              "ensure_rollout_allowed(release, batch_size)",
+              "release.remaining_hosts -= batch_size"
+            ]
+          ]
+        }
+      ],
+      "required_claims": [
+        {
+          "id": "nonpositive-invalid",
+          "alternatives": [
+            [
+              "batch_size",
+              "0",
+              "InvalidBatchSize"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "rollout/policy.py",
+              "name": "ensure_rollout_allowed"
+            },
+            {
+              "file": "rollout/policy.py",
+              "name": "InvalidBatchSize"
+            }
+          ]
+        },
+        {
+          "id": "raise-precedes-mutation",
+          "alternatives": [
+            [
+              "before",
+              "remaining_hosts"
+            ]
+          ],
+          "support_symbols": [
+            {
+              "file": "rollout/service.py",
+              "name": "deploy_batch"
+            },
+            {
+              "file": "rollout/policy.py",
+              "name": "ensure_rollout_allowed"
+            }
+          ]
+        }
+      ],
+      "unsupported_traps": [
+        "clamps to one",
+        "silently ignores",
+        "mutates then raises"
+      ]
+    },
+    {
+      "id": "missing-force-promote",
+      "query": "How does force_promote bypass rollout validation and mark the release complete immediately?",
+      "expected_status": "need_more_context",
+      "expected_missing_identifiers": [
+        "force_promote"
+      ],
+      "required_behavior_patterns": [],
+      "required_claims": [],
+      "unsupported_traps": [
+        "force_promote calls",
+        "bypasses validation",
+        "marks complete",
+        "cloud provider API"
+      ]
+    }
+  ],
+  "acceptance": {
+    "fresh_representation_gate": [
+      "behavior_repaired aggregate required behavior-pattern recall must be at least 0.85.",
+      "behavior_repaired must not have lower behavior-pattern recall than symbol_evidence on any answerable task.",
+      "behavior_repaired must preserve explicit unresolved/insufficient force_promote handling without inventing implementation.",
+      "All behavior_repaired behavioral envelopes must remain within the preregistered 2200 estimated-token cap.",
+      "Continuation must add at most one already-activated source-backed dependency and may not promote AI-inferred graph truth."
+    ],
+    "blind_downstream_comparative_gate": [
+      "An eligible downstream run must be blind to the oracle and source gold.",
+      "behavior_repaired required answer-claim recall must exceed symbol_evidence required answer-claim recall.",
+      "behavior_repaired answerable-task pass count must be at least symbol_evidence.",
+      "behavior_repaired unsupported-trap hits and invalid citation count must be no greater than symbol_evidence.",
+      "The missing force_promote control must be answered need_more_context without invented implementation."
+    ],
+    "absolute_fidelity_guard": [
+      "eligible_for_shipping_decision must be true.",
+      "required answer-claim recall must be at least 0.90.",
+      "at least 6 of 7 answerable tasks must pass all required claims with grounded citations.",
+      "unsupported-trap hits must be zero.",
+      "invalid or ungrounded citations must be zero.",
+      "the missing-identifier control must pass."
+    ],
+    "default_decision": "P2.4d alone does not change the legacy product default unless an oracle-blind eligible downstream run satisfies the absolute fidelity guard. Representation-only success is insufficient."
+  },
+  "limitations": [
+    "The fixture is synthetic but source-locked before the oracle and evaluator.",
+    "Behavior-pattern recall measures evidence availability, not model reasoning quality.",
+    "Any answer run produced in an oracle-exposed interactive session is diagnostic only and must set eligible_for_shipping_decision=false.",
+    "The deterministic context estimate remains compact-JSON ceil(chars/4), not provider billing tokens.",
+    "Learned relevance-provider comparison is deferred to a later checkpoint unless a real configured provider is available without changing this frozen corpus.",
+    "S7 remains sealed and unused."
+  ]
+}
