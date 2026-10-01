@@ -1,0 +1,8 @@
+{
+  "status": "answer",
+  "claims": [
+    {"text": "When batch_size is <= 0, ensure_rollout_allowed raises InvalidBatchSize.", "evidence_refs": ["behavior:1423ecfdb49e1e435d82"]},
+    {"text": "deploy_batch calls ensure_rollout_allowed before the remaining_hosts mutation, so that raise occurs before remaining_hosts can be changed by deploy_batch.", "evidence_refs": ["behavior:5ca5d3a13f03e1ed2a1e", "behavior:372775d8495e712ec180"]}
+  ],
+  "missing_identifiers": []
+}

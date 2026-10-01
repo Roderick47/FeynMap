@@ -1,0 +1,9 @@
+{
+  "status": "answer",
+  "claims": [
+    {"text": "test_oversized_batch_preserves_release_state creates Release(\"edge-api\", 5, \"ready\") and calls deploy_batch(release, 7) while expecting BatchTooLarge.", "evidence_refs": ["behavior:4cc493820c937628415c", "behavior:85c8cd3a0d4583c954a7", "behavior:d44aa1487fd5b03ff2d1"]},
+    {"text": "After the exception, the test verifies remaining_hosts is still 5 and status is still ready.", "evidence_refs": ["behavior:79773263eeb4c31a38ee", "behavior:1e29d90701ab05b19e28"]},
+    {"text": "The supplied packet shows deploy_batch calling ensure_rollout_allowed, but it does not expose the exact policy comparison that triggers BatchTooLarge.", "evidence_refs": ["behavior:5ca5d3a13f03e1ed2a1e", "behavior:85c8cd3a0d4583c954a7"]}
+  ],
+  "missing_identifiers": []
+}

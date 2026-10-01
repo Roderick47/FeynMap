@@ -1,0 +1,74 @@
+name: p2-4d-downstream-diagnostic
+
+on:
+  push:
+    branches:
+      - p2-4d-fresh-downstream-validation
+    paths:
+      - "feynmap/p2_4d_evaluate.py"
+      - "experiments/p2_4d_downstream_manifest.json"
+      - "experiments/p2_4d_answers/**"
+      - ".github/workflows/p2-4d-downstream-diagnostic.yml"
+  pull_request:
+    paths:
+      - "feynmap/p2_4d_evaluate.py"
+      - "experiments/p2_4d_downstream_manifest.json"
+      - "experiments/p2_4d_answers/**"
+      - ".github/workflows/p2-4d-downstream-diagnostic.yml"
+
+jobs:
+  nonblind-diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e .
+      - name: Re-export frozen contexts
+        run: |
+          python -m feynmap.p2_4d_evaluate export \
+            --manifest experiments/p2_4d_downstream_manifest.json \
+            --output artifacts/p2_4d
+      - name: Score oracle-exposed diagnostic answers
+        run: |
+          python -m feynmap.p2_4d_evaluate score \
+            --manifest experiments/p2_4d_downstream_manifest.json \
+            --index artifacts/p2_4d/index.json \
+            --answers experiments/p2_4d_answers \
+            --output artifacts/p2_4d/downstream_score.json
+      - name: Enforce diagnostic result and non-shipping boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          score = json.loads(Path("artifacts/p2_4d/downstream_score.json").read_text())
+          assert score["oracle_blind"] is False
+          assert score["eligible_for_shipping_decision"] is False
+          assert score["absolute_fidelity_guard"]["pass"] is False
+          assert score["blind_downstream_comparative_gate"]["pass"] is False
+
+          symbol = score["arms"]["symbol_evidence"]
+          repaired = score["arms"]["behavior_repaired"]
+          assert symbol["required_claims"] == 20
+          assert symbol["matched_claims"] == 0
+          assert symbol["answerable_task_passes"] == 0
+          assert symbol["correct_missing_context"] == 1
+
+          assert repaired["required_claims"] == 20
+          assert repaired["matched_claims"] == 19
+          assert repaired["grounded_claims"] == 19
+          assert repaired["required_claim_recall"] == 0.95
+          assert repaired["grounded_required_claim_recall"] == 0.95
+          assert repaired["answerable_task_passes"] == 6
+          assert repaired["unsupported_trap_hits"] == 0
+          assert repaired["invalid_citations"] == 0
+          assert repaired["uncited_claims"] == 0
+          assert repaired["correct_missing_context"] == 1
+          PY
+      - name: Upload diagnostic score
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-4d-downstream-diagnostic
+          path: artifacts/p2_4d

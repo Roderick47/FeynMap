@@ -1,0 +1,9 @@
+{
+  "schema": "feynmap.p2_4d_model_run.v1",
+  "provider": "chatgpt_interactive",
+  "model": "GPT-5.6 Sol",
+  "oracle_exposure": true,
+  "eligible_for_shipping_decision": false,
+  "provider_usage": null,
+  "notes": "Diagnostic-only answer run authored in the same interactive session that froze and inspected the P2.4d oracle. Answers were constrained to model-facing packet evidence, but oracle exposure makes this run ineligible for shipping or default decisions."
+}

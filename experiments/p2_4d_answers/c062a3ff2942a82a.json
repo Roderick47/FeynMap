@@ -1,0 +1,9 @@
+{
+  "status": "answer",
+  "claims": [
+    {"text": "normalizeChannel trims the value and applies toLowerCase.", "evidence_refs": ["behavior:2b2cc954f3deffc5684d", "behavior:8f96bbfaf792868a11bb"]},
+    {"text": "formatRolloutLabel returns a ROLLOUT label using normalizeChannel(channel) and percent: `ROLLOUT ${normalizeChannel(channel)}:${percent}%`.", "evidence_refs": ["behavior:2721b2665c133b6f1807"]},
+    {"text": "The test expects ROLLOUT canary:25%.", "evidence_refs": ["behavior:34d3dc1dda7075bbf648"]}
+  ],
+  "missing_identifiers": []
+}

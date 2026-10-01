@@ -1,0 +1,9 @@
+{
+  "status": "answer",
+  "claims": [
+    {"text": "apply_health_window_default writes health_window_minutes only when the key is not in the row.", "evidence_refs": ["behavior:d06ad221f2cb1ad63087"]},
+    {"text": "The missing value comes from health_window_default, which returns 15.", "evidence_refs": ["behavior:be34262d46b5723c123f", "behavior:fdfd0dccad2abbf696b6"]},
+    {"text": "The regression data includes an existing health_window_minutes value of 30; because the write is guarded by the missing-key condition, that existing 30 is preserved.", "evidence_refs": ["behavior:7bd4c1edfea87a2dffcf", "behavior:d06ad221f2cb1ad63087"]}
+  ],
+  "missing_identifiers": []
+}

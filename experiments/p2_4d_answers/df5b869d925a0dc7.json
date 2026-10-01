@@ -1,0 +1,8 @@
+{
+  "status": "answer",
+  "claims": [
+    {"text": "request_rollback delegates by returning can_rollback(status).", "evidence_refs": ["behavior:dfe9da911de0774c6436"]},
+    {"text": "The test shows rolling and failed are allowed, while complete and ready are rejected.", "evidence_refs": ["behavior:dfb193f880c91cb653e1", "behavior:8d09445282cb8b1f71a8", "behavior:1626a385af1e809cab8f", "behavior:7ab646ca8fc708332023"]}
+  ],
+  "missing_identifiers": []
+}
