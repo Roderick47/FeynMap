@@ -1,9 +1,10 @@
 """Opt-in composition for task-conditioned source evidence.
 
 This is deliberately a new surface rather than a change to SparseContextPipeline's
-legacy defaults.  P2.4 callers opt into symbol-evidence delivery plus bounded
-behavioral evidence; existing callers continue to receive the unchanged S3
-payload unless they choose this pipeline.
+legacy defaults. P2.4 callers opt into symbol-evidence delivery, a bounded
+source-backed continuation over already activated behavior dependencies, and
+bounded behavioral evidence; existing callers continue to receive the unchanged
+S3 payload unless they choose this pipeline.
 """
 from __future__ import annotations
 
@@ -11,10 +12,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .behavioral_context import (
-    BehaviorEvidenceBudget,
-    BehavioralContextBuilder,
-    BehavioralContextResult,
+from .behavioral_context import BehaviorEvidenceBudget, BehavioralContextResult
+from .behavioral_delivery import (
+    BehavioralContinuationResult,
+    BehavioralSymbolContinuation,
+    TaskConditionedBehavioralContextBuilder,
 )
 from .context_pipeline import SparseContextPipeline, SparseContextResult
 from .core import SemanticGraph
@@ -27,6 +29,7 @@ from .relevance import JudgmentProviderRelevanceJudge, RelevanceJudge
 @dataclass(frozen=True)
 class TaskConditionedEvidenceResult:
     sparse: SparseContextResult
+    continuation: BehavioralContinuationResult
     behavioral: BehavioralContextResult
 
     @property
@@ -40,6 +43,7 @@ class TaskConditionedEvidenceResult:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "activation": self.sparse.activation.to_dict(),
+            "continuation": self.continuation.to_dict(),
             "context": self.sparse.context.to_dict(),
             "behavioral": self.behavioral.to_dict(),
             "sufficient": self.sufficient,
@@ -49,10 +53,15 @@ class TaskConditionedEvidenceResult:
 class TaskConditionedEvidencePipeline:
     """Build a sparse source-verifiable evidence packet for one task.
 
-    The optional activation provider participates only in adaptive search.  The
+    The optional activation provider participates only in adaptive search. The
     optional relevance provider participates only in ranking already-extracted
-    source observations and sufficiency judgment.  Neither can mutate semantic
+    source observations and sufficiency judgment. Neither can mutate semantic
     graph truth or behavioral evidence confidence.
+
+    P2.4c additionally permits a tiny continuation through source-backed
+    behavioral edges, but only among nodes that S2 already activated. This
+    repairs an S3 omission without allowing the behavior layer to invent or
+    independently discover source symbols.
     """
 
     def __init__(
@@ -78,7 +87,8 @@ class TaskConditionedEvidencePipeline:
             region_limit=region_limit,
             region_seed_limit=region_seed_limit,
         )
-        self.behavior = BehavioralContextBuilder(
+        self.continuation = BehavioralSymbolContinuation(graph)
+        self.behavior = TaskConditionedBehavioralContextBuilder(
             graph,
             Path(project_root),
             judge=judge,
@@ -99,9 +109,10 @@ class TaskConditionedEvidencePipeline:
         max_nodes: int = 64,
         direction: str = "both",
     ) -> TaskConditionedEvidenceResult:
+        requested_context = (context_budget or MinimalContextBudget()).normalized()
         sparse = self.sparse.concept(
             task,
-            context_budget=context_budget,
+            context_budget=requested_context,
             delivery_policy=self.delivery_policy,
             seed_limit=seed_limit,
             candidate_limit=candidate_limit,
@@ -110,12 +121,27 @@ class TaskConditionedEvidencePipeline:
             max_nodes=max_nodes,
             direction=direction,
         )
+        continuation = self.continuation.extend(
+            task,
+            sparse.activation.search,
+            sparse.context,
+            budget=requested_context,
+            delivery_policy=self.delivery_policy,
+        )
+        sparse = SparseContextResult(
+            activation=sparse.activation,
+            context=continuation.context,
+        )
         behavioral = self.behavior.build(
             task,
             sparse.context,
             budget=behavior_budget,
         )
-        return TaskConditionedEvidenceResult(sparse=sparse, behavioral=behavioral)
+        return TaskConditionedEvidenceResult(
+            sparse=sparse,
+            continuation=continuation,
+            behavioral=behavioral,
+        )
 
     def from_node(
         self,
@@ -129,19 +155,35 @@ class TaskConditionedEvidencePipeline:
         max_nodes: int = 64,
         direction: str = "both",
     ) -> TaskConditionedEvidenceResult:
+        requested_context = (context_budget or MinimalContextBudget()).normalized()
         sparse = self.sparse.from_node(
             node,
             task,
-            context_budget=context_budget,
+            context_budget=requested_context,
             delivery_policy=self.delivery_policy,
             max_depth=max_depth,
             beam_width=beam_width,
             max_nodes=max_nodes,
             direction=direction,
         )
+        continuation = self.continuation.extend(
+            task,
+            sparse.activation.search,
+            sparse.context,
+            budget=requested_context,
+            delivery_policy=self.delivery_policy,
+        )
+        sparse = SparseContextResult(
+            activation=sparse.activation,
+            context=continuation.context,
+        )
         behavioral = self.behavior.build(
             task,
             sparse.context,
             budget=behavior_budget,
         )
-        return TaskConditionedEvidenceResult(sparse=sparse, behavioral=behavioral)
+        return TaskConditionedEvidenceResult(
+            sparse=sparse,
+            continuation=continuation,
+            behavioral=behavioral,
+        )
