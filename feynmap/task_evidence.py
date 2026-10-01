@@ -58,7 +58,7 @@ class TaskConditionedEvidencePipeline:
     source observations and sufficiency judgment. Neither can mutate semantic
     graph truth or behavioral evidence confidence.
 
-    P2.4c additionally permits a tiny continuation through source-backed
+    P2.4c additionally permits one best continuation through source-backed
     behavioral edges, but only among nodes that S2 already activated. This
     repairs an S3 omission without allowing the behavior layer to invent or
     independently discover source symbols.
@@ -87,7 +87,11 @@ class TaskConditionedEvidencePipeline:
             region_limit=region_limit,
             region_seed_limit=region_seed_limit,
         )
-        self.continuation = BehavioralSymbolContinuation(graph)
+        self.continuation = BehavioralSymbolContinuation(
+            graph,
+            max_added_nodes=1,
+            max_seed_anchors=1,
+        )
         self.behavior = TaskConditionedBehavioralContextBuilder(
             graph,
             Path(project_root),
