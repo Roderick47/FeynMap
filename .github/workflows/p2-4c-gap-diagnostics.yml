@@ -1,0 +1,63 @@
+name: p2-4c-gap-diagnostics
+
+on:
+  push:
+    branches: [p2-4c-behavior-gap-diagnostics]
+  pull_request:
+    paths:
+      - 'feynmap/p2_4c_diagnose.py'
+      - 'feynmap/p2_4c_regression.py'
+      - 'feynmap/behavior.py'
+      - 'feynmap/behavioral_context.py'
+      - 'feynmap/behavioral_delivery.py'
+      - 'feynmap/task_evidence.py'
+      - 'feynmap/relevance.py'
+      - 'tests/test_p2_4c_behavior_gaps.py'
+      - 'experiments/fixtures/p2_4b_billing/**'
+      - 'experiments/p2_4b_behavior_manifest.json'
+      - '.github/workflows/p2-4c-gap-diagnostics.yml'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[dev]'
+      - name: Run P2.4c focused regressions
+        run: |
+          python -m pytest -q \
+            tests/test_p2_4c_behavior_gaps.py \
+            tests/test_p2_4_behavioral_context.py \
+            tests/test_p2_3a_symbol_evidence.py
+      - name: Run P2.4c post-hoc diagnostics
+        run: |
+          python -m feynmap.p2_4c_diagnose \
+            --manifest experiments/p2_4b_behavior_manifest.json \
+            --output p2-4c-gap-diagnostics.json
+      - name: Replay repaired pipeline on seen P2.4b corpus
+        run: |
+          python -m feynmap.p2_4c_regression \
+            --manifest experiments/p2_4b_behavior_manifest.json \
+            --output p2-4c-development-regression.json
+      - name: Enforce development regression invariants
+        run: |
+          python - <<'PY'
+          import json
+          value = json.load(open('p2-4c-development-regression.json', encoding='utf-8'))
+          assert value['status'] == 'development_regression_on_seen_p2_4b_corpus'
+          assert value['matched_patterns'] == value['required_patterns'] == 15
+          assert value['missing_identifier_control_ok'] is True
+          assert value['all_sparse_packets_within_budget'] is True
+          assert value['all_behavior_packets_within_budget'] is True
+          assert value['canonical_fresh_checkpoint']['matched_patterns'] == 13
+          print('P2.4c development repair gate passed; P2.4b canonical fresh result remains 13/15')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p2-4c-gap-diagnostics
+          path: |
+            p2-4c-gap-diagnostics.json
+            p2-4c-development-regression.json
