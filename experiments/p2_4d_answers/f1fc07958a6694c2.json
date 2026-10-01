@@ -1,0 +1,10 @@
+{
+  "status": "answer",
+  "claims": [
+    {"text": "deploy_batch calls ensure_rollout_allowed before it changes remaining_hosts.", "evidence_refs": ["behavior:5ca5d3a13f03e1ed2a1e", "behavior:372775d8495e712ec180"]},
+    {"text": "It decrements release.remaining_hosts by batch_size.", "evidence_refs": ["behavior:372775d8495e712ec180"]},
+    {"text": "If remaining_hosts becomes 0 it sets status to complete; otherwise it sets status to rolling.", "evidence_refs": ["behavior:4b91bcb579d989bc84df", "behavior:2c9aeddaf1f597590de2", "behavior:13aaf2e9c58c52ed2b71"]},
+    {"text": "It returns rollout_reference(release).", "evidence_refs": ["behavior:053bf4465b27fc7248ff"]}
+  ],
+  "missing_identifiers": []
+}

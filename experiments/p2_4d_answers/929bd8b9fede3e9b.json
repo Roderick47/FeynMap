@@ -1,0 +1,9 @@
+{
+  "status": "answer",
+  "claims": [
+    {"text": "The exact-batch test verifies release.remaining_hosts is 0 after the call.", "evidence_refs": ["behavior:6558339559e5ef781664"]},
+    {"text": "It verifies release.status is complete.", "evidence_refs": ["behavior:d81d049773d748997ec0"]},
+    {"text": "It verifies the returned reference is ROLLOUT:edge-api:0.", "evidence_refs": ["behavior:39deda3edf2f79059b50"]}
+  ],
+  "missing_identifiers": []
+}
