@@ -1,0 +1,81 @@
+{
+  "schema": "feynmap.p2_4c_development_repair_checkpoint.v1",
+  "recorded_date": "2026-10-01",
+  "status": "development_regression_on_seen_p2_4b_corpus",
+  "canonical_fresh_checkpoint": {
+    "phase": "P2.4b",
+    "matched_patterns": 13,
+    "required_patterns": 15,
+    "pattern_recall": 0.866667,
+    "note": "P2.4b remains the frozen fresh result. P2.4c does not rewrite or replace it."
+  },
+  "diagnosed_misses": [
+    {
+      "id": "overpayment-condition-and-error",
+      "classification": "s3_symbol_delivery_loss_after_successful_activation",
+      "evidence": "ensure_payment_allowed was activated at depth 2 over a source-backed CALLS edge but was omitted from the P2.3a symbol_evidence packet, leaving P2.4a with no legal source body to inspect."
+    },
+    {
+      "id": "delegates-can-retry",
+      "classification": "behavioral_packing_loss_after_successful_extraction",
+      "evidence": "retry_payment and can_retry were selected and the extractor emitted both call can_retry(status) and return can_retry(status); test-oriented packing retained the nested call but omitted the enclosing return."
+    }
+  ],
+  "repairs": {
+    "activated_dependency_continuation": {
+      "scope": "P2.4 TaskConditionedEvidencePipeline only",
+      "max_added_nodes": 1,
+      "max_seed_anchors": 1,
+      "max_hops": 2,
+      "requirements": [
+        "target must already be present in the S2 activation result",
+        "relationship must be source-backed STATIC, TEST, or RUNTIME evidence",
+        "edge kind must be CALLS, INVOKES, VALIDATES, or USES_DATA",
+        "original S3 token, node, and edge budget remains authoritative",
+        "AI-inferred relationships are not promoted or newly admitted by the continuation"
+      ]
+    },
+    "behavioral_witness_preservation": {
+      "scope": "test_behavior packing only",
+      "rules": [
+        "preserve source-backed condition and raise observations as a causal pair when the raise records the enclosing condition",
+        "preserve the RETURN observation of an explicitly named wrapper so delegation-by-return is not reduced to a nested call"
+      ]
+    }
+  },
+  "development_replay": {
+    "matched_patterns": 15,
+    "required_patterns": 15,
+    "pattern_recall": 1.0,
+    "missing_identifier_control_ok": true,
+    "all_sparse_packets_within_budget": true,
+    "all_behavior_packets_within_budget": true,
+    "mean_sparse_tokens": 1072.714286,
+    "mean_behavior_tokens": 2093.714286,
+    "mean_combined_tokens": 3171.571429,
+    "continuation_added_nodes_total": 1,
+    "continuation_added_edges_total": 1,
+    "only_continuation_task": "overpayment-regression-test",
+    "only_added_symbol": "python:symbol:billing.policy.ensure_payment_allowed"
+  },
+  "task_results": [
+    {"task_id": "apply-payment-implementation", "matched": 4, "required": 4, "sparse_tokens": 869, "behavior_tokens": 2060, "combined_tokens": 2934, "added_nodes": 0},
+    {"task_id": "overpayment-regression-test", "matched": 2, "required": 2, "sparse_tokens": 1041, "behavior_tokens": 2131, "combined_tokens": 3177, "added_nodes": 1},
+    {"task_id": "exact-payment-test", "matched": 2, "required": 2, "sparse_tokens": 838, "behavior_tokens": 2115, "combined_tokens": 2959, "added_nodes": 0},
+    {"task_id": "grace-days-migration", "matched": 3, "required": 3, "sparse_tokens": 1193, "behavior_tokens": 2164, "combined_tokens": 3362, "added_nodes": 0},
+    {"task_id": "retry-policy", "matched": 2, "required": 2, "sparse_tokens": 1241, "behavior_tokens": 2023, "combined_tokens": 3269, "added_nodes": 0},
+    {"task_id": "javascript-payment-label", "matched": 2, "required": 2, "sparse_tokens": 1528, "behavior_tokens": 2081, "combined_tokens": 3614, "added_nodes": 0},
+    {"task_id": "missing-capture-card", "matched": 0, "required": 0, "sparse_tokens": 799, "behavior_tokens": 2082, "combined_tokens": 2886, "added_nodes": 0, "sufficient": false, "unresolved": ["capture_card"]}
+  ],
+  "validation": {
+    "focused_workflow_run": 36814561121,
+    "focused_gate": "success",
+    "full_suite_before_export_update": 36814057333,
+    "full_suite_status": "success",
+    "python_3_8": "success",
+    "python_3_12": "success",
+    "recursive_self_check": "success"
+  },
+  "claim_scope": "Development regression only. This is not a fresh evaluation, downstream LLM answer-accuracy result, hallucination-reduction percentage, or product-default promotion decision.",
+  "next_required_evidence": "Freeze a new corpus before measuring the repaired P2.4c representation or downstream answer fidelity as fresh evidence."
+}
