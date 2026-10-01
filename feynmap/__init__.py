@@ -13,6 +13,11 @@ from .active_state import (
 from .adaptive import AdaptiveSearchResult, AdaptiveSparseSearch
 from .behavior import BehaviorKind, BehaviorObservation, GroundedBehaviorExtractor
 from .behavioral_context import BehaviorEvidenceBudget, BehavioralContextBuilder, BehavioralContextResult
+from .behavioral_delivery import (
+    BehavioralContinuationResult,
+    BehavioralSymbolContinuation,
+    TaskConditionedBehavioralContextBuilder,
+)
 from .context import ContextBudget, StoredSnapshotContext, estimate_tokens
 from .core import EdgeKind, Evidence, EvidenceKind, NodeKind, SemanticEdge, SemanticGraph, SemanticNode, SourceLocation
 from .diff import diff_file_inventories, diff_graphs, diff_snapshots, diff_store_snapshots
@@ -59,6 +64,7 @@ __all__ = [
     "ActiveStateRuntime", "ActiveStateTransition", "AdaptiveSearchResult",
     "AdaptiveSparseSearch", "BehaviorEvidenceBudget", "BehaviorKind",
     "BehaviorObservation", "BehavioralContextBuilder", "BehavioralContextResult",
+    "BehavioralContinuationResult", "BehavioralSymbolContinuation",
     "ContextBudget", "DeliveryChannelPolicy", "DeterministicRelevanceJudge",
     "EdgeKind", "Evidence", "EvidenceKind", "FeynMapEngine", "FeynMapQuery",
     "FileFingerprint", "GROUNDING_TOOL_CONTRACT_VERSION", "GROUNDING_TOOLS",
@@ -69,11 +75,11 @@ __all__ = [
     "RelevanceLabel", "RepositorySnapshot", "SemanticEdge", "SemanticGraph",
     "SemanticNode", "SnapshotStore", "SparseContextPipeline", "SparseContextResult",
     "SourceLocation", "StoredSnapshotContext", "SufficiencyDecision",
-    "SufficiencyLabel", "TaskConditionedEvidencePipeline",
-    "TaskConditionedEvidenceResult", "TaskEvidenceProfile", "add_contract",
-    "analyze_incrementally", "file_channel", "channel_counts", "capture_and_store",
-    "capture_repository_snapshot", "contracts", "diff_file_inventories",
-    "diff_graphs", "diff_snapshots", "diff_store_snapshots", "estimate_tokens",
-    "incremental_snapshot", "measure_guided_search", "plan_incremental_analysis",
-    "evaluate_graph",
+    "SufficiencyLabel", "TaskConditionedBehavioralContextBuilder",
+    "TaskConditionedEvidencePipeline", "TaskConditionedEvidenceResult",
+    "TaskEvidenceProfile", "add_contract", "analyze_incrementally", "file_channel",
+    "channel_counts", "capture_and_store", "capture_repository_snapshot", "contracts",
+    "diff_file_inventories", "diff_graphs", "diff_snapshots", "diff_store_snapshots",
+    "estimate_tokens", "incremental_snapshot", "measure_guided_search",
+    "plan_incremental_analysis", "evaluate_graph",
 ]
