@@ -1,0 +1,45 @@
+name: p2-4b-fresh-behavior
+
+on:
+  push:
+    branches:
+      - p2-4b-fresh-behavior-evaluation
+  pull_request:
+    paths:
+      - "feynmap/**"
+      - "experiments/p2_4b_behavior_manifest.json"
+      - "experiments/fixtures/p2_4b_billing/**"
+      - ".github/workflows/p2-4b-fresh-behavior.yml"
+
+jobs:
+  fresh-replay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Run frozen P2.4b replay
+        run: |
+          python -m feynmap.p2_4b_evaluate \
+            --manifest experiments/p2_4b_behavior_manifest.json \
+            --output p2-4b-fresh-result.json
+      - name: Enforce preregistered fresh representation gate
+        run: |
+          python - <<'PY'
+          import json
+          value = json.load(open('p2-4b-fresh-result.json', encoding='utf-8'))
+          assert value['status'] == 'fresh_source_locked_first_replay'
+          assert value['frozen_manifest_git_blob'] == '5900e1f64cb482a720cb12ad7fd87d0ccb176172'
+          assert value['required_behavior_patterns'] == 15
+          assert value['arms']['behavior_provider_optional']['status'] == 'not_run'
+          assert value['fresh_representation_gate']['pass'] is True
+          print('P2.4b fresh representation gate passed')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p2-4b-fresh-result
+          path: p2-4b-fresh-result.json
+          if-no-files-found: warn

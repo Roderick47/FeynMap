@@ -1,0 +1,180 @@
+{
+  "schema": "feynmap.p2_4b_behavior_fidelity_manifest.v1",
+  "recorded_date": "2026-10-01",
+  "status": "preauthored_before_first_p2_4b_replay",
+  "purpose": "Fresh source-locked comparison of P2.3a symbol-only delivery against P2.4 deterministic task-conditioned behavioral evidence. Gold behavior patterns and claims are scoring-only and must never enter activation, relevance ranking, behavioral packing, or downstream prompts.",
+  "source": {
+    "root": "experiments/fixtures/p2_4b_billing",
+    "language": "auto",
+    "framework": "none",
+    "source_commit_before_oracle": "738b7d46767f9060851ea5545317a0fe9759cc43",
+    "blobs": {
+      "billing/__init__.py": "6fa6ce0076e60c45c3e4112570a08525af5ab20a",
+      "billing/models.py": "ba79a5cfb82a3345827c95b98ae3d067ae7c0ea3",
+      "billing/policy.py": "a5e43c2581a5cd2004e25d03a753223d0071700c",
+      "billing/audit.py": "45f06d6dfa34fe53c6dd50f9717b56569976dbed",
+      "billing/service.py": "30d175cb737f54c830c42e6399156cb313bfea42",
+      "billing/migrations/__init__.py": "5237bd9810a8e445380405879468960ddd9b6e59",
+      "billing/migrations/0001_grace_days.py": "15ce6bc751521f61474e72c313ce18bdc69fc737",
+      "tests/test_service.py": "fd3637f40868bb3b056fff0a0e28d71aa7a9821a",
+      "tests/test_migration.py": "db1d1ccfae00a6b4851dcdd7023f1d6c6f905d7b",
+      "client/currency.js": "82f8001c68f63bd11d368b0040214d78b68660a4",
+      "client/label.js": "c8f6b9238606f5a83380026e166a03f8d53c8b5f",
+      "tests/currency.test.js": "0f35a91ceeb85145fc8de9a0ccc9104741441af6"
+    }
+  },
+  "activation": {
+    "seed_limit": 8,
+    "candidate_limit": 64,
+    "max_depth": 3,
+    "beam_width": 8,
+    "max_nodes": 64,
+    "direction": "both",
+    "provider": null
+  },
+  "context_budget": {"max_tokens": 3200, "max_nodes": 24, "max_edges": 24},
+  "behavior_budget": {"max_tokens": 2200, "max_observations": 48, "max_source_chars": 5000},
+  "arms": [
+    {
+      "id": "symbol_evidence",
+      "description": "P2.3a symbol-evidence context only; no P2.4 behavioral envelope."
+    },
+    {
+      "id": "behavior_deterministic",
+      "description": "Same activation and symbol_evidence delivery plus P2.4 GroundedBehaviorExtractor and DeterministicRelevanceJudge."
+    },
+    {
+      "id": "behavior_provider_optional",
+      "description": "Optional provider-backed relevance on the same extracted candidate behavior. It is reported only when an explicitly configured real JudgmentProvider is available; otherwise no provider result is fabricated."
+    }
+  ],
+  "scoring_contract": {
+    "behavior_pattern_recall": "A preregistered behavior pattern counts only if every phrase in one listed alternative is present in actual delivered model-facing values for that arm. Patterns are evaluated only after context construction.",
+    "symbol_support": "Required source-support symbols are scoring-only and are never passed into activation, selection, or relevance judgment.",
+    "missing_identifier": "The unresolved control passes only when capture_card is surfaced as unresolved/insufficient and no delivered behavior invents capture_card implementation.",
+    "no_gold_to_activation": true,
+    "no_gold_to_relevance": true,
+    "no_gold_to_packer": true,
+    "no_tuning_after_first_replay": "After the first P2.4b replay, selector/extractor/relevance changes motivated by these labels must be treated as a later development slice, not rescored as fresh P2.4b evidence. Harness-only correctness fixes must be explicitly identified."
+  },
+  "tasks": [
+    {
+      "id": "apply-payment-implementation",
+      "query": "How does apply_payment validate a payment before changing the invoice, what state can it change, and what does it return?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {"id": "validate-before-mutation", "alternatives": [["ensure_payment_allowed", "invoice.outstanding_cents -= payment_cents"]]},
+        {"id": "decrement-outstanding", "alternatives": [["invoice.outstanding_cents -= payment_cents"]]},
+        {"id": "paid-on-zero", "alternatives": [["invoice.outstanding_cents == 0", "invoice.status = \"paid\""]]},
+        {"id": "return-payment-reference", "alternatives": [["return payment_reference", "invoice.outstanding_cents"]]}
+      ],
+      "support_symbols": [
+        {"file": "billing/service.py", "name": "apply_payment"},
+        {"file": "billing/policy.py", "name": "ensure_payment_allowed"},
+        {"file": "billing/audit.py", "name": "payment_reference"}
+      ],
+      "unsupported_traps": ["database transaction", "gateway charge", "writes receipt to disk"]
+    },
+    {
+      "id": "overpayment-regression-test",
+      "query": "Which test shows that an overpayment is rejected before invoice state changes, and what concrete values does it verify?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {"id": "overpayment-condition-and-error", "alternatives": [["payment_cents > outstanding_cents", "OverpaymentError"]]},
+        {"id": "test-preserves-state", "alternatives": [["apply_payment(invoice, 7000)", "invoice.outstanding_cents == 5000", "invoice.status == \"open\""]]}
+      ],
+      "support_symbols": [
+        {"file": "tests/test_service.py", "name": "test_overpayment_leaves_balance_unchanged"},
+        {"file": "billing/policy.py", "name": "ensure_payment_allowed"},
+        {"file": "billing/policy.py", "name": "OverpaymentError"}
+      ],
+      "unsupported_traps": ["rollback transaction", "refund", "network retry"]
+    },
+    {
+      "id": "exact-payment-test",
+      "query": "What does the exact-payment regression test prove about the final invoice state and returned payment reference?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {"id": "zero-and-paid", "alternatives": [["invoice.outstanding_cents == 0", "invoice.status == \"paid\""]]},
+        {"id": "exact-reference", "alternatives": [["PAYMENT:INV-8:0"]]}
+      ],
+      "support_symbols": [
+        {"file": "tests/test_service.py", "name": "test_exact_payment_marks_invoice_paid"},
+        {"file": "billing/service.py", "name": "apply_payment"},
+        {"file": "billing/audit.py", "name": "payment_reference"}
+      ],
+      "unsupported_traps": ["currency conversion", "database save"]
+    },
+    {
+      "id": "grace-days-migration",
+      "query": "How does apply_grace_days_default fill a missing grace period without overwriting an existing value?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {"id": "missing-only-guard", "alternatives": [["\"grace_days\" not in row"]]},
+        {"id": "default-seven", "alternatives": [["grace_days_default", "return 7"]]},
+        {"id": "preserve-fourteen", "alternatives": [["grace_days", "14"]]}
+      ],
+      "support_symbols": [
+        {"file": "billing/migrations/0001_grace_days.py", "name": "apply_grace_days_default"},
+        {"file": "billing/models.py", "name": "grace_days_default"},
+        {"file": "tests/test_migration.py", "name": "test_grace_days_default_only_fills_missing_value"}
+      ],
+      "unsupported_traps": ["sets every row to 7", "overwrites 14", "SQL UPDATE"]
+    },
+    {
+      "id": "retry-policy",
+      "query": "What does retry_payment delegate to, and exactly which statuses are retryable according to can_retry and its test?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {"id": "delegates-can-retry", "alternatives": [["return can_retry(status)"]]},
+        {"id": "retry-statuses", "alternatives": [["declined", "timeout", "paid"]]}
+      ],
+      "support_symbols": [
+        {"file": "billing/service.py", "name": "retry_payment"},
+        {"file": "billing/policy.py", "name": "can_retry"},
+        {"file": "tests/test_service.py", "name": "test_retry_policy_accepts_declined_and_timeout_only"}
+      ],
+      "unsupported_traps": ["pending is retryable", "paid is retryable", "automatic network retry"]
+    },
+    {
+      "id": "javascript-payment-label",
+      "query": "How does formatPaymentLabel use normalizeCurrency, and what normalization and label format are source-backed?",
+      "expected_status": "answer",
+      "required_behavior_patterns": [
+        {"id": "normalizer-transform", "alternatives": [["String(value).trim().toUpperCase()"]]},
+        {"id": "label-format", "alternatives": [["PAY ${normalizeCurrency(code)}:${amount}"]]}
+      ],
+      "support_symbols": [
+        {"file": "client/currency.js", "name": "normalizeCurrency"},
+        {"file": "client/label.js", "name": "formatPaymentLabel"},
+        {"file": "tests/currency.test.js", "name": "testCurrencyFormatting"}
+      ],
+      "unsupported_traps": ["lowercase", "fetch", "API request"]
+    },
+    {
+      "id": "missing-capture-card",
+      "query": "How does capture_card charge the customer before apply_payment runs?",
+      "expected_status": "need_more_context",
+      "expected_missing_identifiers": ["capture_card"],
+      "required_behavior_patterns": [],
+      "support_symbols": [],
+      "unsupported_traps": ["capture_card calls", "payment gateway", "card network", "bank API"]
+    }
+  ],
+  "acceptance": {
+    "fresh_representation_gate": [
+      "behavior_deterministic must improve aggregate required behavior-pattern recall over symbol_evidence.",
+      "behavior_deterministic must not invent capture_card and must preserve an explicit insufficient/unresolved signal.",
+      "All behavior_deterministic packets must remain within the preregistered 2200 estimated-token behavioral cap.",
+      "No canonical graph truth or evidence confidence tier may be mutated by relevance ranking.",
+      "Any provider-backed arm is descriptive unless a real provider/model identity is recorded; no mock-provider result may be presented as model evidence."
+    ],
+    "default_decision": "P2.4b alone does not change the legacy product default. A downstream model-answer checkpoint or S7 remains required for an end-user accuracy claim."
+  },
+  "limitations": [
+    "This corpus is fresh relative to P2.4a implementation but remains synthetic and authored inside the repository.",
+    "Behavior-pattern recall measures evidence availability, not downstream LLM answer correctness.",
+    "The deterministic context estimate remains compact-JSON ceil(chars/4), not provider billing tokens.",
+    "S7 remains sealed and unused."
+  ]
+}
