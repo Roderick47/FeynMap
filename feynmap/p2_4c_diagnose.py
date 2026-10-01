@@ -1,9 +1,9 @@
 """Post-hoc diagnostics for the two preserved P2.4b behavioral misses.
 
 This module intentionally does not score or tune against the frozen P2.4b gold
-patterns. It records the existing pipeline's selected symbols, extracted source
-observations, deterministic relevance decisions, and delivered behavioral
-witnesses so a later development slice can classify the failure layer.
+patterns. It records the existing pipeline's activated symbols, selected symbols,
+extracted source observations, deterministic relevance decisions, and delivered
+behavioral witnesses so a later development slice can classify the failure layer.
 """
 from __future__ import annotations
 
@@ -117,6 +117,31 @@ def run_diagnostics(manifest_path: Path) -> Dict[str, Any]:
                 "task_id": task_id,
                 "query": query,
                 "profile": profile.to_dict(),
+                "activation": {
+                    "stage": sparse.activation.stage,
+                    "effort": sparse.activation.effort,
+                    "roots": [_node_row(graph, node.id) for node in sparse.activation.search.roots],
+                    "hits": [
+                        {
+                            **_node_row(graph, hit.node.id),
+                            "depth": hit.depth,
+                            "parent_id": hit.parent_id,
+                            "via_edge_id": hit.via_edge_id,
+                            "seed_score": hit.seed_score,
+                            "path_score": hit.path_score,
+                        }
+                        for hit in sparse.activation.search.hits
+                    ],
+                    "edges": [
+                        {
+                            "id": edge.id,
+                            "kind": edge.kind.value,
+                            "source": edge.source,
+                            "target": edge.target,
+                        }
+                        for edge in sparse.activation.search.edges
+                    ],
+                },
                 "sparse": {
                     "sufficient": bool(sparse.context.sufficient),
                     "unresolved": list(sparse.context.unresolved_query_identifiers),
