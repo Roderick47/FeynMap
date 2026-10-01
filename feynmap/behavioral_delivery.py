@@ -1,24 +1,24 @@
 """P2.4 behavior-aware delivery over an already activated sparse search.
 
-P2.3a deliberately remains a symbol-selection checkpoint.  This module is a
+P2.3a deliberately remains a symbol-selection checkpoint. This module is a
 P2.4-only bridge between S3 symbol delivery and source-body extraction: it may
 retain a very small continuation of *already activated*, source-backed behavior
 when the selected task anchor reaches a dependency that S3 omitted.
 
 It never activates a new node, never invents an edge, and never upgrades source
-evidence.  Unknown remains unknown when the bounded continuation cannot fit.
+evidence. Unknown remains unknown when the bounded continuation cannot fit.
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from .behavior import BehaviorKind, BehaviorObservation
 from .behavioral_context import BehavioralContextBuilder
 from .context import estimate_tokens
 from .core import EdgeKind, EvidenceKind, SemanticEdge, SemanticGraph
-from .delivery_channels import DeliveryChannelPolicy, file_channel, task_channel
+from .delivery_channels import IMPLEMENTATION, DeliveryChannelPolicy, file_channel, task_channel
 from .judgment.search import GuidedSearchResult
 from .minimal_context import MinimalContextBudget, MinimalContextPacker, MinimalContextResult
 from .relevance import RelevanceDecision, TaskEvidenceProfile
@@ -133,7 +133,10 @@ class BehavioralSymbolContinuation:
         node_scores = self.packer._node_scores(
             search,
             hit_by_id,
-            [edge for edge in search.edges if edge.source in active_ids and edge.target in active_ids],
+            [
+                edge for edge in search.edges
+                if edge.source in active_ids and edge.target in active_ids
+            ],
         )
         query_terms = _tokens(task)
         desired_channel = task_channel(task)
@@ -151,10 +154,15 @@ class BehavioralSymbolContinuation:
                 node.location.path,
             ))
             overlap = len(query_terms & terms) / float(max(1, len(query_terms)))
-            channel_bonus = 0.45 if file_channel(node.location.path) == desired_channel else 0.0
+            channel_bonus = (
+                0.45 if file_channel(node.location.path) == desired_channel else 0.0
+            )
             root_bonus = 0.75 if node_id in root_ids else 0.0
             seed_candidates.append((
-                node_scores.get(node_id, 0.0) + 2.2 * overlap + channel_bonus + root_bonus,
+                node_scores.get(node_id, 0.0)
+                + 2.2 * overlap
+                + channel_bonus
+                + root_bonus,
                 node_id,
             ))
         seed_candidates.sort(key=lambda item: (-item[0], item[1]))
@@ -179,6 +187,9 @@ class BehavioralSymbolContinuation:
                 continue
             seen_states.add(state)
             if depth >= self.max_hops:
+                continue
+            current_node = self.graph.node(current)
+            if current_node is None or current_node.location is None:
                 continue
             for edge in sorted(outgoing.get(current, ()), key=lambda item: item.id):
                 target = edge.target
@@ -206,7 +217,11 @@ class BehavioralSymbolContinuation:
                     node_scores.get(target, 0.0)
                     + 1.4 * edge_bonus
                     + 2.0 * overlap
-                    + (0.30 if target_node.location.path != self.graph.node(current).location.path else 0.0)
+                    + (
+                        0.30
+                        if target_node.location.path != current_node.location.path
+                        else 0.0
+                    )
                     - 0.15 * depth
                 )
                 if target not in selected_nodes:
@@ -225,11 +240,13 @@ class BehavioralSymbolContinuation:
         for _, target, path_edges, path_nodes in candidates:
             if target in current_nodes:
                 continue
-            missing_nodes = [node_id for node_id in path_nodes if node_id not in current_nodes]
+            missing_nodes = [
+                node_id for node_id in path_nodes if node_id not in current_nodes
+            ]
             if len(set(added_nodes) | set(missing_nodes)) > self.max_added_nodes:
                 continue
             # Keep only real activated source-backed edges whose endpoints will
-            # be present after this admission.  A path can traverse an already
+            # be present after this admission. A path can traverse an already
             # selected node without fabricating its relation.
             candidate_nodes = current_nodes | set(missing_nodes)
             missing_edges = []
@@ -245,8 +262,6 @@ class BehavioralSymbolContinuation:
                     missing_edges.append(edge_id)
             candidate_edges = current_edges | set(missing_edges)
             candidate_anchors = list(anchors)
-            if not candidate_nodes.intersection(selected_nodes):
-                candidate_anchors.append(target)
             if self.packer._fits(
                 search,
                 requested,
@@ -269,11 +284,16 @@ class BehavioralSymbolContinuation:
                 omitted_budget += 1
 
         if not added_nodes and not added_edges:
-            return BehavioralContinuationResult(context, (), (), considered, omitted_budget)
+            return BehavioralContinuationResult(
+                context, (), (), considered, omitted_budget
+            )
 
         payload = self.packer._payload(
             search,
-            sorted(current_nodes, key=lambda item: (-node_scores.get(item, 0.0), item)),
+            sorted(
+                current_nodes,
+                key=lambda item: (-node_scores.get(item, 0.0), item),
+            ),
             sorted(current_edges),
             anchors,
         )
@@ -287,7 +307,10 @@ class BehavioralSymbolContinuation:
                 critical.append(node_id)
         extended = MinimalContextResult(
             payload=payload,
-            selected_node_ids=tuple(sorted(current_nodes, key=lambda item: (-node_scores.get(item, 0.0), item))),
+            selected_node_ids=tuple(sorted(
+                current_nodes,
+                key=lambda item: (-node_scores.get(item, 0.0), item),
+            )),
             selected_edge_ids=tuple(sorted(current_edges)),
             activated_tokens=context.activated_tokens,
             delivered_tokens=delivered_tokens,
@@ -309,7 +332,17 @@ class BehavioralSymbolContinuation:
 
 
 class TaskConditionedBehavioralContextBuilder(BehavioralContextBuilder):
-    """P2.4 builder that keeps named wrapper returns in test-oriented tasks."""
+    """P2.4 packing refinements learned from development diagnostics.
+
+    Test-oriented questions commonly need two relationships that a flat
+    per-kind reservation can split apart:
+    1. a source-backed condition paired with the raise it controls;
+    2. the enclosing return of an explicitly named wrapper, not only its nested
+       call expression.
+
+    These are source observations already extracted from selected symbols. The
+    rules below only preserve them; they do not infer new behavior.
+    """
 
     def _reserve_task_dimensions(
         self,
@@ -318,10 +351,64 @@ class TaskConditionedBehavioralContextBuilder(BehavioralContextBuilder):
     ) -> Tuple[List[Tuple[BehaviorObservation, RelevanceDecision]], set]:
         ordered, reserved = super()._reserve_task_dimensions(useful, profile)
         reserved = set(reserved)
-        if profile.task_type != "test_behavior" or not profile.identifiers:
+        if profile.task_type != "test_behavior":
             return ordered, reserved
 
         additions: List[Tuple[BehaviorObservation, RelevanceDecision]] = []
+
+        def add(item):
+            if item is None or item[0].id in reserved:
+                return
+            additions.append(item)
+            reserved.add(item[0].id)
+
+        # Preserve at most two implementation failure pairs. Pairing is based
+        # on the extractor's exact enclosing-condition text, so a condition and
+        # raise remain causally linked rather than independently ranked.
+        by_symbol: Dict[str, List[Tuple[BehaviorObservation, RelevanceDecision]]] = {}
+        for item in useful:
+            observation = item[0]
+            if file_channel(observation.location.path) != IMPLEMENTATION:
+                continue
+            by_symbol.setdefault(observation.symbol_id, []).append(item)
+
+        failure_pairs = []
+        for symbol_id, items in by_symbol.items():
+            raises = [
+                item for item in items
+                if item[0].kind == BehaviorKind.RAISE and item[0].condition
+            ]
+            if not raises:
+                continue
+            best_raise = min(raises, key=self._relevance_sort_key)
+            condition_text = str(best_raise[0].condition or "")
+            conditions = [
+                item for item in items
+                if item[0].kind == BehaviorKind.CONDITION
+                and condition_text
+                and (
+                    condition_text in item[0].summary
+                    or condition_text in item[0].source
+                )
+            ]
+            if not conditions:
+                continue
+            best_condition = min(conditions, key=self._relevance_sort_key)
+            pair_score = float(best_raise[1].score) + float(best_condition[1].score)
+            failure_pairs.append((
+                pair_score,
+                symbol_id,
+                best_condition,
+                best_raise,
+            ))
+        failure_pairs.sort(key=lambda row: (-row[0], row[1]))
+        for _, _, condition_item, raise_item in failure_pairs[:2]:
+            add(condition_item)
+            add(raise_item)
+
+        # If the task explicitly names a wrapper, preserve the wrapper's
+        # RETURN observation as well as any nested CALL observation. This is
+        # the difference between "calls can_retry" and "returns can_retry(...)".
         for identifier in profile.identifiers:
             candidates = []
             for item in useful:
@@ -332,14 +419,15 @@ class TaskConditionedBehavioralContextBuilder(BehavioralContextBuilder):
                 if node is None or node.name != identifier:
                     continue
                 candidates.append(item)
-            if not candidates:
-                continue
-            best = min(candidates, key=self._relevance_sort_key)
-            if best[0].id not in reserved:
-                additions.append(best)
-                reserved.add(best[0].id)
+            if candidates:
+                add(min(candidates, key=self._relevance_sort_key))
 
         if not additions:
             return ordered, reserved
         addition_ids = {item[0].id for item in additions}
-        return additions + [item for item in ordered if item[0].id not in addition_ids], reserved
+        return (
+            additions + [
+                item for item in ordered if item[0].id not in addition_ids
+            ],
+            reserved,
+        )
