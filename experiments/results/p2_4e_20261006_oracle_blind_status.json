@@ -1,0 +1,38 @@
+{
+  "schema": "feynmap.p2_4e_oracle_blind_checkpoint.v1",
+  "recorded_date": "2026-10-06",
+  "status": "runner_ready_provider_credential_not_configured",
+  "base_checkpoint": {
+    "pull_request": 53,
+    "head_sha": "062593bf765854df96257ce692fc43507b599972",
+    "frozen_p2_4d_manifest_git_blob": "153bd1d1e0912c6b008ac8b0ba00c76c3529662e"
+  },
+  "runner": {
+    "commit": "a1c50b51246d9cc8c6c7e85a06315d498f457514",
+    "provider_protocol": "openai_responses",
+    "default_model": "gpt-6-luna",
+    "model_input_boundary": "oracle-free P2.4d model_inputs directory only",
+    "source_fixture_mounted": false,
+    "scoring_oracle_mounted": false,
+    "provider_tools_enabled": false,
+    "provider_storage_requested": false,
+    "answer_schema": "strict_json_schema",
+    "invalid_packet_evidence_refs_rejected": true
+  },
+  "workflow": {
+    "run_id": 37387181641,
+    "runner_contract": "success",
+    "provider_call": "skipped",
+    "provider_score": "not_run",
+    "reason": "FEYNMAP_OPENAI_API_KEY repository secret is not configured",
+    "oracle_blind_result_claimed": false
+  },
+  "regression": {
+    "python_3_8": "success",
+    "python_3_12": "success",
+    "recursive_self_check": "success"
+  },
+  "next_valid_action": "Configure FEYNMAP_OPENAI_API_KEY intentionally and run p2-4e-oracle-blind-downstream against the already-frozen P2.4d packets without modifying P2.4c or the P2.4d corpus.",
+  "default_product_policy_changed": false,
+  "s7_used": false
+}
