@@ -1,0 +1,137 @@
+name: p2-4e-oracle-blind-downstream
+
+on:
+  push:
+    branches:
+      - p2-4e-oracle-blind-downstream
+    paths:
+      - "feynmap/p2_4e_blind_answer.py"
+      - "tests/test_p2_4e_blind_answer.py"
+      - ".github/workflows/p2-4e-oracle-blind.yml"
+  pull_request:
+    paths:
+      - "feynmap/p2_4e_blind_answer.py"
+      - "tests/test_p2_4e_blind_answer.py"
+      - ".github/workflows/p2-4e-oracle-blind.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runner-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e . pytest
+      - name: Test oracle-blind runner contract
+        run: pytest -q tests/test_p2_4e_blind_answer.py
+
+  blind-provider-run:
+    needs: runner-contract
+    runs-on: ubuntu-latest
+    # Push on the dedicated development branch gives one automatic chance to
+    # consume an intentionally configured secret. PR checks never spend model
+    # credit. workflow_dispatch can re-run the frozen packets later.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/p2-4e-oracle-blind-downstream')
+    env:
+      OPENAI_API_KEY: ${{ secrets.FEYNMAP_OPENAI_API_KEY }}
+      FEYNMAP_BLIND_MODEL: ${{ vars.FEYNMAP_BLIND_MODEL }}
+      OPENAI_BASE_URL: ${{ vars.FEYNMAP_OPENAI_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install FeynMap for frozen packet export and scoring only
+        run: python -m pip install -e .
+      - name: Re-export the frozen oracle-free P2.4d packets
+        run: |
+          python -m feynmap.p2_4d_evaluate export \
+            --manifest experiments/p2_4d_downstream_manifest.json \
+            --output artifacts/p2_4d
+      - name: Check explicit blind-provider credential
+        id: provider
+        shell: bash
+        run: |
+          mkdir -p artifacts/p2_4e
+          if [ -n "${OPENAI_API_KEY}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          Path("artifacts/p2_4e/status.json").write_text(
+              json.dumps(
+                  {
+                      "schema": "feynmap.p2_4e_blind_run_status.v1",
+                      "status": "not_run_missing_explicit_provider_credential",
+                      "required_secret": "FEYNMAP_OPENAI_API_KEY",
+                      "oracle_blind_result_claimed": False,
+                  },
+                  indent=2,
+                  sort_keys=True,
+              ) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          fi
+      - name: Run provider in an oracle-isolated container
+        if: steps.provider.outputs.ready == 'true'
+        shell: bash
+        run: |
+          mkdir -p artifacts/p2_4e/answers
+          MODEL="${FEYNMAP_BLIND_MODEL:-gpt-6-luna}"
+          BASE_URL="${OPENAI_BASE_URL:-https://api.openai.com/v1}"
+          docker run --rm \
+            -e OPENAI_API_KEY \
+            -v "$PWD/artifacts/p2_4d/model_inputs:/inputs:ro" \
+            -v "$PWD/artifacts/p2_4e/answers:/answers" \
+            -v "$PWD/feynmap/p2_4e_blind_answer.py:/runner.py:ro" \
+            python:3.12-slim \
+            python /runner.py \
+              --input /inputs \
+              --output /answers \
+              --model "$MODEL" \
+              --base-url "$BASE_URL"
+      - name: Score oracle-blind answers outside the isolated model process
+        if: steps.provider.outputs.ready == 'true'
+        run: |
+          python -m feynmap.p2_4d_evaluate score \
+            --manifest experiments/p2_4d_downstream_manifest.json \
+            --index artifacts/p2_4d/index.json \
+            --answers artifacts/p2_4e/answers \
+            --output artifacts/p2_4e/score.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          score = json.loads(Path("artifacts/p2_4e/score.json").read_text())
+          assert score["oracle_blind"] is True
+          assert score["eligible_for_shipping_decision"] is True
+          Path("artifacts/p2_4e/status.json").write_text(
+              json.dumps(
+                  {
+                      "schema": "feynmap.p2_4e_blind_run_status.v1",
+                      "status": "oracle_blind_provider_run_completed",
+                      "oracle_blind_result_claimed": True,
+                      "blind_downstream_comparative_gate": score["blind_downstream_comparative_gate"],
+                      "absolute_fidelity_guard": score["absolute_fidelity_guard"],
+                      "default_product_policy_changed": score["default_product_policy_changed"],
+                  },
+                  indent=2,
+                  sort_keys=True,
+              ) + "\n",
+              encoding="utf-8",
+          )
+          PY
+      - name: Upload blind-run status and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-4e-oracle-blind-downstream
+          path: artifacts/p2_4e
